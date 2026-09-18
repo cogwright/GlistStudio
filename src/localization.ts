@@ -1,0 +1,101 @@
+export type Language = 'en' | 'tr';
+
+const en = {
+  menuFile: 'File', menuEdit: 'Edit', menuView: 'View', menuRun: 'Run', menuHelp: 'Help',
+  openProject: 'Open Project', newProject: 'New Project', save: 'Save', build: 'Build', run: 'Run', stop: 'Stop',
+  saveTitle: 'Save (Ctrl+S)', buildTitle: 'Build (Ctrl+Shift+B)', runTitle: 'Build and Run (F5)',
+  stopTitle: 'Stop (Shift+F5)', settings: 'Settings', explorer: 'EXPLORER',
+  newFile: 'New File', newFolder: 'New Folder', newCppClass: 'New C++ Class',
+  newMenu: 'New', copy: 'Copy', paste: 'Paste', showIn: 'Show in',
+  systemExplorer: 'System Explorer', commandPrompt: 'CMD',
+  copied: 'Copied', pasted: 'Pasted', copyFailed: 'Could not copy item', showFailed: 'Could not open location',
+  rename: 'Rename', delete: 'Move to Recycle Bin', deleteTitle: 'Move Selected Item to Recycle Bin',
+  refresh: 'Refresh', projectPlaceholder: 'GLIST PROJECT', noFolder: 'No folder is open.',
+  openFolder: 'Open Folder', tagline: 'A focused development environment for Glist Engine.',
+  output: 'OUTPUT', ready: 'Ready', clearOutput: 'Clear Output',
+  initialOutput: 'Glist Studio is ready. Open a project to get started.',
+  cancel: 'Cancel', create: 'Create', close: 'Close', template: 'Template',
+  projectName: 'Project name', language: 'Language',
+  languageHint: 'The interface language changes immediately.',
+  undo: 'Undo', redo: 'Redo', find: 'Find', showExplorer: 'Show Explorer', hideExplorer: 'Hide Explorer',
+  showOutput: 'Show Output', hideOutput: 'Hide Output', engineAbout: 'About Glist Engine',
+  fileName: 'File name', folderName: 'Folder name', className: 'Class name', newName: 'New name',
+  openedProject: 'Project', noCmake: 'CMakeLists.txt was not found in this folder.',
+  fileCreated: 'File created', folderCreated: 'Folder created', classCreated: 'C++ class created',
+  projectCreated: 'Project created', movedToTrash: 'Moved to Recycle Bin', renamed: 'Renamed',
+  createFailed: 'Could not create item', deleteFailed: 'Could not delete item', renameFailed: 'Could not rename item',
+  fileOpenFailed: 'Could not open file', treeFailed: 'Could not load files', saveFailed: 'Save failed',
+  saved: 'saved', buildSucceeded: 'Build succeeded', buildFailed: 'Build failed',
+  running: 'Application running', exit: 'Exit',
+  confirmProjectSwitch: 'You have unsaved files. Open another project?',
+  confirmClose: 'has unsaved changes. Close anyway?',
+  confirmDeleteFile: 'Move this file to the Recycle Bin?',
+  confirmDeleteFolder: 'Move this folder and all its contents to the Recycle Bin?',
+  confirmDirtyDelete: 'Unsaved changes in this item will be lost. Continue?',
+  classLocation: 'Select a folder for the C++ class.',
+  open: 'Open',
+} as const;
+
+export type TranslationKey = keyof typeof en;
+
+const tr: Record<TranslationKey, string> = {
+  menuFile: 'Dosya', menuEdit: 'Düzen', menuView: 'Görünüm', menuRun: 'Çalıştır', menuHelp: 'Yardım',
+  openProject: 'Proje Aç', newProject: 'Yeni Proje', save: 'Kaydet', build: 'Derle', run: 'Çalıştır', stop: 'Durdur',
+  saveTitle: 'Kaydet (Ctrl+S)', buildTitle: 'Derle (Ctrl+Shift+B)', runTitle: 'Derle ve Çalıştır (F5)',
+  stopTitle: 'Durdur (Shift+F5)', settings: 'Ayarlar', explorer: 'EXPLORER',
+  newFile: 'Yeni Dosya', newFolder: 'Yeni Klasör', newCppClass: 'Yeni C++ Sınıfı',
+  newMenu: 'Yeni', copy: 'Kopyala', paste: 'Yapıştır', showIn: 'Şurada Göster',
+  systemExplorer: 'Sistem Gezgini', commandPrompt: 'CMD',
+  copied: 'Kopyalandı', pasted: 'Yapıştırıldı', copyFailed: 'Öğe kopyalanamadı', showFailed: 'Konum açılamadı',
+  rename: 'Yeniden Adlandır', delete: 'Geri Dönüşüm Kutusu’na Taşı', deleteTitle: 'Seçili Öğeyi Geri Dönüşüm Kutusu’na Taşı',
+  refresh: 'Yenile', projectPlaceholder: 'GLIST PROJESİ', noFolder: 'Henüz bir klasör açılmadı.',
+  openFolder: 'Klasör Aç', tagline: 'Glist Engine için odaklanmış geliştirme ortamı.',
+  output: 'ÇIKTI', ready: 'Hazır', clearOutput: 'Çıktıyı Temizle',
+  initialOutput: 'Glist Studio hazır. Başlamak için bir proje açın.',
+  cancel: 'İptal', create: 'Oluştur', close: 'Kapat', template: 'Şablon',
+  projectName: 'Proje adı', language: 'Dil',
+  languageHint: 'Arayüz dili hemen değişir.',
+  undo: 'Geri Al', redo: 'Yinele', find: 'Bul', showExplorer: 'Explorer’ı Göster', hideExplorer: 'Explorer’ı Gizle',
+  showOutput: 'Çıktıyı Göster', hideOutput: 'Çıktıyı Gizle', engineAbout: 'Glist Engine Hakkında',
+  fileName: 'Dosya adı', folderName: 'Klasör adı', className: 'Sınıf adı', newName: 'Yeni ad',
+  openedProject: 'Proje', noCmake: 'Bu klasörde CMakeLists.txt bulunamadı.',
+  fileCreated: 'Dosya oluşturuldu', folderCreated: 'Klasör oluşturuldu', classCreated: 'C++ sınıfı oluşturuldu',
+  projectCreated: 'Proje oluşturuldu', movedToTrash: 'Geri Dönüşüm Kutusu’na taşındı', renamed: 'Yeniden adlandırıldı',
+  createFailed: 'Öğe oluşturulamadı', deleteFailed: 'Öğe silinemedi', renameFailed: 'Öğe yeniden adlandırılamadı',
+  fileOpenFailed: 'Dosya açılamadı', treeFailed: 'Dosyalar yüklenemedi', saveFailed: 'Kaydetme başarısız',
+  saved: 'kaydedildi', buildSucceeded: 'Derleme başarılı', buildFailed: 'Derleme başarısız',
+  running: 'Uygulama çalışıyor', exit: 'Çıkış',
+  confirmProjectSwitch: 'Kaydedilmemiş dosyalar var. Başka proje açılsın mı?',
+  confirmClose: 'kaydedilmedi. Yine de kapatılsın mı?',
+  confirmDeleteFile: 'Bu dosya Geri Dönüşüm Kutusu’na taşınsın mı?',
+  confirmDeleteFolder: 'Bu klasör ve içindekiler Geri Dönüşüm Kutusu’na taşınsın mı?',
+  confirmDirtyDelete: 'Bu öğedeki kaydedilmemiş değişiklikler kaybolacak. Devam edilsin mi?',
+  classLocation: 'C++ sınıfı için bir klasör seçin.',
+  open: 'Aç',
+};
+
+const dictionaries = { en, tr };
+
+export const savedLanguage = (): Language => {
+  try { return window.localStorage.getItem('glist-studio-language') === 'tr' ? 'tr' : 'en'; }
+  catch { return 'en'; }
+};
+
+let language: Language = savedLanguage();
+
+export const getLanguage = (): Language => language;
+export const t = (key: TranslationKey): string => dictionaries[language][key];
+
+export const applyLanguage = (next: Language): void => {
+  language = next;
+  try { window.localStorage.setItem('glist-studio-language', next); } catch { /* Storage may be unavailable. */ }
+  document.documentElement.lang = next;
+  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((node) => {
+    const key = node.dataset.i18n as TranslationKey;
+    if (key in en) node.textContent = t(key);
+  });
+  document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((node) => {
+    const key = node.dataset.i18nTitle as TranslationKey;
+    if (key in en) node.title = t(key);
+  });
+};

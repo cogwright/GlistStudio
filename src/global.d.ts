@@ -1,0 +1,51 @@
+interface GlistFileEntry {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+}
+
+declare module '*.ico' {
+  const assetUrl: string;
+  export default assetUrl;
+}
+
+interface GlistProjectInfo {
+  root: string;
+  name: string;
+  hasCMakeProject: boolean;
+}
+
+interface GlistProcessResult {
+  success: boolean;
+  message: string;
+}
+
+type GlistTemplate = 'GlistApp' | 'GlistConsoleApp' | 'GlistGUIApp';
+type GlistLanguage = 'en' | 'tr';
+
+interface Window {
+  glistAPI: {
+    openProject(): Promise<GlistProjectInfo | null>;
+    createProject(templateName: GlistTemplate, projectName: string): Promise<GlistProjectInfo>;
+    listDirectory(directoryPath: string): Promise<GlistFileEntry[]>;
+    createFile(directoryPath: string, name: string): Promise<string>;
+    createDirectory(directoryPath: string, name: string): Promise<string>;
+    deleteEntry(entryPath: string): Promise<boolean>;
+    renameEntry(entryPath: string, newName: string): Promise<string>;
+    createCppClass(directoryPath: string, className: string): Promise<{ header: string; source: string }>;
+    copyEntry(entryPath: string, destinationDirectory: string): Promise<string>;
+    showInExplorer(entryPath: string): Promise<void>;
+    openCommandPrompt(entryPath: string): Promise<void>;
+    readFile(filePath: string): Promise<string>;
+    writeFile(filePath: string, contents: string): Promise<boolean>;
+    buildProject(): Promise<GlistProcessResult>;
+    runProject(): Promise<GlistProcessResult>;
+    stopProject(): Promise<GlistProcessResult>;
+    setLanguage(language: GlistLanguage): Promise<GlistLanguage>;
+    openEngineSite(): Promise<void>;
+    onBuildOutput(callback: (text: string) => void): () => void;
+    onBuildStatus(callback: (status: { running: boolean; label: string }) => void): () => void;
+    onRunOutput(callback: (text: string) => void): () => void;
+    onRunStatus(callback: (status: { running: boolean; exitCode?: number }) => void): () => void;
+  };
+}
