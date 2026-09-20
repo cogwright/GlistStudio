@@ -42,6 +42,7 @@ interface Window {
     runProject(): Promise<GlistProcessResult>;
     stopProject(): Promise<GlistProcessResult>;
     setLanguage(language: GlistLanguage): Promise<GlistLanguage>;
+    setZoomFactor(factor: number): Promise<number>;
     openEngineSite(): Promise<void>;
     onBuildOutput(callback: (text: string) => void): () => void;
     onBuildStatus(callback: (status: { running: boolean; label: string }) => void): () => void;

@@ -518,6 +518,11 @@ const registerIpcHandlers = (): void => {
     return true;
   });
   ipcMain.handle('app:open-engine-site', () => shell.openExternal('https://www.glistengine.com/'));
+  ipcMain.handle('view:set-zoom-factor', (event, factor: number) => {
+    const safeFactor = Number.isFinite(factor) ? Math.min(2, Math.max(0.5, factor)) : 1;
+    event.sender.setZoomFactor(safeFactor);
+    return safeFactor;
+  });
   ipcMain.handle('project:build', configureAndBuild);
   ipcMain.handle('project:run', runProject);
   ipcMain.handle('project:stop', () => stopProcesses());

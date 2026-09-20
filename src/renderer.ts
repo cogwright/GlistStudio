@@ -56,8 +56,37 @@ let isRunRunning = false;
 const openFiles = new Map<string, OpenFile>();
 const expandedDirectories = new Set<string>();
 
+const zoomLevels = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200] as const;
+const defaultZoom = 100;
+
+const loadZoom = (): number => {
+  try {
+    const saved = Number(window.localStorage.getItem('glist-studio-zoom'));
+    if (zoomLevels.some((level) => level === saved)) return saved;
+  } catch { /* Storage may be unavailable. */ }
+  return defaultZoom;
+};
+
+let zoomPercentage = loadZoom();
+
+const setZoom = (percentage: number): void => {
+  const closest = zoomLevels.reduce((best, level) => (
+    Math.abs(level - percentage) < Math.abs(best - percentage) ? level : best
+  ), defaultZoom);
+  zoomPercentage = closest;
+  try { window.localStorage.setItem('glist-studio-zoom', String(closest)); } catch { /* Storage may be unavailable. */ }
+  void window.glistAPI.setZoomFactor(closest / 100);
+};
+
+const changeZoom = (direction: -1 | 1): void => {
+  const currentIndex = zoomLevels.findIndex((level) => level === zoomPercentage);
+  const nextIndex = Math.min(zoomLevels.length - 1, Math.max(0, currentIndex + direction));
+  setZoom(zoomLevels[nextIndex]);
+};
+
 applyLanguage(getLanguage());
 void window.glistAPI.setLanguage(getLanguage());
+setZoom(zoomPercentage);
 
 const refreshLanguage = (): void => {
   applyLanguage(getLanguage());
@@ -702,47 +731,76 @@ const configureMenus = (): void => {
   const popover = element<HTMLDivElement>('#menu-popover');
   const menuButtons = [...document.querySelectorAll<HTMLButtonElement>('.menu-button')];
 
-  interface MenuItem {
+  interface MenuAction {
+    kind: 'item';
     label: string;
     shortcut?: string;
+    hint?: string;
+    disabled?: boolean;
     action: () => void;
   }
 
-  const menuItems = (menu: string): MenuItem[] => {
-    const menus: Record<string, MenuItem[]> = {
+  type MenuEntry = MenuAction
+    | { kind: 'separator' }
+    | { kind: 'heading'; label: string };
+
+  const item = (
+    label: string,
+    action: () => void,
+    options: Omit<MenuAction, 'kind' | 'label' | 'action'> = {},
+  ): MenuAction => ({ kind: 'item', label, action, ...options });
+
+  const menuItems = (menu: string): MenuEntry[] => {
+    const menus: Record<string, MenuEntry[]> = {
       file: [
-        { label: t('newProject'), action: showNewProjectDialog },
-        { label: t('openProject'), shortcut: 'Ctrl+O', action: chooseProject },
-        { label: t('save'), shortcut: 'Ctrl+S', action: saveActiveFile },
+        { kind: 'heading', label: t('newMenu') },
+        item(t('newProject'), showNewProjectDialog),
+        item(t('newFile'), createFile, { disabled: !activeProject }),
+        item(t('newFolder'), createFolder, { disabled: !activeProject }),
+        item(t('newCppClass'), createClass, { disabled: !activeProject }),
+        { kind: 'separator' },
+        item(t('openProject'), chooseProject, { shortcut: 'Ctrl+O' }),
+        item(t('save'), saveActiveFile, { shortcut: 'Ctrl+S', disabled: !activeFilePath }),
       ],
       edit: [
-        { label: t('undo'), shortcut: 'Ctrl+Z', action: () => editor.trigger('menu', 'undo', null) },
-        { label: t('redo'), shortcut: 'Ctrl+Y', action: () => editor.trigger('menu', 'redo', null) },
-        { label: t('find'), shortcut: 'Ctrl+F', action: () => editor.getAction('actions.find')?.run() },
+        item(t('undo'), () => editor.trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFilePath }),
+        item(t('redo'), () => editor.trigger('menu', 'redo', null), { shortcut: 'Ctrl+Y', disabled: !activeFilePath }),
+        { kind: 'separator' },
+        item(t('find'), () => editor.getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFilePath }),
       ],
       view: [
-        {
-          label: t(shell.classList.contains('sidebar-hidden') ? 'showExplorer' : 'hideExplorer'),
-          shortcut: 'Ctrl+B',
-          action: () => shell.classList.toggle('sidebar-hidden'),
-        },
-        {
-          label: t(shell.classList.contains('output-hidden') ? 'showOutput' : 'hideOutput'),
-          shortcut: 'Ctrl+J',
-          action: () => shell.classList.toggle('output-hidden'),
-        },
-        { label: t('settings'), action: () => settingsDialog.showModal() },
+        { kind: 'heading', label: t('layout') },
+        item(t(shell.classList.contains('sidebar-hidden') ? 'showExplorer' : 'hideExplorer'),
+          () => shell.classList.toggle('sidebar-hidden'), { shortcut: 'Ctrl+B' }),
+        item(t(shell.classList.contains('output-hidden') ? 'showOutput' : 'hideOutput'),
+          () => shell.classList.toggle('output-hidden'), { shortcut: 'Ctrl+J' }),
+        { kind: 'separator' },
+        { kind: 'heading', label: t('zoom') },
+        item(t('zoomIn'), () => changeZoom(1), {
+          shortcut: 'Ctrl++', disabled: zoomPercentage === zoomLevels[zoomLevels.length - 1],
+        }),
+        item(t('zoomOut'), () => changeZoom(-1), {
+          shortcut: 'Ctrl+-', disabled: zoomPercentage === zoomLevels[0],
+        }),
+        item(t('resetZoom'), () => setZoom(defaultZoom), {
+          shortcut: 'Ctrl+0', hint: `${zoomPercentage}%`, disabled: zoomPercentage === defaultZoom,
+        }),
+        { kind: 'separator' },
+        { kind: 'heading', label: t('preferences') },
+        item(t('settings'), () => settingsDialog.showModal()),
       ],
       run: [
-        { label: t('build'), shortcut: 'Ctrl+Shift+B', action: buildProject },
-        { label: t('run'), shortcut: 'F5', action: runProject },
-        { label: t('stop'), shortcut: 'Shift+F5', action: stopProject },
+        item(t('build'), buildProject, {
+          shortcut: 'Ctrl+Shift+B', disabled: !activeProject || isBuildRunning,
+        }),
+        item(t('run'), runProject, {
+          shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning,
+        }),
+        { kind: 'separator' },
+        item(t('stop'), stopProject, { shortcut: 'Shift+F5', disabled: !isRunRunning && !isBuildRunning }),
       ],
       help: [
-        {
-          label: t('engineAbout'),
-          action: () => { void window.glistAPI.openEngineSite(); },
-        },
+        item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
       ],
     };
     return menus[menu] ?? [];
@@ -750,39 +808,110 @@ const configureMenus = (): void => {
 
   const closeMenu = (): void => {
     popover.hidden = true;
-    menuButtons.forEach((button) => button.classList.remove('active'));
+    menuButtons.forEach((button) => {
+      button.classList.remove('active');
+      button.setAttribute('aria-expanded', 'false');
+    });
+  };
+
+  const openMenu = (button: HTMLButtonElement): void => {
+    const menu = button.dataset.menu ?? '';
+    popover.replaceChildren();
+    menuItems(menu).forEach((entry) => {
+      if (entry.kind === 'separator') {
+        const separator = document.createElement('div');
+        separator.className = 'menu-separator';
+        separator.setAttribute('role', 'separator');
+        popover.append(separator);
+        return;
+      }
+      if (entry.kind === 'heading') {
+        const heading = document.createElement('div');
+        heading.className = 'menu-heading';
+        heading.textContent = entry.label;
+        popover.append(heading);
+        return;
+      }
+      const itemButton = document.createElement('button');
+      itemButton.type = 'button';
+      itemButton.className = 'menu-item';
+      itemButton.setAttribute('role', 'menuitem');
+      itemButton.disabled = Boolean(entry.disabled);
+      const label = document.createElement('span');
+      label.textContent = entry.label;
+      const metadata = document.createElement('span');
+      metadata.className = 'menu-metadata';
+      if (entry.hint) {
+        const hint = document.createElement('span');
+        hint.className = 'menu-hint';
+        hint.textContent = entry.hint;
+        metadata.append(hint);
+      }
+      const shortcut = document.createElement('kbd');
+      shortcut.textContent = entry.shortcut ?? '';
+      metadata.append(shortcut);
+      itemButton.append(label, metadata);
+      itemButton.addEventListener('click', () => { closeMenu(); entry.action(); });
+      popover.append(itemButton);
+    });
+
+    const bounds = button.getBoundingClientRect();
+    popover.style.left = `${bounds.left}px`;
+    popover.hidden = false;
+    button.classList.add('active');
+    button.setAttribute('aria-expanded', 'true');
   };
 
   menuButtons.forEach((button) => {
+    button.setAttribute('aria-haspopup', 'menu');
+    button.setAttribute('aria-expanded', 'false');
     button.addEventListener('click', (event) => {
       event.stopPropagation();
-      const menu = button.dataset.menu ?? '';
       const wasOpen = button.classList.contains('active') && !popover.hidden;
       closeMenu();
       if (wasOpen) return;
-
-      popover.replaceChildren();
-      menuItems(menu).forEach((item) => {
-        const itemButton = document.createElement('button');
-        itemButton.type = 'button';
-        itemButton.className = 'menu-item';
-        const label = document.createElement('span');
-        label.textContent = item.label;
-        const shortcut = document.createElement('kbd');
-        shortcut.textContent = item.shortcut ?? '';
-        itemButton.append(label, shortcut);
-        itemButton.addEventListener('click', () => { closeMenu(); item.action(); });
-        popover.append(itemButton);
-      });
-
-      const bounds = button.getBoundingClientRect();
-      popover.style.left = `${bounds.left}px`;
-      popover.hidden = false;
-      button.classList.add('active');
+      openMenu(button);
+    });
+    button.addEventListener('pointerenter', () => {
+      if (!popover.hidden && !button.classList.contains('active')) {
+        closeMenu();
+        openMenu(button);
+      }
+    });
+    button.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowDown') return;
+      event.preventDefault();
+      if (popover.hidden || !button.classList.contains('active')) {
+        closeMenu();
+        openMenu(button);
+      }
+      popover.querySelector<HTMLButtonElement>('.menu-item:not(:disabled)')?.focus();
     });
   });
 
+  popover.setAttribute('role', 'menu');
+  popover.addEventListener('keydown', (event) => {
+    const entries = [...popover.querySelectorAll<HTMLButtonElement>('.menu-item:not(:disabled)')];
+    if (entries.length === 0) return;
+    const currentIndex = entries.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex: number | null = null;
+    if (event.key === 'ArrowDown') nextIndex = (currentIndex + 1) % entries.length;
+    else if (event.key === 'ArrowUp') nextIndex = (currentIndex - 1 + entries.length) % entries.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = entries.length - 1;
+    if (nextIndex !== null) {
+      event.preventDefault();
+      entries[nextIndex].focus();
+    }
+  });
   document.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || popover.hidden) return;
+    const activeButton = menuButtons.find((button) => button.classList.contains('active'));
+    closeMenu();
+    activeButton?.focus();
+  });
+  window.addEventListener('blur', closeMenu);
   element<HTMLButtonElement>('[data-view="explorer"]').addEventListener('click', () => {
     shell.classList.toggle('sidebar-hidden');
   });
@@ -843,6 +972,13 @@ window.addEventListener('blur', closeContextMenu);
 window.addEventListener('resize', closeContextMenu);
 
 window.addEventListener('keydown', (event) => {
+  const key = event.key.toLowerCase();
+  if (event.ctrlKey && !event.altKey && (key === '+' || key === '=')) { event.preventDefault(); changeZoom(1); return; }
+  if (event.ctrlKey && !event.altKey && key === '-') { event.preventDefault(); changeZoom(-1); return; }
+  if (event.ctrlKey && !event.altKey && key === '0') { event.preventDefault(); setZoom(defaultZoom); return; }
+}, { capture: true });
+
+window.addEventListener('keydown', (event) => {
   if (inputDialog.open || projectDialog.open || settingsDialog.open) return;
   if (event.key === 'Escape') closeContextMenu();
   if (event.ctrlKey && event.key.toLowerCase() === 'c' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntry(); }
@@ -857,6 +993,11 @@ window.addEventListener('keydown', (event) => {
   else if (event.key === 'F2' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); renameSelectedEntry(); }
   else if (event.key === 'Delete' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntry(); }
 });
+window.addEventListener('wheel', (event) => {
+  if (!event.ctrlKey || event.deltaY === 0) return;
+  event.preventDefault();
+  changeZoom(event.deltaY < 0 ? 1 : -1);
+}, { passive: false, capture: true });
 window.addEventListener('beforeunload', (event) => {
   if (hasDirtyFiles()) { event.preventDefault(); event.returnValue = ''; }
 });
