@@ -425,6 +425,12 @@ const selectTreeEntry = (entry: GlistFileEntry, row: HTMLButtonElement): void =>
   updateButtons();
 };
 
+const clearTreeSelection = (): void => {
+  selectedEntry = null;
+  fileTree.querySelectorAll('.tree-row.selected').forEach((row) => row.classList.remove('selected'));
+  updateButtons();
+};
+
 const closeContextMenu = (): void => { contextMenu.hidden = true; };
 
 const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLButtonElement): void => {
@@ -559,8 +565,7 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
 const loadProjectTree = async (): Promise<void> => {
   if (!activeProject) return;
   fileTree.textContent = '';
-  selectedEntry = null;
-  updateButtons();
+  clearTreeSelection();
   try {
     const entries = await window.glistAPI.listDirectory(activeProject.root);
     fileTree.append(...entries.map((entry) => createTreeRow(entry, 0)));
@@ -574,6 +579,10 @@ const directoryForNewEntry = (): string | null => {
   if (!selectedEntry) return activeProject.root;
   if (selectedEntry.isDirectory) return selectedEntry.path;
   return selectedEntry.path.replace(/[\\/][^\\/]+$/, '') || activeProject.root;
+};
+
+const revealTargetDirectory = (directory: string): void => {
+  if (activeProject && directory !== activeProject.root) expandedDirectories.add(directory);
 };
 
 const errorText = (error: unknown): string => error instanceof Error ? error.message : String(error);
@@ -607,6 +616,7 @@ const createFile = async (): Promise<void> => {
     await saveOpenCmake();
     const createdPath = await window.glistAPI.createFile(directory, name);
     await reloadOpenCmake();
+    revealTargetDirectory(directory);
     await loadProjectTree();
     await openFile(createdPath, name);
     appendOutput(`\n✓ ${t('fileCreated')}: ${createdPath}\n`);
@@ -622,6 +632,7 @@ const createFolder = async (): Promise<void> => {
   if (!name) return;
   try {
     const createdPath = await window.glistAPI.createDirectory(directory, name);
+    revealTargetDirectory(directory);
     await loadProjectTree();
     appendOutput(`\n✓ ${t('folderCreated')}: ${createdPath}\n`);
   } catch (error) {
@@ -638,6 +649,7 @@ const createClass = async (): Promise<void> => {
     await saveOpenCmake();
     const created = await window.glistAPI.createCppClass(directory, className);
     await reloadOpenCmake();
+    revealTargetDirectory(directory);
     await loadProjectTree();
     await openFile(created.header, `${className}.h`);
     appendOutput(`\n✓ ${t('classCreated')}: ${className}\n`);
@@ -1102,17 +1114,18 @@ element<HTMLFormElement>('#new-project-form').addEventListener('submit', async (
     errorHost.textContent = errorText(error);
   }
 });
+fileTree.addEventListener('click', (event) => {
+  if (event.target instanceof Element && event.target.closest('.tree-row')) return;
+  clearTreeSelection();
+});
 fileTree.addEventListener('contextmenu', (event) => {
-  if ((event.target as HTMLElement).closest('.tree-row')) return;
-  selectedEntry = null;
-  fileTree.querySelectorAll('.tree-row.selected').forEach((node) => node.classList.remove('selected'));
-  updateButtons();
+  if (event.target instanceof Element && event.target.closest('.tree-row')) return;
+  clearTreeSelection();
   showContextMenu(event);
 });
+projectRootLabel.addEventListener('click', clearTreeSelection);
 projectRootLabel.addEventListener('contextmenu', (event) => {
-  selectedEntry = null;
-  fileTree.querySelectorAll('.tree-row.selected').forEach((node) => node.classList.remove('selected'));
-  updateButtons();
+  clearTreeSelection();
   showContextMenu(event);
 });
 document.addEventListener('click', closeContextMenu);
