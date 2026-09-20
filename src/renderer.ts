@@ -30,6 +30,8 @@ const newFileButton = element<HTMLButtonElement>('#new-file');
 const newFolderButton = element<HTMLButtonElement>('#new-folder');
 const deleteEntryButton = element<HTMLButtonElement>('#delete-entry');
 const refreshButton = element<HTMLButtonElement>('#refresh-tree');
+const appShell = element<HTMLElement>('#app-shell');
+const explorerActivityButton = element<HTMLButtonElement>('[data-view="explorer"]');
 const fileTree = element<HTMLDivElement>('#file-tree');
 const tabsHost = element<HTMLDivElement>('#editor-tabs');
 const editorHost = element<HTMLDivElement>('#editor-host');
@@ -44,6 +46,7 @@ const inputValue = element<HTMLInputElement>('#input-dialog-value');
 const projectDialog = element<HTMLDialogElement>('#new-project-dialog');
 const settingsDialog = element<HTMLDialogElement>('#settings-dialog');
 const settingsLanguage = element<HTMLSelectElement>('#settings-language');
+const settingsThemes = [...document.querySelectorAll<HTMLInputElement>('input[name="studio-theme"]')];
 element<HTMLImageElement>('#app-icon').src = appIconUrl;
 element<HTMLImageElement>('#welcome-icon').src = appIconUrl;
 
@@ -55,6 +58,20 @@ let isBuildRunning = false;
 let isRunRunning = false;
 const openFiles = new Map<string, OpenFile>();
 const expandedDirectories = new Set<string>();
+let draggedTabPath: string | null = null;
+let suppressTabClick = false;
+
+const setExplorerVisible = (visible: boolean): void => {
+  appShell.classList.toggle('sidebar-hidden', !visible);
+  explorerActivityButton.classList.toggle('active', visible);
+  explorerActivityButton.setAttribute('aria-pressed', String(visible));
+};
+
+const toggleExplorer = (): void => setExplorerVisible(appShell.classList.contains('sidebar-hidden'));
+const setOutputVisible = (visible: boolean): void => {
+  appShell.classList.toggle('output-hidden', !visible);
+};
+const toggleOutput = (): void => setOutputVisible(appShell.classList.contains('output-hidden'));
 
 const zoomLevels = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200] as const;
 const defaultZoom = 100;
@@ -68,6 +85,15 @@ const loadZoom = (): number => {
 };
 
 let zoomPercentage = loadZoom();
+
+const loadTheme = (): GlistTheme => {
+  try { return window.localStorage.getItem('glist-studio-theme') === 'light' ? 'light' : 'dark'; }
+  catch { return 'dark'; }
+};
+
+let activeTheme = loadTheme();
+document.documentElement.dataset.theme = activeTheme;
+void window.glistAPI.setTheme(activeTheme);
 
 const setZoom = (percentage: number): void => {
   const closest = zoomLevels.reduce((best, level) => (
@@ -152,8 +178,30 @@ monaco.editor.defineTheme('glist-dark', {
   },
 });
 
+monaco.editor.defineTheme('glist-light', {
+  base: 'vs',
+  inherit: true,
+  rules: [
+    { token: 'comment', foreground: '667085', fontStyle: 'italic' },
+    { token: 'keyword', foreground: '7A3E9D' },
+    { token: 'string', foreground: '437A32' },
+    { token: 'number', foreground: 'A35400' },
+    { token: 'type.identifier', foreground: '087E8B' },
+  ],
+  colors: {
+    'editor.background': '#FFFFFF',
+    'editor.foreground': '#24292F',
+    'editorLineNumber.foreground': '#9BA3AF',
+    'editorLineNumber.activeForeground': '#4B5563',
+    'editorCursor.foreground': '#0969DA',
+    'editor.selectionBackground': '#ADD6FF',
+    'editor.inactiveSelectionBackground': '#DCEBFA',
+    'editor.lineHighlightBackground': '#F6F8FA',
+  },
+});
+
 const editor = monaco.editor.create(editorHost, {
-  theme: 'glist-dark',
+  theme: activeTheme === 'light' ? 'glist-light' : 'glist-dark',
   automaticLayout: true,
   fontFamily: "'Cascadia Code', Consolas, monospace",
   fontSize: 14,
@@ -166,6 +214,15 @@ const editor = monaco.editor.create(editorHost, {
   scrollBeyondLastLine: false,
   tabSize: 4,
 });
+
+const setTheme = (theme: GlistTheme): void => {
+  activeTheme = theme;
+  document.documentElement.dataset.theme = theme;
+  try { window.localStorage.setItem('glist-studio-theme', theme); } catch { /* Storage may be unavailable. */ }
+  monaco.editor.setTheme(theme === 'light' ? 'glist-light' : 'glist-dark');
+  settingsThemes.forEach((option) => { option.checked = option.value === theme; });
+  void window.glistAPI.setTheme(theme);
+};
 
 const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'normal'): void => {
   if (kind === 'normal') output.textContent += text;
@@ -243,11 +300,34 @@ const closeFile = (filePath: string): void => {
   updateButtons();
 };
 
+const clearTabDropIndicators = (): void => {
+  tabsHost.classList.remove('drop-at-end');
+  tabsHost.querySelectorAll('.drop-before, .drop-after').forEach((tab) => {
+    tab.classList.remove('drop-before', 'drop-after');
+  });
+};
+
+const moveOpenFileTab = (sourcePath: string, targetPath?: string, placeAfter = false): void => {
+  if (sourcePath === targetPath) return;
+  const sourceEntry = [...openFiles.entries()].find(([filePath]) => filePath === sourcePath);
+  if (!sourceEntry) return;
+  const reordered = [...openFiles.entries()].filter(([filePath]) => filePath !== sourcePath);
+  if (targetPath) {
+    const targetIndex = reordered.findIndex(([filePath]) => filePath === targetPath);
+    if (targetIndex < 0) return;
+    reordered.splice(targetIndex + (placeAfter ? 1 : 0), 0, sourceEntry);
+  } else reordered.push(sourceEntry);
+  openFiles.clear();
+  reordered.forEach(([filePath, file]) => openFiles.set(filePath, file));
+  renderTabs();
+};
+
 const renderTabs = (): void => {
   tabsHost.replaceChildren();
   openFiles.forEach((file) => {
     const tab = document.createElement('button');
     tab.type = 'button';
+    tab.draggable = true;
     tab.className = 'editor-tab';
     tab.classList.toggle('active', file.path === activeFilePath);
     tab.title = file.path;
@@ -259,6 +339,7 @@ const renderTabs = (): void => {
     dirty.textContent = isDirty(file) ? '●' : '';
     const close = document.createElement('span');
     close.className = 'tab-close';
+    close.draggable = false;
     const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     closeSvg.setAttribute('viewBox', '0 0 16 16');
     closeSvg.setAttribute('aria-hidden', 'true');
@@ -268,10 +349,58 @@ const renderTabs = (): void => {
     close.append(closeSvg);
     close.addEventListener('click', (event) => { event.stopPropagation(); closeFile(file.path); });
     tab.append(label, dirty, close);
-    tab.addEventListener('click', () => activateFile(file.path));
+    tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path); });
+    tab.addEventListener('dragstart', (event) => {
+      draggedTabPath = file.path;
+      suppressTabClick = true;
+      event.dataTransfer?.setData('text/plain', file.path);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+      requestAnimationFrame(() => tab.classList.add('dragging'));
+    });
+    tab.addEventListener('dragover', (event) => {
+      if (!draggedTabPath || draggedTabPath === file.path) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      clearTabDropIndicators();
+      const bounds = tab.getBoundingClientRect();
+      tab.classList.add(event.clientX < bounds.left + bounds.width / 2 ? 'drop-before' : 'drop-after');
+    });
+    tab.addEventListener('drop', (event) => {
+      if (!draggedTabPath) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds = tab.getBoundingClientRect();
+      moveOpenFileTab(draggedTabPath, file.path, event.clientX >= bounds.left + bounds.width / 2);
+      clearTabDropIndicators();
+    });
+    tab.addEventListener('dragend', () => {
+      tab.classList.remove('dragging');
+      draggedTabPath = null;
+      clearTabDropIndicators();
+      window.setTimeout(() => { suppressTabClick = false; }, 0);
+    });
     tabsHost.append(tab);
   });
 };
+
+tabsHost.addEventListener('dragover', (event) => {
+  if (!draggedTabPath) return;
+  const bounds = tabsHost.getBoundingClientRect();
+  if (event.clientX < bounds.left + 28) tabsHost.scrollLeft -= 14;
+  else if (event.clientX > bounds.right - 28) tabsHost.scrollLeft += 14;
+  if (event.target instanceof Element && event.target.closest('.editor-tab')) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  clearTabDropIndicators();
+  tabsHost.classList.add('drop-at-end');
+});
+
+tabsHost.addEventListener('drop', (event) => {
+  if (!draggedTabPath || (event.target instanceof Element && event.target.closest('.editor-tab'))) return;
+  event.preventDefault();
+  moveOpenFileTab(draggedTabPath);
+  clearTabDropIndicators();
+});
 
 const openFile = async (filePath: string, name: string): Promise<void> => {
   if (openFiles.has(filePath)) { activateFile(filePath); return; }
@@ -377,7 +506,17 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
   row.style.paddingLeft = `${10 + depth * 14}px`;
   const arrow = document.createElement('span');
   arrow.className = `tree-arrow${entry.isDirectory ? '' : ' is-file'}`;
-  const icon = document.createElement('span'); icon.className = `file-icon ${entry.isDirectory ? 'folder' : ''}`; icon.textContent = entry.isDirectory ? '▰' : '·';
+  const lowerName = entry.name.toLowerCase();
+  const extension = lowerName.includes('.') ? lowerName.split('.').pop() ?? '' : '';
+  let iconKind = 'file-text';
+  if (entry.isDirectory) iconKind = 'folder';
+  else if (lowerName === 'cmakelists.txt' || extension === 'cmake') iconKind = 'file-cmake';
+  else if (['cpp', 'cc', 'cxx', 'c++'].includes(extension)) iconKind = 'file-cpp';
+  else if (['h', 'hh', 'hpp', 'hxx'].includes(extension)) iconKind = 'file-header';
+  else if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus'].includes(extension)) iconKind = 'file-audio';
+  else if (['mp4', 'webm', 'mkv', 'mov', 'avi', 'wmv', 'm4v', 'mpeg', 'mpg'].includes(extension)) iconKind = 'file-video';
+  else if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'ico', 'svg'].includes(extension)) iconKind = 'file-image';
+  const icon = document.createElement('span'); icon.className = `file-icon ${iconKind}`;
   const label = document.createElement('span'); label.className = 'tree-label'; label.textContent = entry.name;
   row.append(arrow, icon, label);
   container.append(row);
@@ -407,10 +546,13 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
       arrow.classList.toggle('expanded', !children.hidden);
       if (!children.hidden) await loadChildren();
     });
-  } else row.addEventListener('click', () => {
-    selectTreeEntry(entry, row);
-    openFile(entry.path, entry.name);
-  });
+  } else {
+    row.addEventListener('click', () => selectTreeEntry(entry, row));
+    row.addEventListener('dblclick', () => {
+      selectTreeEntry(entry, row);
+      void openFile(entry.path, entry.name);
+    });
+  }
   return container;
 };
 
@@ -771,9 +913,9 @@ const configureMenus = (): void => {
       view: [
         { kind: 'heading', label: t('layout') },
         item(t(shell.classList.contains('sidebar-hidden') ? 'showExplorer' : 'hideExplorer'),
-          () => shell.classList.toggle('sidebar-hidden'), { shortcut: 'Ctrl+B' }),
+          toggleExplorer, { shortcut: 'Ctrl+B' }),
         item(t(shell.classList.contains('output-hidden') ? 'showOutput' : 'hideOutput'),
-          () => shell.classList.toggle('output-hidden'), { shortcut: 'Ctrl+J' }),
+          toggleOutput, { shortcut: 'Ctrl+J' }),
         { kind: 'separator' },
         { kind: 'heading', label: t('zoom') },
         item(t('zoomIn'), () => changeZoom(1), {
@@ -912,9 +1054,7 @@ const configureMenus = (): void => {
     activeButton?.focus();
   });
   window.addEventListener('blur', closeMenu);
-  element<HTMLButtonElement>('[data-view="explorer"]').addEventListener('click', () => {
-    shell.classList.toggle('sidebar-hidden');
-  });
+  explorerActivityButton.addEventListener('click', toggleExplorer);
 };
 
 openButton.addEventListener('click', chooseProject);
@@ -929,6 +1069,8 @@ newFolderButton.addEventListener('click', createFolder);
 deleteEntryButton.addEventListener('click', deleteSelectedEntry);
 refreshButton.addEventListener('click', loadProjectTree);
 element<HTMLButtonElement>('#clear-output').addEventListener('click', () => { output.textContent = ''; });
+element<HTMLButtonElement>('#close-explorer').addEventListener('click', () => setExplorerVisible(false));
+element<HTMLButtonElement>('#close-output').addEventListener('click', () => setOutputVisible(false));
 element<HTMLButtonElement>('#open-settings').addEventListener('click', () => settingsDialog.showModal());
 element<HTMLButtonElement>('#settings-close').addEventListener('click', () => settingsDialog.close());
 settingsLanguage.value = getLanguage();
@@ -937,6 +1079,12 @@ settingsLanguage.addEventListener('change', () => {
   applyLanguage(next);
   refreshLanguage();
   void window.glistAPI.setLanguage(next);
+});
+settingsThemes.forEach((option) => {
+  option.checked = option.value === activeTheme;
+  option.addEventListener('change', () => {
+    if (option.checked) setTheme(option.value === 'light' ? 'light' : 'dark');
+  });
 });
 element<HTMLButtonElement>('#project-cancel').addEventListener('click', () => projectDialog.close());
 element<HTMLFormElement>('#new-project-form').addEventListener('submit', async (event) => {
@@ -986,8 +1134,8 @@ window.addEventListener('keydown', (event) => {
   else if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); saveActiveFile(); }
   else if (event.ctrlKey && event.key.toLowerCase() === 'o') { event.preventDefault(); chooseProject(); }
   else if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); buildProject(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'b') { event.preventDefault(); element<HTMLElement>('#app-shell').classList.toggle('sidebar-hidden'); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'j') { event.preventDefault(); element<HTMLElement>('#app-shell').classList.toggle('output-hidden'); }
+  else if (event.ctrlKey && event.key.toLowerCase() === 'b') { event.preventDefault(); toggleExplorer(); }
+  else if (event.ctrlKey && event.key.toLowerCase() === 'j') { event.preventDefault(); toggleOutput(); }
   else if (event.shiftKey && event.key === 'F5') { event.preventDefault(); stopProject(); }
   else if (event.key === 'F5') { event.preventDefault(); runProject(); }
   else if (event.key === 'F2' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); renameSelectedEntry(); }

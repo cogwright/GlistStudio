@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('glistAPI', {
   runProject: () => ipcRenderer.invoke('project:run'),
   stopProject: () => ipcRenderer.invoke('project:stop'),
   setLanguage: (language: GlistLanguage) => ipcRenderer.invoke('settings:set-language', language),
+  setTheme: (theme: GlistTheme) => ipcRenderer.invoke('settings:set-theme', theme),
   setZoomFactor: (factor: number) => ipcRenderer.invoke('view:set-zoom-factor', factor),
   openEngineSite: () => ipcRenderer.invoke('app:open-engine-site'),
   onBuildOutput: (callback: (text: string) => void) => subscribe('build:output', callback),

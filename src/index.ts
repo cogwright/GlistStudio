@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
 import { userInfo } from 'node:os';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { renderCppClass } from './class-template';
 import { synchronizeCmake, type CmakeChange } from './cmake';
 
@@ -296,9 +296,6 @@ const createProjectFromTemplate = async (
   if (existsSync(target)) throw new Error(msg('projectExists'));
   await fs.mkdir(projectsDirectory, { recursive: true });
   await fs.cp(source, target, { recursive: true, force: false, errorOnExist: true });
-  const cmakePath = path.join(target, 'CMakeLists.txt');
-  const cmake = await fs.readFile(cmakePath, 'utf8');
-  await fs.writeFile(cmakePath, cmake.replace(/set\s*\(\s*APP_NAME\s+[^)]+\)/i, `set(APP_NAME ${projectName})`), 'utf8');
   const eclipsePath = path.join(target, '.project');
   if (existsSync(eclipsePath)) {
     const eclipse = await fs.readFile(eclipsePath, 'utf8');
@@ -475,6 +472,18 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle('settings:set-language', (_event, nextLanguage: AppLanguage) => {
     language = nextLanguage === 'tr' ? 'tr' : 'en';
     return language;
+  });
+  ipcMain.handle('settings:set-theme', (event, requestedTheme: 'dark' | 'light') => {
+    const theme = requestedTheme === 'light' ? 'light' : 'dark';
+    const window = BrowserWindow.fromWebContents(event.sender);
+    nativeTheme.themeSource = theme;
+    window?.setBackgroundColor(theme === 'light' ? '#ffffff' : '#1e1e1e');
+    window?.setTitleBarOverlay({
+      color: theme === 'light' ? '#f5f5f5' : '#181818',
+      symbolColor: theme === 'light' ? '#333333' : '#cccccc',
+      height: 35,
+    });
+    return theme;
   });
   ipcMain.handle('project:open', async () => {
     const result = await dialog.showOpenDialog({

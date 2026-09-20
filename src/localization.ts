@@ -5,18 +5,23 @@ const en = {
   openProject: 'Open Project', newProject: 'New Project', save: 'Save', build: 'Build', run: 'Run', stop: 'Stop',
   saveTitle: 'Save (Ctrl+S)', buildTitle: 'Build (Ctrl+Shift+B)', runTitle: 'Build and Run (F5)',
   stopTitle: 'Stop (Shift+F5)', settings: 'Settings', explorer: 'EXPLORER',
+  buildRunControls: 'Build and run controls',
   newFile: 'New File', newFolder: 'New Folder', newCppClass: 'New C++ Class',
   newMenu: 'New', copy: 'Copy', paste: 'Paste', showIn: 'Show in',
   systemExplorer: 'System Explorer', commandPrompt: 'CMD',
   copied: 'Copied', pasted: 'Pasted', copyFailed: 'Could not copy item', showFailed: 'Could not open location',
   rename: 'Rename', delete: 'Move to Recycle Bin', deleteTitle: 'Move Selected Item to Recycle Bin',
   refresh: 'Refresh', projectPlaceholder: 'GLIST PROJECT', noFolder: 'No folder is open.',
+  noFolderHint: 'Open an existing Glist project or create a new one.',
   openFolder: 'Open Folder', tagline: 'A focused development environment for Glist Engine.',
   output: 'OUTPUT', ready: 'Ready', clearOutput: 'Clear Output',
+  closeExplorer: 'Close Explorer', closeOutput: 'Close Output',
   initialOutput: 'Glist Studio is ready. Open a project to get started.',
   cancel: 'Cancel', create: 'Create', close: 'Close', template: 'Template',
-  projectName: 'Project name', language: 'Language',
+  projectName: 'Project name', language: 'Language', appearance: 'Appearance',
+  darkTheme: 'Dark', lightTheme: 'Light',
   languageHint: 'The interface language changes immediately.',
+  themeHint: 'The selected theme is saved for your next session.',
   undo: 'Undo', redo: 'Redo', find: 'Find', showExplorer: 'Show Explorer', hideExplorer: 'Hide Explorer',
   showOutput: 'Show Output', hideOutput: 'Hide Output', engineAbout: 'About Glist Engine',
   layout: 'Layout', zoom: 'Zoom', preferences: 'Preferences',
@@ -45,18 +50,23 @@ const tr: Record<TranslationKey, string> = {
   openProject: 'Proje Aç', newProject: 'Yeni Proje', save: 'Kaydet', build: 'Derle', run: 'Çalıştır', stop: 'Durdur',
   saveTitle: 'Kaydet (Ctrl+S)', buildTitle: 'Derle (Ctrl+Shift+B)', runTitle: 'Derle ve Çalıştır (F5)',
   stopTitle: 'Durdur (Shift+F5)', settings: 'Ayarlar', explorer: 'EXPLORER',
+  buildRunControls: 'Derleme ve çalıştırma kontrolleri',
   newFile: 'Yeni Dosya', newFolder: 'Yeni Klasör', newCppClass: 'Yeni C++ Sınıfı',
   newMenu: 'Yeni', copy: 'Kopyala', paste: 'Yapıştır', showIn: 'Şurada Göster',
   systemExplorer: 'Sistem Gezgini', commandPrompt: 'CMD',
   copied: 'Kopyalandı', pasted: 'Yapıştırıldı', copyFailed: 'Öğe kopyalanamadı', showFailed: 'Konum açılamadı',
   rename: 'Yeniden Adlandır', delete: 'Geri Dönüşüm Kutusu’na Taşı', deleteTitle: 'Seçili Öğeyi Geri Dönüşüm Kutusu’na Taşı',
   refresh: 'Yenile', projectPlaceholder: 'GLIST PROJESİ', noFolder: 'Henüz bir klasör açılmadı.',
+  noFolderHint: 'Mevcut bir Glist projesini açın veya yeni bir proje oluşturun.',
   openFolder: 'Klasör Aç', tagline: 'Glist Engine için odaklanmış geliştirme ortamı.',
   output: 'ÇIKTI', ready: 'Hazır', clearOutput: 'Çıktıyı Temizle',
+  closeExplorer: 'Explorer’ı Kapat', closeOutput: 'Çıktıyı Kapat',
   initialOutput: 'Glist Studio hazır. Başlamak için bir proje açın.',
   cancel: 'İptal', create: 'Oluştur', close: 'Kapat', template: 'Şablon',
-  projectName: 'Proje adı', language: 'Dil',
+  projectName: 'Proje adı', language: 'Dil', appearance: 'Görünüm',
+  darkTheme: 'Koyu', lightTheme: 'Açık',
   languageHint: 'Arayüz dili hemen değişir.',
+  themeHint: 'Seçilen tema sonraki oturumunuz için kaydedilir.',
   undo: 'Geri Al', redo: 'Yinele', find: 'Bul', showExplorer: 'Explorer’ı Göster', hideExplorer: 'Explorer’ı Gizle',
   showOutput: 'Çıktıyı Göster', hideOutput: 'Çıktıyı Gizle', engineAbout: 'Glist Engine Hakkında',
   layout: 'Yerleşim', zoom: 'Yakınlaştırma', preferences: 'Tercihler',
@@ -101,5 +111,9 @@ export const applyLanguage = (next: Language): void => {
   document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((node) => {
     const key = node.dataset.i18nTitle as TranslationKey;
     if (key in en) node.title = t(key);
+  });
+  document.querySelectorAll<HTMLElement>('[data-i18n-aria-label]').forEach((node) => {
+    const key = node.dataset.i18nAriaLabel as TranslationKey;
+    if (key in en) node.setAttribute('aria-label', t(key));
   });
 };
