@@ -526,7 +526,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .studio-dialog .agent-toggle input:disabled { cursor: default; opacity: .4; }
 .agent-name { color: var(--ui-fg-strong); }
 .agent-status { overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.agent-install { height: 26px; padding: 0 12px; border: 1px solid var(--ui-accent); border-radius: 4px; color: var(--ui-on-accent); background: var(--ui-accent); cursor: pointer; }
+.agent-install { height: 22px; padding: 0 10px; border: 1px solid var(--ui-accent); border-radius: 4px; color: var(--ui-on-accent); background: var(--ui-accent); font-size: 11px; line-height: 1; cursor: pointer; }
 .agent-install:hover:not(:disabled) { background: var(--ui-accent-hover); }
 .agent-install:disabled { cursor: default; opacity: .5; }
 .agent-select { height: 22px; max-width: 150px; padding: 0 6px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-bg); font: inherit; font-size: 11px; }
