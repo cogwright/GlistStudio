@@ -61,7 +61,13 @@ interface GlistClangdStatus {
 
 type GlistTemplate = 'GlistApp' | 'GlistConsoleApp' | 'GlistGUIApp';
 
-type GlistTerminalSession = 'shell' | 'agent';
+type GlistTerminalSession = 'shell' | 'agent' | 'install';
+interface GlistInstallStatus {
+  installed: boolean;
+  // Where the install scripts put Glist: C:\dev\glist or ~/dev/glist.
+  root: string;
+  location: string;
+}
 type GlistAgentId = 'claude' | 'codex' | 'gemini' | 'antigravity';
 interface GlistAgentStatus {
   id: GlistAgentId;
@@ -120,6 +126,7 @@ interface Window {
     resizeTerminal(session: GlistTerminalSession, columns: number, rows: number): Promise<void>;
     stopTerminal(session: GlistTerminalSession): Promise<void>;
     listAgents(): Promise<GlistAgentStatus[]>;
+    glistStatus(): Promise<GlistInstallStatus>;
     installAgent(agent: GlistAgentId): Promise<GlistProcessResult>;
     onBuildOutput(callback: (text: string) => void): () => void;
     onBuildStatus(callback: (status: { running: boolean; label: string }) => void): () => void;

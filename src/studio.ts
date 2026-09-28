@@ -96,6 +96,7 @@ const messages = {
     agentMissing: 'This agent is not installed. Install it in Settings, under Agents.',
     agentInstallRunning: 'An agent is already being installed.',
     agentInstalled: 'Installed.', agentInstallFailed: 'The installation stopped',
+    installerMissing: 'Glist Engine\'s installer could not be downloaded',
   },
   tr: {
     noProject: 'Önce bir Glist projesi açın.', invalidName: 'Geçerli bir dosya veya klasör adı girin.',
@@ -129,6 +130,7 @@ const messages = {
     agentMissing: 'Bu ajan kurulu değil. Ayarlar’da, Ajanlar altında kurabilirsiniz.',
     agentInstallRunning: 'Zaten bir ajan kuruluyor.',
     agentInstalled: 'Kuruldu.', agentInstallFailed: 'Kurulum durdu',
+    installerMissing: 'Glist Engine kurulum programı indirilemedi',
   },
 } as const;
 
@@ -756,9 +758,10 @@ export const stopDebugging = (): void => debugAdapter.stop();
 // Terminals: a shell in the project folder, and the Agent tab's agent, both
 // with the environment builds use. node-pty is loaded on first use, so a
 // platform without it only loses these.
-type TerminalSession = 'shell' | 'agent';
+type TerminalSession = 'shell' | 'agent' | 'install';
 const terminalSessions = new Map<TerminalSession, IPty>();
-const sessionName = (value: unknown): TerminalSession | null => (value === 'shell' || value === 'agent' ? value : null);
+const sessionName = (value: unknown): TerminalSession | null =>
+  (value === 'shell' || value === 'agent' || value === 'install' ? value : null);
 
 const terminalShell = (): { file: string; args: string[] } => {
   if (process.platform === 'win32') return { file: 'powershell.exe', args: ['-NoLogo'] };
@@ -787,11 +790,40 @@ const terminalDirectory = (): string => activeProjectRoot
 
 const agentPlaces = (env: NodeJS.ProcessEnv): AgentPlaces => ({ home: studioHome(), glist: glistRoot(), searchPath: env.PATH ?? '' });
 
+// Whether Glist is set up where the install scripts put it, or where the
+// projects folder this studio was given points.
+const glistStatus = (): GlistInstallStatus => ({
+  installed: existsSync(path.join(glistRoot(), 'GlistEngine', 'engine'))
+    || Boolean(findAncestorWith(host.projectsDirectory, path.join('GlistEngine', 'engine'))),
+  root: glistRoot(),
+  location: shortPath(glistRoot()),
+});
+
+// Glist Engine's own installer: the current script from GlistEngine/InstallScripts,
+// saved in Glist Studio's folder and run in a terminal, so that a password it
+// asks for can be typed. GLIST_STUDIO_INSTALLER runs a local script instead, for tests.
+const installerProgram = async (): Promise<{ file: string; args: string[] }> => {
+  const windows = process.platform === 'win32';
+  let script = process.env.GLIST_STUDIO_INSTALLER ? path.resolve(process.env.GLIST_STUDIO_INSTALLER) : '';
+  if (!script) {
+    const system = windows ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
+    const file = windows ? 'install-glist.ps1' : 'install-glist.sh';
+    const response = await fetch(`https://raw.githubusercontent.com/GlistEngine/InstallScripts/main/scripts/${system}/${file}`);
+    if (!response.ok) throw new Error(`raw.githubusercontent.com: ${response.status}`);
+    script = path.join(studioHome(), 'installer', file);
+    await fs.mkdir(path.dirname(script), { recursive: true });
+    await fs.writeFile(script, await response.text(), 'utf8');
+  }
+  return windows
+    ? { file: 'powershell.exe', args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script] }
+    : { file: '/bin/bash', args: [script] };
+};
+
 const startTerminal = async (session: unknown, columns: number, rows: number, agent?: unknown): Promise<ProcessResult> => {
   const name = sessionName(session);
   if (!name) return { success: false, message: msg('terminalFailed') };
   stopTerminal(name);
-  const directory = terminalDirectory();
+  let directory = terminalDirectory();
   const env: NodeJS.ProcessEnv = {
     ...processEnvironment(resolveToolchain(directory)), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'GlistStudio',
   };
@@ -802,6 +834,15 @@ const startTerminal = async (session: unknown, columns: number, rows: number, ag
     program = { file: launch.file, args: launch.args };
     Object.assign(env, launch.env);
     env.PATH = [...launch.pathPrefix, env.PATH ?? ''].join(path.delimiter);
+  }
+  if (name === 'install') {
+    try { program = await installerProgram(); } catch (error) {
+      return { success: false, message: `${msg('installerMissing')}: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    // From GlistEngine's own repositories, asking nothing but a password, and
+    // without the Eclipse setup the studio does not need.
+    Object.assign(env, { GLIST_UNATTENDED: '1', GLIST_NO_ECLIPSE: '1', GLIST_GITHUB_USERNAME: 'GlistEngine' });
+    directory = homedir();
   }
   try {
     const { spawn: spawnTerminal } = await import('node-pty');
@@ -896,5 +937,6 @@ export const studio: Handlers = {
   resizeTerminal,
   stopTerminal: (session: unknown) => stopTerminal(session ?? 'shell'),
   listAgents,
+  glistStatus,
   installAgent: installAgentFromSettings,
 };

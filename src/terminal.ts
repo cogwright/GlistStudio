@@ -29,13 +29,15 @@ export class StudioTerminal {
     private readonly host: HTMLElement,
     private readonly session: GlistTerminalSession,
     private readonly exitedMessage: TranslationKey = 'terminalExited',
+    // Whether a key press after the program exits starts it again.
+    private readonly restartOnKey = true,
   ) {
     this.terminal = new Terminal({ cursorBlink: true, scrollback: 5000 });
     this.terminal.loadAddon(this.fit);
     this.terminal.attachCustomKeyEventHandler((event) => this.handleKey(event));
     this.terminal.onData((data) => {
       if (this.running) void window.glistAPI.writeTerminal(this.session, data);
-      else void this.start();
+      else if (this.restartOnKey) void this.start();
     });
     this.terminal.onResize(({ cols, rows }) => {
       if (this.running) void window.glistAPI.resizeTerminal(this.session, cols, rows);
@@ -44,7 +46,7 @@ export class StudioTerminal {
     window.glistAPI.onTerminalExit(({ session, exitCode }) => {
       if (session !== this.session) return;
       this.running = false;
-      this.terminal.write(`\r\n\x1b[2m${t(this.exitedMessage)} ${exitCode}. ${t('terminalRestartHint')}\x1b[0m\r\n`);
+      if (this.restartOnKey) this.terminal.write(`\r\n\x1b[2m${t(this.exitedMessage)} ${exitCode}. ${t('terminalRestartHint')}\x1b[0m\r\n`);
     });
     new ResizeObserver(() => this.fitToHost()).observe(host);
   }
@@ -56,8 +58,15 @@ export class StudioTerminal {
       this.opened = true;
     }
     this.fitToHost();
-    if (!this.running) void this.start();
+    if (!this.running && this.restartOnKey) void this.start();
     this.terminal.focus();
+  }
+
+  // Starts the program afresh, for a terminal that does not start on its own.
+  run(): Promise<void> {
+    this.show();
+    this.terminal.reset();
+    return this.start();
   }
 
   // Ends the shell and starts a new one, in the project open now.

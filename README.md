@@ -49,6 +49,10 @@ The Terminal tab beside Output runs a shell in the project folder: PowerShell on
 
 Copy and paste work as elsewhere: Cmd+C and Cmd+V on macOS; on Windows and Linux, Ctrl+C copies selected text and otherwise stops the running command, and Ctrl+V pastes. The studio's own shortcuts, such as F5 to run and Ctrl+S to save, keep working while the terminal has focus.
 
+## Installing Glist from the studio
+
+When Glist is not where its install scripts put it (`~/dev/glist`, or `C:\dev\glist` on Windows), the welcome screen and the Help menu offer to install it. That runs Glist Engine's own installer, the current script from [GlistEngine/InstallScripts](https://github.com/GlistEngine/InstallScripts), in a terminal inside a dialog: a password it asks for can be typed there, and a progress bar follows the steps it reports. It clones from GlistEngine's repositories without asking for a GitHub name, and skips the Eclipse setup the studio does not need.
+
 ## Agents
 
 Settings, under Agents, lists the coding agents the studio knows: Claude Code, Codex, Gemini CLI and Antigravity. All are off until turned on. Turning one on adds an Agent tab beside Terminal, which runs it in the open project with the same tools on `PATH` as builds; with more than one on, the tab has a list to pick from.
