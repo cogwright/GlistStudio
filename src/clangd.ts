@@ -371,7 +371,7 @@ export class ClangdClient {
       if (value.kind === 'begin') this.progress.set(token, value.title);
       if (value.kind === 'end') {
         this.progress.delete(token);
-        this.host.status('clangd', false);
+        if (this.progress.size === 0) this.host.status('clangd', false);
       } else {
         const detail = value.message ?? (value.percentage === undefined ? '' : `${value.percentage}%`);
         this.host.status(`clangd: ${this.progress.get(token) ?? ''} ${detail}`.replace(/\s+/g, ' ').trim(), true);
