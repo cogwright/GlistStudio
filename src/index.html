@@ -21,30 +21,30 @@
         </div>
         <div class="toolbar-actions">
           <button id="open-project" class="title-action" type="button" title="Open Project" data-i18n-title="openProject">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.5h5l1.5 1.5h6.5v8h-13v-9.5Zm1.5 1.5v1.5h10V6H7.38l-1.5-1.5H3Zm0 3v3.5h10V8H3Z"/></svg>
+            <i data-icon="folder-opened"></i>
           </button>
           <button id="save-file" class="title-action" type="button" disabled title="Save (Ctrl+S)" data-i18n-title="saveTitle">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 2h9l3 3v9H2V2Zm1.5 1.5v9h9V5.62L10.38 3.5H10v3H5v-3H3.5ZM6.5 3.5v1.75h2V3.5h-2Zm-1 5h5v3h-5v-3Z"/></svg>
+            <i data-icon="save"></i>
           </button>
           <div class="run-controls" role="group" aria-label="Build and run controls" data-i18n-aria-label="buildRunControls">
             <button id="build-project" class="run-control build-control" type="button" disabled title="Build (Ctrl+Shift+B)" data-i18n-title="buildTitle">
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m9.7 2.2 1.1 1.1-2 2 1.9 1.9 2-2 1.1 1.1-2.4 2.4a3 3 0 0 1-3.5.5l-4.4 4.4-1.1-1.1 4.4-4.4a3 3 0 0 1 .5-3.5l2.4-2.4Z"/></svg><span data-i18n="build">Build</span>
+              <i data-icon="tools"></i><span data-i18n="build">Build</span>
             </button>
             <button id="run-project" class="run-control run-control-primary" type="button" disabled title="Build and Run (F5)" data-i18n-title="runTitle">
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5-9-5.5Z"/></svg><span data-i18n="run">Run</span>
+              <i data-icon="play"></i><span data-i18n="run">Run</span>
             </button>
             <button id="debug-project" class="run-control debug-control" type="button" disabled title="Debug (F6)" data-i18n-title="debugTitle">
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 2.3 7.3 3.9a3 3 0 0 1 1.4 0l1.1-1.6 1.2.8-.9 1.4A3 3 0 0 1 11 6h1.5v1.5H11V9h1.5v1.5H11A3 3 0 0 1 5 10.5H3.5V9H5V7.5H3.5V6H5a3 3 0 0 1 .9-1.5L5 3.1l1.2-.8ZM6.5 6.5v4a1.5 1.5 0 0 0 3 0v-4a1.5 1.5 0 0 0-3 0Z"/></svg><span data-i18n="debug">Debug</span>
+              <i data-icon="debug-alt"></i><span data-i18n="debug">Debug</span>
             </button>
             <span id="debug-controls" class="debug-controls" hidden>
-              <button id="debug-continue" class="run-control" type="button" title="Continue (F5)" data-i18n-title="continueTitle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h1.5v10H3V3Zm3 0 8 5-8 5V3Z"/></svg></button>
-              <button id="debug-pause" class="run-control" type="button" title="Pause" data-i18n-title="pause"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h3v10H4V3Zm5 0h3v10H9V3Z"/></svg></button>
-              <button id="debug-step-over" class="run-control" type="button" title="Step Over (F10)" data-i18n-title="stepOverTitle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3ZM2.5 8a5.5 5.5 0 0 1 9.9-3.3L14 3v4.5H9.5l1.8-1.8A4 4 0 0 0 4 8H2.5Z"/></svg></button>
-              <button id="debug-step-into" class="run-control" type="button" title="Step Into (F11)" data-i18n-title="stepIntoTitle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7.25 1.5h1.5v6.2l2-2 1.06 1.06L8 10.56 4.19 6.76 5.25 5.7l2 2V1.5ZM8 11.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/></svg></button>
-              <button id="debug-step-out" class="run-control" type="button" title="Step Out (Shift+F11)" data-i18n-title="stepOutTitle"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.44l3.81 3.8-1.06 1.06-2-2v6.2h-1.5V4.3l-2 2-1.06-1.06L8 1.44ZM8 11.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z"/></svg></button>
+              <button id="debug-continue" class="run-control" type="button" title="Continue (F5)" data-i18n-title="continueTitle"><i data-icon="debug-continue"></i></button>
+              <button id="debug-pause" class="run-control" type="button" title="Pause" data-i18n-title="pause"><i data-icon="debug-pause"></i></button>
+              <button id="debug-step-over" class="run-control" type="button" title="Step Over (F10)" data-i18n-title="stepOverTitle"><i data-icon="debug-step-over"></i></button>
+              <button id="debug-step-into" class="run-control" type="button" title="Step Into (F11)" data-i18n-title="stepIntoTitle"><i data-icon="debug-step-into"></i></button>
+              <button id="debug-step-out" class="run-control" type="button" title="Step Out (Shift+F11)" data-i18n-title="stepOutTitle"><i data-icon="debug-step-out"></i></button>
             </span>
             <button id="stop-project" class="run-control stop-control" type="button" disabled title="Stop (Shift+F5)" data-i18n-title="stopTitle">
-              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4h8v8H4z"/></svg>
+              <i data-icon="debug-stop"></i>
             </button>
           </div>
         </div>
@@ -53,10 +53,10 @@
 
       <main class="workspace">
         <nav class="activity-bar" aria-label="Main tools">
-          <button class="activity-button active" type="button" title="Explorer" data-view="explorer" aria-pressed="true"><span class="explorer-folder-icon" aria-hidden="true"></span></button>
-          <button class="activity-button" type="button" title="Run and Debug" data-view="debug" data-i18n-title="debugView" aria-pressed="false"><svg viewBox="0 0 16 16" class="activity-icon" aria-hidden="true"><path d="M6.2 2.3 7.3 3.9a3 3 0 0 1 1.4 0l1.1-1.6 1.2.8-.9 1.4A3 3 0 0 1 11 6h1.5v1.5H11V9h1.5v1.5H11A3 3 0 0 1 5 10.5H3.5V9H5V7.5H3.5V6H5a3 3 0 0 1 .9-1.5L5 3.1l1.2-.8ZM6.5 6.5v4a1.5 1.5 0 0 0 3 0v-4a1.5 1.5 0 0 0-3 0Z"/></svg></button>
+          <button class="activity-button active" type="button" title="Explorer" data-view="explorer" aria-pressed="true"><i data-icon="files"></i></button>
+          <button class="activity-button" type="button" title="Run and Debug" data-view="debug" data-i18n-title="debugView" aria-pressed="false"><i data-icon="debug-alt"></i></button>
           <div class="activity-spacer"></div>
-          <button id="open-settings" class="activity-button" type="button" title="Settings" data-i18n-title="settings"><svg viewBox="0 0 24 24"><path d="m13.9 2 .5 2a8 8 0 0 1 1.7.7l1.8-1 2.1 2.1-1 1.8c.3.5.5 1.1.7 1.7l2 .5v3l-2 .5a8 8 0 0 1-.7 1.7l1 1.8-2.1 2.1-1.8-1a8 8 0 0 1-1.7.7l-.5 2h-3l-.5-2a8 8 0 0 1-1.7-.7l-1.8 1-2.1-2.1 1-1.8a8 8 0 0 1-.7-1.7l-2-.5v-3l2-.5a8 8 0 0 1 .7-1.7l-1-1.8 2.1-2.1 1.8 1a8 8 0 0 1 1.7-.7l.5-2h3ZM12.4 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/></svg></button>
+          <button id="open-settings" class="activity-button" type="button" title="Settings" data-i18n-title="settings"><i data-icon="settings-gear"></i></button>
         </nav>
         <aside class="sidebar">
           <div id="explorer-view" class="sidebar-view">
@@ -65,11 +65,11 @@
               <span data-i18n="explorer">EXPLORER</span>
             </div>
             <div class="explorer-actions">
-              <button id="new-file" class="heading-action" type="button" disabled title="New File" data-i18n-title="newFile"><svg viewBox="0 0 16 16"><path d="M3 1.5h6L13 5v9.5H3v-13ZM4.5 3v10h7V6H8V3H4.5Zm5 0v1.5H11L9.5 3ZM7.25 7h1.5v1.75h1.75v1.5H8.75V12h-1.5v-1.75H5.5v-1.5h1.75V7Z"/></svg></button>
-              <button id="new-folder" class="heading-action" type="button" disabled title="New Folder" data-i18n-title="newFolder"><svg viewBox="0 0 16 16"><path d="M1.5 3h5L8 4.5h6.5v9h-13V3ZM3 4.5V12h10V6H7.38l-1.5-1.5H3Zm5.75 2.25v1.5h1.5v1.5h-1.5v-1.5h-1.5v-1.5h1.5v-1.5h1.5Z"/></svg></button>
-              <button id="delete-entry" class="heading-action danger" type="button" disabled title="Move Selected Item to Recycle Bin" data-i18n-title="deleteTitle"><svg viewBox="0 0 16 16"><path d="M5 2h6l.5 1.5H14V5h-1l-.7 9H3.7L3 5H2V3.5h2.5L5 2Zm1.1 1.5h3.8L9.75 3h-3.5l-.15.5ZM4.5 5l.58 7.5h5.84L11.5 5h-7ZM6 6.5h1.25V11H6V6.5Zm2.75 0H10V11H8.75V6.5Z"/></svg></button>
-              <button id="refresh-tree" class="heading-action" type="button" disabled title="Refresh" data-i18n-title="refresh"><svg viewBox="0 0 16 16"><path d="M12.8 3.2V1.5h1.5v4.3H10V4.3h1.75A4.75 4.75 0 1 0 12.2 11l1.15.95A6.25 6.25 0 1 1 12.8 3.2Z"/></svg></button>
-              <button id="close-explorer" class="panel-close" type="button" title="Close Explorer" data-i18n-title="closeExplorer" aria-label="Close Explorer" data-i18n-aria-label="closeExplorer"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5"/></svg></button>
+              <button id="new-file" class="heading-action" type="button" disabled title="New File" data-i18n-title="newFile"><i data-icon="new-file"></i></button>
+              <button id="new-folder" class="heading-action" type="button" disabled title="New Folder" data-i18n-title="newFolder"><i data-icon="new-folder"></i></button>
+              <button id="delete-entry" class="heading-action danger" type="button" disabled title="Move Selected Item to Recycle Bin" data-i18n-title="deleteTitle"><i data-icon="trash"></i></button>
+              <button id="refresh-tree" class="heading-action" type="button" disabled title="Refresh" data-i18n-title="refresh"><i data-icon="refresh"></i></button>
+              <button id="close-explorer" class="panel-close" type="button" title="Close Explorer" data-i18n-title="closeExplorer" aria-label="Close Explorer" data-i18n-aria-label="closeExplorer"><i data-icon="close"></i></button>
             </div>
           </div>
           <div id="project-root-label" class="root-label">GLIST PROJECT</div>
@@ -79,11 +79,11 @@
               <p class="empty-tree-description" data-i18n="noFolderHint">Open an existing Glist project or create a new one.</p>
               <div class="empty-tree-actions">
                 <button id="empty-open-project" type="button" class="empty-tree-action primary">
-                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 3.25h5l1.5 1.5h6.5v8h-13v-9.5ZM3 4.75v1.5h10v-.5H7.38l-1.5-1H3Zm0 3v3.5h10v-3.5H3Z"/></svg>
+                  <i data-icon="folder-opened"></i>
                   <span data-i18n="openFolder">Open Folder</span>
                 </button>
                 <button id="empty-new-project" type="button" class="empty-tree-action secondary">
-                  <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5h6L13 5v9.5H3v-13ZM4.5 3v10h7V6H8V3H4.5Zm3 4h1.5v1.75h1.75v1.5H9V12H7.5v-1.75H5.75v-1.5H7.5V7Z"/></svg>
+                  <i data-icon="new-file"></i>
                   <span data-i18n="newProject">New Project</span>
                 </button>
               </div>
@@ -93,12 +93,12 @@
           <div id="debug-view" class="sidebar-view debug-view" hidden>
             <div class="panel-heading"><div class="panel-title"><span data-i18n="runAndDebug">RUN AND DEBUG</span></div></div>
             <div class="debug-start">
-              <button id="debug-start" type="button" class="empty-tree-action primary"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.2 2.3 7.3 3.9a3 3 0 0 1 1.4 0l1.1-1.6 1.2.8-.9 1.4A3 3 0 0 1 11 6h1.5v1.5H11V9h1.5v1.5H11A3 3 0 0 1 5 10.5H3.5V9H5V7.5H3.5V6H5a3 3 0 0 1 .9-1.5L5 3.1l1.2-.8ZM6.5 6.5v4a1.5 1.5 0 0 0 3 0v-4a1.5 1.5 0 0 0-3 0Z"/></svg><span data-i18n="startDebugging">Start Debugging</span></button>
+              <button id="debug-start" type="button" class="empty-tree-action primary"><i data-icon="debug-alt"></i><span data-i18n="startDebugging">Start Debugging</span></button>
               <p id="debug-status" class="debug-status"></p>
             </div>
-            <details class="debug-section" open><summary data-i18n="variables">VARIABLES</summary><div id="debug-variables"></div></details>
-            <details class="debug-section" open><summary data-i18n="callStack">CALL STACK</summary><div id="debug-stack"></div></details>
-            <details class="debug-section" open><summary data-i18n="breakpoints">BREAKPOINTS</summary><div id="debug-breakpoints"></div></details>
+            <details class="debug-section" open><summary><i data-icon="chevron-right"></i><span data-i18n="variables">VARIABLES</span></summary><div id="debug-variables"></div></details>
+            <details class="debug-section" open><summary><i data-icon="chevron-right"></i><span data-i18n="callStack">CALL STACK</span></summary><div id="debug-stack"></div></details>
+            <details class="debug-section" open><summary><i data-icon="chevron-right"></i><span data-i18n="breakpoints">BREAKPOINTS</span></summary><div id="debug-breakpoints"></div></details>
           </div>
         </aside>
         <div id="sidebar-resizer" class="vertical-resizer"></div>
@@ -120,7 +120,7 @@
               <div class="output-tabs">
                 <button class="output-tab active" type="button" data-i18n="output">OUTPUT</button>
               </div>
-              <div class="output-tools"><span id="clangd-status" class="process-status" hidden><i></i><span></span></span><span id="process-status" class="process-status"><i></i><span>Ready</span></span><button id="clear-output" class="heading-action" type="button" title="Clear Output" data-i18n-title="clearOutput">⌫</button><button id="close-output" class="panel-close" type="button" title="Close Output" data-i18n-title="closeOutput" aria-label="Close Output" data-i18n-aria-label="closeOutput"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5"/></svg></button></div>
+              <div class="output-tools"><span id="clangd-status" class="process-status" hidden><i></i><span></span></span><span id="process-status" class="process-status"><i></i><span>Ready</span></span><button id="clear-output" class="heading-action" type="button" title="Clear Output" data-i18n-title="clearOutput"><i data-icon="clear-all"></i></button><button id="close-output" class="panel-close" type="button" title="Close Output" data-i18n-title="closeOutput" aria-label="Close Output" data-i18n-aria-label="closeOutput"><i data-icon="close"></i></button></div>
             </div>
             <pre id="output" class="output">Glist Studio is ready. Open a project to get started.</pre>
           </section>

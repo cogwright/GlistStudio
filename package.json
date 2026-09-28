@@ -13,7 +13,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "test": "node tests/cmake.test.mjs && node tests/class-template.test.mjs && node tests/themes.test.mjs"
+    "test": "node tests/cmake.test.mjs && node tests/class-template.test.mjs && node tests/themes.test.mjs && node tests/file-icons.test.mjs"
   },
   "keywords": [
     "glist-engine",
@@ -57,6 +57,7 @@
     "ws": "^8.22.0"
   },
   "dependencies": {
+    "@vscode/codicons": "^0.0.46-24",
     "electron-squirrel-startup": "^1.0.1",
     "monaco-editor": "^0.56.0",
     "monaco-editor-webpack-plugin": "^7.1.1"

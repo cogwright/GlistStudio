@@ -1,5 +1,6 @@
 // eslint-disable-next-line import/no-unresolved
 import * as monaco from 'monaco-editor/editor/editor.api';
+import { icon } from './icons';
 import { t } from './localization';
 import { builtInThemes, editorThemeData, importVsCodeTheme, interfaceVariables, type StudioTheme } from './themes';
 
@@ -94,7 +95,7 @@ const previewCard = (theme: StudioTheme, onRemove: () => void): HTMLLabelElement
     remove.className = 'theme-remove';
     remove.title = t('removeTheme');
     remove.setAttribute('aria-label', `${t('removeTheme')} ${theme.name}`);
-    remove.textContent = '×';
+    remove.append(icon('close'));
     remove.addEventListener('click', (event) => { event.preventDefault(); onRemove(); });
     card.append(remove);
   }

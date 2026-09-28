@@ -12,6 +12,8 @@ import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
 import { setUpFontSettings } from './fonts';
 import { formatOutput, newOutputStyle } from './output-format';
+import { fileIconElement } from './file-icons';
+import { icon, placeIcons } from './icons';
 import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
@@ -130,6 +132,7 @@ const loadZoom = (): number => {
 
 let zoomPercentage = loadZoom();
 
+placeIcons();
 registerCmakeLanguage();
 applyTheme(getActiveTheme());
 
@@ -356,19 +359,14 @@ const renderTabs = (): void => {
     label.textContent = file.name;
     const dirty = document.createElement('span');
     dirty.className = 'dirty-dot';
-    dirty.textContent = isDirty(file) ? '●' : '';
+    dirty.classList.toggle('visible', isDirty(file));
+    dirty.append(icon('circle-filled'));
     const close = document.createElement('span');
     close.className = 'tab-close';
     close.draggable = false;
-    const closeSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    closeSvg.setAttribute('viewBox', '0 0 16 16');
-    closeSvg.setAttribute('aria-hidden', 'true');
-    const closePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    closePath.setAttribute('d', 'M3.5 3.5 12.5 12.5M12.5 3.5 3.5 12.5');
-    closeSvg.append(closePath);
-    close.append(closeSvg);
+    close.append(icon('close'));
     close.addEventListener('click', (event) => { event.stopPropagation(); closeFile(file.path); });
-    tab.append(label, dirty, close);
+    tab.append(fileIconElement(file.name), label, dirty, close);
     tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path); });
     tab.addEventListener('dragstart', (event) => {
       draggedTabPath = file.path;
@@ -451,7 +449,7 @@ const loadFile = async (filePath: string): Promise<OpenFile> => {
 const refreshDirtyMark = (file: OpenFile): void => {
   const tab = [...tabsHost.children].find((child) => (child as HTMLElement).dataset.path === file.path);
   const mark = tab?.querySelector('.dirty-dot');
-  if (mark) mark.textContent = isDirty(file) ? '●' : '';
+  mark?.classList.toggle('visible', isDirty(file));
 };
 
 // Opens a tab on a model that matches the file on disk, without switching to it.
@@ -602,7 +600,7 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
     const trigger = document.createElement('button');
     trigger.type = 'button';
     trigger.className = 'context-item has-submenu';
-    trigger.textContent = t(key);
+    trigger.append(t(key), icon('chevron-right'));
     trigger.setAttribute('aria-haspopup', 'menu');
     trigger.addEventListener('click', (clickEvent) => {
       clickEvent.stopPropagation();
@@ -660,20 +658,16 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
   row.className = 'tree-row';
   row.style.paddingLeft = `${10 + depth * 14}px`;
   const arrow = document.createElement('span');
-  arrow.className = `tree-arrow${entry.isDirectory ? '' : ' is-file'}`;
-  const lowerName = entry.name.toLowerCase();
-  const extension = lowerName.includes('.') ? lowerName.split('.').pop() ?? '' : '';
-  let iconKind = 'file-text';
-  if (entry.isDirectory) iconKind = 'folder';
-  else if (lowerName === 'cmakelists.txt' || extension === 'cmake') iconKind = 'file-cmake';
-  else if (['cpp', 'cc', 'cxx', 'c++'].includes(extension)) iconKind = 'file-cpp';
-  else if (['h', 'hh', 'hpp', 'hxx'].includes(extension)) iconKind = 'file-header';
-  else if (['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus'].includes(extension)) iconKind = 'file-audio';
-  else if (['mp4', 'webm', 'mkv', 'mov', 'avi', 'wmv', 'm4v', 'mpeg', 'mpg'].includes(extension)) iconKind = 'file-video';
-  else if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'tif', 'tiff', 'ico', 'svg'].includes(extension)) iconKind = 'file-image';
-  const icon = document.createElement('span'); icon.className = `file-icon ${iconKind}`;
+  arrow.className = 'tree-arrow';
+  if (entry.isDirectory) arrow.append(icon('chevron-right'));
+  let kind = fileIconElement(entry.name);
+  if (entry.isDirectory) {
+    kind = document.createElement('span');
+    kind.className = 'file-icon folder';
+    kind.append(icon('folder'));
+  }
   const label = document.createElement('span'); label.className = 'tree-label'; label.textContent = entry.name;
-  row.append(arrow, icon, label);
+  row.append(arrow, kind, label);
   container.append(row);
   row.addEventListener('contextmenu', (event) => showContextMenu(event, entry, row));
 
@@ -692,13 +686,17 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
         }
       }
     };
-    if (!children.hidden) { arrow.classList.add('expanded'); void loadChildren(); }
+    const showExpanded = (): void => {
+      arrow.classList.toggle('expanded', !children.hidden);
+      kind.replaceChildren(icon(children.hidden ? 'folder' : 'folder-opened'));
+    };
+    if (!children.hidden) { showExpanded(); void loadChildren(); }
     row.addEventListener('click', async () => {
       selectTreeEntry(entry, row);
       children.hidden = !children.hidden;
       if (children.hidden) expandedDirectories.delete(entry.path);
       else expandedDirectories.add(entry.path);
-      arrow.classList.toggle('expanded', !children.hidden);
+      showExpanded();
       if (!children.hidden) await loadChildren();
     });
   } else {
