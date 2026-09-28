@@ -1,29 +1,37 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import path from 'node:path';
 
-export interface ClangdLaunch {
-  cwd: string;
+export interface ProcessLaunch {
+  command: string;
   args: string[];
+  cwd: string;
   env: NodeJS.ProcessEnv;
+}
+
+export interface ProcessStatus {
+  running: boolean;
+  message: string;
 }
 
 const headerEnd = Buffer.from('\r\n\r\n');
 const stderrLines = 20;
 
-// Runs clangd and moves LSP messages across its stdio. The protocol itself is
+// Runs a program that speaks JSON messages framed by Content-Length headers
+// over stdio: clangd (LSP) or a debug adapter (DAP). The protocol itself is
 // spoken by the renderer; this side only frames and unframes JSON.
-export class ClangdProcess {
+export class MessageProcess {
   private child: ChildProcessWithoutNullStreams | null = null;
   private pending = Buffer.alloc(0);
   private stderr: string[] = [];
 
   constructor(
     private readonly onMessage: (message: unknown) => void,
-    private readonly onExit: (status: GlistClangdStatus) => void,
+    private readonly onExit: (status: ProcessStatus) => void,
   ) {}
 
-  start(launch: ClangdLaunch): Promise<GlistClangdStatus> {
+  start(launch: ProcessLaunch): Promise<ProcessStatus> {
     this.stop();
-    const child = spawn('clangd', launch.args, { cwd: launch.cwd, env: launch.env, windowsHide: true });
+    const child = spawn(launch.command, launch.args, { cwd: launch.cwd, env: launch.env, windowsHide: true });
     this.child = child;
     this.pending = Buffer.alloc(0);
     this.stderr = [];
@@ -40,7 +48,7 @@ export class ClangdProcess {
         if (this.child !== child) return;
         this.child = null;
         const detail = this.stderr.length > 0 ? `\n${this.stderr.join('\n')}` : '';
-        this.onExit({ running: false, message: `clangd exited (${signal ?? code})${detail}` });
+        this.onExit({ running: false, message: `${path.basename(launch.command)} exited (${signal ?? code})${detail}` });
       });
       child.stdin.on('error', () => { /* Reported through 'exit'. */ });
       child.stdout.on('data', (chunk: Buffer) => { if (this.child === child) this.receive(chunk); });

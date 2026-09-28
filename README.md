@@ -79,7 +79,8 @@ Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which build
 - `src/studio.ts`: Filesystem access and build commands, independent of Electron
 - `src/api.ts`: The renderer API and the IPC channel for each call
 - `src/preload.ts`: Restricted bridge between the renderer and main process
-- `src/clangd-process.ts` and `src/clangd.ts`: clangd process and the language client that feeds Monaco
+- `src/message-process.ts`: Runs clangd and debug adapters and frames their JSON messages
+- `src/clangd.ts`: The language client that feeds Monaco from clangd
 - `src/web/` and `scripts/web.ts`: Browser version of the API and the server behind `npm run web`
 - `src/themes.ts` and `src/appearance.ts`: Built-in themes, VS Code theme import, and the theme picker
 - `src/renderer.ts`: Editor and interface behavior

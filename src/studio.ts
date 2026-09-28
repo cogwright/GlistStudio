@@ -3,7 +3,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import { availableParallelism, homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { Handlers } from './api';
-import { ClangdProcess } from './clangd-process';
+import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { synchronizeCmake, type CmakeChange } from './cmake';
 
@@ -595,7 +595,7 @@ const writeProjectFile = async (filePath: string, contents: string): Promise<boo
   return true;
 };
 
-const clangd = new ClangdProcess(
+const clangd = new MessageProcess(
   (message) => sendToRenderer('clangd:message', message),
   (status) => sendToRenderer('clangd:status', status),
 );
@@ -608,7 +608,7 @@ const startClangd = async (): Promise<GlistClangdStatus> => {
   const args = [`--compile-commands-dir=${buildDirectory}`, '--background-index', '--log=error'];
   // Lets clangd ask the Glist clang for its system headers and target.
   if (toolchain.toolBin) args.push(`--query-driver=${path.join(toolchain.toolBin, '*').replace(/\\/g, '/')}`);
-  const status = await clangd.start({ cwd: projectRoot, args, env: processEnvironment(toolchain) });
+  const status = await clangd.start({ command: 'clangd', args, cwd: projectRoot, env: processEnvironment(toolchain) });
   if (!status.running) return { running: false, message: `${msg('clangdMissing')}: ${status.message}` };
   return { running: true, message: compileCommands ? '' : msg('clangdNoDatabase'), compileCommands };
 };
