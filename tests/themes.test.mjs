@@ -69,6 +69,11 @@ assert.equal(ansiColors(glistDark.palette, 'dark').red, glistDark.palette.danger
 assert.equal(ansiColors(glistDark.palette, 'dark').cyan, glistDark.palette.operator);
 assert.equal(ansiColors(nord.palette, 'dark').green, nord.palette.string);
 
+// Built-in themes use no italics.
+for (const theme of builtInThemes) {
+  assert.ok(editorThemeData(theme).rules.every((rule) => !/italic/.test(rule.fontStyle ?? '')), `${theme.id} has italic code`);
+}
+
 // Semantic tokens keep only the first styled modifier each has.
 const legend = ['declaration', 'definition', 'deprecated', 'deduced', 'readonly', 'static'];
 const bit = (name) => 2 ** legend.indexOf(name);
