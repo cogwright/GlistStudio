@@ -113,6 +113,10 @@
               <h1>Glist Studio</h1>
               <p data-i18n="tagline">A focused development environment for Glist Engine.</p>
               <div class="shortcut-list"><span><span data-i18n="save">Save</span> <kbd>Ctrl S</kbd></span><span><span data-i18n="build">Build</span> <kbd>Ctrl ⇧ B</kbd></span><span><span data-i18n="run">Run</span> <kbd>F5</kbd></span></div>
+              <div id="glist-missing" class="glist-missing" hidden>
+                <p data-i18n="glistMissing">Glist Engine is not installed on this computer yet.</p>
+                <button id="install-glist" type="button" class="empty-tree-action primary" data-i18n="installGlist">Install Glist Engine</button>
+              </div>
             </div>
           </div>
           <div id="panel-resizer" class="horizontal-resizer"></div>
@@ -141,6 +145,26 @@
           <input id="input-dialog-value" type="text" autocomplete="off" required />
           <div class="dialog-actions"><button type="button" id="input-cancel" data-i18n="cancel">Cancel</button><button type="submit" class="primary" data-i18n="create">Create</button></div>
         </form>
+      </dialog>
+
+      <dialog id="glist-install-dialog" class="studio-dialog">
+        <h2 data-i18n="installGlist">Install Glist Engine</h2>
+        <div id="glist-install-intro">
+          <p class="dialog-hint" data-i18n="glistInstallIntro">This runs Glist Engine's own installer.</p>
+          <p id="glist-install-password" class="dialog-hint"></p>
+          <p id="glist-install-location" class="glist-install-location"></p>
+        </div>
+        <div id="glist-install-progress" hidden>
+          <p id="glist-install-step" class="glist-install-step"></p>
+          <progress id="glist-install-bar" class="glist-install-bar"></progress>
+          <div id="install-terminal" class="terminal-host install-terminal"></div>
+          <p id="glist-install-result" class="glist-install-result" hidden></p>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" id="glist-install-open" data-i18n="openGlistApp" hidden>Open GlistApp</button>
+          <button type="button" id="glist-install-close" data-i18n="close">Close</button>
+          <button type="button" id="glist-install-start" class="primary" data-i18n="installGlist">Install Glist Engine</button>
+        </div>
       </dialog>
 
       <dialog id="open-project-dialog" class="studio-dialog project-picker">

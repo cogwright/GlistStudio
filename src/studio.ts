@@ -96,6 +96,8 @@ const messages = {
     agentMissing: 'This agent is not installed. Install it in Settings, under Agents.',
     agentInstallRunning: 'An agent is already being installed.',
     agentInstalled: 'Installed.', agentInstallFailed: 'The installation stopped',
+    installerMissing: 'Glist Engine\'s installer could not be downloaded',
+    askpassPrompt: 'Glist Engine\'s installer needs your password to install the tools it uses.',
   },
   tr: {
     noProject: 'Önce bir Glist projesi açın.', invalidName: 'Geçerli bir dosya veya klasör adı girin.',
@@ -129,6 +131,8 @@ const messages = {
     agentMissing: 'Bu ajan kurulu değil. Ayarlar’da, Ajanlar altında kurabilirsiniz.',
     agentInstallRunning: 'Zaten bir ajan kuruluyor.',
     agentInstalled: 'Kuruldu.', agentInstallFailed: 'Kurulum durdu',
+    installerMissing: 'Glist Engine kurulum programı indirilemedi',
+    askpassPrompt: 'Glist Engine kurulum programı, kullandığı araçları kurmak için parolanızı istiyor.',
   },
 } as const;
 
@@ -756,9 +760,13 @@ export const stopDebugging = (): void => debugAdapter.stop();
 // Terminals: a shell in the project folder, and the Agent tab's agent, both
 // with the environment builds use. node-pty is loaded on first use, so a
 // platform without it only loses these.
-type TerminalSession = 'shell' | 'agent';
-const terminalSessions = new Map<TerminalSession, IPty>();
-const sessionName = (value: unknown): TerminalSession | null => (value === 'shell' || value === 'agent' ? value : null);
+type TerminalSession = 'shell' | 'agent' | 'install';
+// What a session needs of its program: a pseudo-terminal, or for the installer
+// usually a plain child process (see installerProgram).
+type TerminalProcess = Pick<IPty, 'write' | 'resize' | 'kill'>;
+const terminalSessions = new Map<TerminalSession, TerminalProcess>();
+const sessionName = (value: unknown): TerminalSession | null =>
+  (value === 'shell' || value === 'agent' || value === 'install' ? value : null);
 
 const terminalShell = (): { file: string; args: string[] } => {
   if (process.platform === 'win32') return { file: 'powershell.exe', args: ['-NoLogo'] };
@@ -787,11 +795,82 @@ const terminalDirectory = (): string => activeProjectRoot
 
 const agentPlaces = (env: NodeJS.ProcessEnv): AgentPlaces => ({ home: studioHome(), glist: glistRoot(), searchPath: env.PATH ?? '' });
 
+// Whether Glist is set up where the install scripts put it, or where the
+// projects folder this studio was given points.
+// A password the installer needs for sudo is asked for by the system, never
+// typed into the studio: sudo, run without a terminal, hands the question to
+// the program in SUDO_ASKPASS. macOS shows its own dialog; Linux uses the
+// desktop's password dialog, and only without one falls back to the terminal.
+const linuxAskpassPrograms = [
+  'zenity', 'kdialog', 'ssh-askpass', '/usr/lib/ssh/ssh-askpass', '/usr/libexec/openssh/ssh-askpass',
+  '/usr/lib/openssh/gnome-ssh-askpass', '/usr/libexec/openssh/gnome-ssh-askpass',
+];
+
+const passwordPrompt = (): GlistInstallStatus['passwordPrompt'] => {
+  if (process.platform === 'win32') return 'none';
+  if (process.platform === 'darwin') return 'system';
+  const searchPath = (process.env.PATH ?? '').split(path.delimiter);
+  const found = linuxAskpassPrograms.some((program) => (path.isAbsolute(program)
+    ? existsSync(program) : searchPath.some((directory) => existsSync(path.join(directory, program)))));
+  return found ? 'system' : 'terminal';
+};
+
+// The prompt goes into an AppleScript string inside a single-quoted shell word,
+// or into a double-quoted shell word.
+const appleScriptInShell = (text: string): string => text.replace(/[\\"]/g, '\\$&').replace(/'/g, "'\\''");
+const inDoubleQuotes = (text: string): string => text.replace(/[\\"$`]/g, '\\$&');
+
+const askpassScript = (): string => (process.platform === 'darwin'
+  ? `#!/bin/sh
+# SUDO_ASKPASS for Glist Engine's installer: a macOS dialog asks for the
+# password and hands it to sudo, without it passing through Glist Studio.
+exec /usr/bin/osascript -e 'text returned of (display dialog "${appleScriptInShell(msg('askpassPrompt'))}" default answer "" with hidden answer with title "Glist Engine" with icon caution)'
+`
+  : `#!/bin/sh
+# SUDO_ASKPASS for Glist Engine's installer: the desktop's password dialog
+# asks for it and hands it to sudo, without it passing through Glist Studio.
+prompt="${inDoubleQuotes(msg('askpassPrompt'))}"
+command -v zenity >/dev/null 2>&1 && exec zenity --password --title="Glist Engine"
+command -v kdialog >/dev/null 2>&1 && exec kdialog --title "Glist Engine" --password "$prompt"
+for helper in ${linuxAskpassPrograms.slice(2).join(' ')}; do
+  command -v "$helper" >/dev/null 2>&1 && exec "$helper" "$prompt"
+done
+exit 1
+`);
+
+const glistStatus = (): GlistInstallStatus => ({
+  installed: existsSync(path.join(glistRoot(), 'GlistEngine', 'engine'))
+    || Boolean(findAncestorWith(host.projectsDirectory, path.join('GlistEngine', 'engine'))),
+  root: glistRoot(),
+  location: shortPath(glistRoot()),
+  passwordPrompt: passwordPrompt(),
+});
+
+// Glist Engine's own installer: the current script from GlistEngine/InstallScripts,
+// saved in Glist Studio's folder and run in a terminal, so that a password it
+// asks for can be typed. GLIST_STUDIO_INSTALLER runs a local script instead, for tests.
+const installerProgram = async (): Promise<{ file: string; args: string[] }> => {
+  const windows = process.platform === 'win32';
+  let script = process.env.GLIST_STUDIO_INSTALLER ? path.resolve(process.env.GLIST_STUDIO_INSTALLER) : '';
+  if (!script) {
+    const system = windows ? 'windows' : process.platform === 'darwin' ? 'macos' : 'linux';
+    const file = windows ? 'install-glist.ps1' : 'install-glist.sh';
+    const response = await fetch(`https://raw.githubusercontent.com/GlistEngine/InstallScripts/main/scripts/${system}/${file}`);
+    if (!response.ok) throw new Error(`raw.githubusercontent.com: ${response.status}`);
+    script = path.join(studioHome(), 'installer', file);
+    await fs.mkdir(path.dirname(script), { recursive: true });
+    await fs.writeFile(script, await response.text(), 'utf8');
+  }
+  return windows
+    ? { file: 'powershell.exe', args: ['-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script] }
+    : { file: '/bin/bash', args: [script] };
+};
+
 const startTerminal = async (session: unknown, columns: number, rows: number, agent?: unknown): Promise<ProcessResult> => {
   const name = sessionName(session);
   if (!name) return { success: false, message: msg('terminalFailed') };
   stopTerminal(name);
-  const directory = terminalDirectory();
+  let directory = terminalDirectory();
   const env: NodeJS.ProcessEnv = {
     ...processEnvironment(resolveToolchain(directory)), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'GlistStudio',
   };
@@ -802,6 +881,23 @@ const startTerminal = async (session: unknown, columns: number, rows: number, ag
     program = { file: launch.file, args: launch.args };
     Object.assign(env, launch.env);
     env.PATH = [...launch.pathPrefix, env.PATH ?? ''].join(path.delimiter);
+  }
+  if (name === 'install') {
+    try { program = await installerProgram(); } catch (error) {
+      return { success: false, message: `${msg('installerMissing')}: ${error instanceof Error ? error.message : String(error)}` };
+    }
+    // From GlistEngine's own repositories, asking nothing but a password, and
+    // without the Eclipse setup the studio does not need.
+    Object.assign(env, { GLIST_UNATTENDED: '1', GLIST_NO_ECLIPSE: '1', GLIST_GITHUB_USERNAME: 'GlistEngine' });
+    directory = homedir();
+    if (passwordPrompt() === 'system') {
+      const askpass = path.join(studioHome(), 'installer', 'askpass.sh');
+      await fs.mkdir(path.dirname(askpass), { recursive: true });
+      await fs.writeFile(askpass, askpassScript(), { encoding: 'utf8', mode: 0o700 });
+      await fs.chmod(askpass, 0o700);
+      env.SUDO_ASKPASS = askpass;
+      return startWithoutTerminal(name, program, directory, env);
+    }
   }
   try {
     const { spawn: spawnTerminal } = await import('node-pty');
@@ -820,6 +916,36 @@ const startTerminal = async (session: unknown, columns: number, rows: number, ag
   } catch (error) {
     return { success: false, message: `${msg('terminalFailed')}: ${error instanceof Error ? error.message : String(error)}` };
   }
+};
+
+// The installer when sudo asks through SUDO_ASKPASS: a plain child process, in a
+// process group of its own so Stop ends everything it started. xterm.js needs
+// carriage returns that a program without a terminal does not print.
+const startWithoutTerminal = (
+  name: TerminalSession, program: { file: string; args: string[] }, directory: string, env: NodeJS.ProcessEnv,
+): ProcessResult => {
+  const child = spawn(program.file, program.args, { cwd: directory, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const running: TerminalProcess = {
+    write: () => undefined,
+    resize: () => undefined,
+    kill: () => {
+      try { if (child.pid) process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
+    },
+  };
+  terminalSessions.set(name, running);
+  const forward = (chunk: Buffer): void => {
+    if (terminalSessions.get(name) === running) sendToRenderer('terminal:data', { session: name, data: chunk.toString().replace(/\r?\n/g, '\r\n') });
+  };
+  child.stdout.on('data', forward);
+  child.stderr.on('data', forward);
+  const finish = (exitCode: number): void => {
+    if (terminalSessions.get(name) !== running) return;
+    terminalSessions.delete(name);
+    sendToRenderer('terminal:exit', { session: name, exitCode });
+  };
+  child.once('error', () => finish(127));
+  child.once('close', (code) => finish(code ?? 1));
+  return { success: true, message: `${path.basename(program.file)} - ${directory}` };
 };
 
 const writeTerminal = (session: unknown, data: unknown): void => {
@@ -896,5 +1022,6 @@ export const studio: Handlers = {
   resizeTerminal,
   stopTerminal: (session: unknown) => stopTerminal(session ?? 'shell'),
   listAgents,
+  glistStatus,
   installAgent: installAgentFromSettings,
 };

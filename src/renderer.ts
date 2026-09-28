@@ -19,6 +19,7 @@ import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isMac, primaryKey, shortcutLabel } from './shortcuts';
+import { setUpGlistInstaller } from './glist-installer';
 import { setUpProjectPicker } from './project-picker';
 import { StudioTerminal } from './terminal';
 import { terminalTheme } from './themes';
@@ -130,7 +131,9 @@ const newTerminalButton = element<HTMLButtonElement>('#new-terminal');
 const clearOutputButton = element<HTMLButtonElement>('#clear-output');
 const studioTerminal = new StudioTerminal(terminalHost, 'shell');
 const agentTerminal = new StudioTerminal(agentHost, 'agent', 'agentExited');
-[studioTerminal, agentTerminal].forEach((panelTerminal) => {
+// Glist Engine's installer, in its dialog; it runs once per click, never on a key.
+const installTerminal = new StudioTerminal(element<HTMLDivElement>('#install-terminal'), 'install', 'terminalExited', false);
+[studioTerminal, agentTerminal, installTerminal].forEach((panelTerminal) => {
   onThemeChange((theme) => panelTerminal.setTheme(terminalTheme(theme.palette, theme.kind)));
   onFontsChange((fonts) => panelTerminal.setFont(codeFontStack(fonts), panelFontSize(fonts)));
 });
@@ -1173,6 +1176,32 @@ const showProjectPicker = setUpProjectPicker({
   create: () => showNewProjectDialog(),
 });
 
+// Without Glist installed where its scripts put it, the welcome screen and the
+// Help menu offer to install it.
+let glistInstalled = true;
+const glistMissing = element<HTMLElement>('#glist-missing');
+const showGlistInstaller = setUpGlistInstaller({
+  dialog: element<HTMLDialogElement>('#glist-install-dialog'),
+  intro: element<HTMLElement>('#glist-install-intro'),
+  password: element<HTMLElement>('#glist-install-password'),
+  location: element<HTMLElement>('#glist-install-location'),
+  progress: element<HTMLElement>('#glist-install-progress'),
+  bar: element<HTMLProgressElement>('#glist-install-bar'),
+  step: element<HTMLElement>('#glist-install-step'),
+  result: element<HTMLElement>('#glist-install-result'),
+  install: element<HTMLButtonElement>('#glist-install-start'),
+  openApp: element<HTMLButtonElement>('#glist-install-open'),
+  close: element<HTMLButtonElement>('#glist-install-close'),
+}, installTerminal, () => {
+  glistInstalled = true;
+  glistMissing.hidden = true;
+}, (root) => { void openProjectWith(() => window.glistAPI.openProjectPath(joinPath(joinPath(root, 'myglistapps'), 'GlistApp'))); });
+element<HTMLButtonElement>('#install-glist').addEventListener('click', () => { void showGlistInstaller(); });
+void window.glistAPI.glistStatus().then((status) => {
+  glistInstalled = status.installed;
+  glistMissing.hidden = status.installed;
+}).catch((): undefined => undefined);
+
 const chooseProject = async (): Promise<void> => {
   if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
   await showProjectPicker();
@@ -1373,6 +1402,7 @@ const configureMenus = (): void => {
         item(t('toggleBreakpoint'), () => debug.toggleAtCursor(), { shortcut: 'F9', disabled: !activeFilePath }),
       ],
       help: [
+        ...(glistInstalled ? [] : [item(t('installGlistMenu'), () => { void showGlistInstaller(); })]),
         item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
       ],
     };
