@@ -50,11 +50,23 @@ This builds the renderer as a web page, runs the same backend in Node, and print
 - `GLIST_STUDIO_PROJECTS`: the `myglistapps` folder to use while no project is open
 - `GLIST_STUDIO_TOKEN`: a fixed access token instead of a new one per run
 
-Build a Windows application folder:
+Build the installers for the machine you are on; `.github/workflows/release.yml` has the exact command for each platform:
 
 ```powershell
-npm run package
+npm run make
 ```
+
+## Installing
+
+Each release carries a universal `.dmg` for macOS, a setup `.exe` for Windows on x64 and arm64, and an AppImage for Linux on x86_64 and aarch64. The builds are not signed yet, so each system asks once:
+
+- macOS: right-click the app and choose Open, or run `xattr -dr com.apple.quarantine "/Applications/Glist Studio.app"`.
+- Windows: SmartScreen shows "Windows protected your PC"; choose More info, then Run anyway.
+- Linux: make the AppImage executable (`chmod +x`) and run it. It runs natively on Wayland when the session sets `XDG_SESSION_TYPE=wayland`, as Hyprland does; elsewhere pass `--ozone-platform=wayland`. On tiling compositors such as Hyprland, sway and i3 the window has no buttons of its own.
+
+## Releasing
+
+Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which builds every installer with the version taken from the tag and drafts a GitHub release carrying them. Check the draft and publish it. The workflow can also be started by hand from the Actions tab, which builds without releasing.
 
 ## Project layout
 
