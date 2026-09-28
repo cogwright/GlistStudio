@@ -39,7 +39,9 @@ npm run package
 
 ## Project layout
 
-- `src/index.ts`: Electron main process, filesystem access, and build commands
+- `src/index.ts`: Electron main process with the window, dialogs, and IPC
+- `src/studio.ts`: Filesystem access and build commands, independent of Electron
+- `src/api.ts`: The renderer API and the IPC channel for each call
 - `src/preload.ts`: Restricted bridge between the renderer and main process
 - `src/renderer.ts`: Editor and interface behavior
 - `src/index.html` and `src/index.css`: Interface structure and styling
