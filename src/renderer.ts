@@ -1283,10 +1283,16 @@ window.addEventListener('keydown', (event) => {
   else if (event.key === 'F2' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); renameSelectedEntry(); }
   else if ((event.key === 'Delete' || (isMac && event.metaKey && event.key === 'Backspace')) && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntry(); }
 });
+// A mouse wheel notch is one zoom step; a trackpad pinch arrives as many small
+// Ctrl+wheel events and has to add up to one first.
+let pinchDelta = 0;
 window.addEventListener('wheel', (event) => {
   if (!event.ctrlKey || event.deltaY === 0) return;
   event.preventDefault();
-  changeZoom(event.deltaY < 0 ? 1 : -1);
+  pinchDelta += event.deltaY;
+  if (Math.abs(pinchDelta) < 50) return;
+  changeZoom(pinchDelta < 0 ? 1 : -1);
+  pinchDelta = 0;
 }, { passive: false, capture: true });
 window.addEventListener('beforeunload', (event) => {
   if (hasDirtyFiles()) { event.preventDefault(); event.returnValue = ''; }
