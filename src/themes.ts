@@ -185,7 +185,7 @@ const semanticColors = (palette: ThemePalette): Record<string, string> => ({
 
 // The semantic token modifiers themes style, most important first. A token
 // keeps only the first it has (see restyleSemanticTokens).
-export const styledModifiers = ['deprecated', 'readonly', 'static'];
+export const styledModifiers = ['deprecated', 'readonly'];
 
 // Token names cover Monaco's C++ grammar and clangd's semantic tokens.
 const paletteRules = (palette: ThemePalette): monaco.editor.ITokenThemeRule[] => {
@@ -194,12 +194,13 @@ const paletteRules = (palette: ThemePalette): monaco.editor.ITokenThemeRule[] =>
   const semantic = semanticColors(palette);
   return [
     rule('', palette.editorText),
-    rule('comment', palette.comment, 'italic'),
+    // No italics anywhere: in most code fonts they read worse than upright text.
+    rule('comment', palette.comment),
     rule('keyword', palette.keyword),
     ...controlKeywords.map((word) => rule(`keyword.${word}`, palette.control ?? palette.keyword)),
     ...typeKeywords.map((word) => rule(`keyword.${word}`, palette.type)),
     ...constantKeywords.map((word) => rule(`keyword.${word}`, palette.constant)),
-    rule('keyword.this', palette.parameter, 'italic'),
+    rule('keyword.this', palette.parameter),
     rule('keyword.directive', palette.macro),
     rule('string', palette.string),
     rule('string.escape', palette.constant),
@@ -208,11 +209,9 @@ const paletteRules = (palette: ThemePalette): monaco.editor.ITokenThemeRule[] =>
     rule('delimiter', palette.operator ?? palette.editorText),
     rule('constant', palette.constant),
     ...Object.entries(semantic).map(([token, color]) => rule(token, color)),
-    rule('parameter', palette.parameter, 'italic'),
     // Constants that are variables: const and constexpr ones.
     rule('variable.readonly', palette.constant),
     rule('property.readonly', palette.constant),
-    ...['variable', 'property', 'function', 'method'].map((token) => rule(`${token}.static`, semantic[token], 'italic')),
     ...Object.entries(semantic).map(([token, color]) => rule(`${token}.deprecated`, color, 'strikethrough')),
   ];
 };
