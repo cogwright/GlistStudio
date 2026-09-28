@@ -39,6 +39,7 @@ socket.addEventListener('close', (event) => {
 
 const call = async (method: string, args: unknown[]): Promise<unknown> => {
   await opened;
+  if (socket.readyState !== WebSocket.OPEN) throw new Error('Disconnected from Glist Studio.');
   const id = nextId;
   nextId += 1;
   return new Promise((resolve, reject) => {
