@@ -1,14 +1,15 @@
 import { t } from './localization';
 import type { StudioTerminal } from './terminal';
 
-// Installing Glist Engine: its own installer runs in a terminal inside a
-// dialog, where a password it asks for can be typed, under a progress bar that
-// follows the steps it reports ("==> [3/7] GlistEngine", then "==> Done: ..."
-// or "==> Failed: ...").
+// Installing Glist Engine: its own installer's output shows in a terminal
+// inside a dialog, under a progress bar that follows the steps it reports
+// ("==> [3/7] GlistEngine", then "==> Done: ..." or "==> Failed: ..."). A
+// password it needs is asked for by the system (see passwordPrompt in studio.ts).
 
 export interface GlistInstallerControls {
   dialog: HTMLDialogElement;
   intro: HTMLElement;
+  password: HTMLElement;
   location: HTMLElement;
   progress: HTMLElement;
   bar: HTMLProgressElement;
@@ -110,6 +111,8 @@ export const setUpGlistInstaller = (
     const status = await window.glistAPI.glistStatus();
     root = status.root;
     controls.location.textContent = status.location;
+    controls.password.hidden = status.passwordPrompt === 'none';
+    controls.password.textContent = status.passwordPrompt === 'terminal' ? t('installPasswordTerminal') : t('installPasswordSystem');
     if (state !== 'running') show('intro');
     controls.dialog.showModal();
   };

@@ -67,6 +67,9 @@ interface GlistInstallStatus {
   // Where the install scripts put Glist: C:\dev\glist or ~/dev/glist.
   root: string;
   location: string;
+  // How the installer asks for a password: a system dialog, the dialog's
+  // terminal (Linux without a password dialog program), or not at all (Windows).
+  passwordPrompt: 'system' | 'terminal' | 'none';
 }
 type GlistAgentId = 'claude' | 'codex' | 'gemini' | 'antigravity';
 interface GlistAgentStatus {

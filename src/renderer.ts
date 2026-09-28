@@ -1183,6 +1183,7 @@ const glistMissing = element<HTMLElement>('#glist-missing');
 const showGlistInstaller = setUpGlistInstaller({
   dialog: element<HTMLDialogElement>('#glist-install-dialog'),
   intro: element<HTMLElement>('#glist-install-intro'),
+  password: element<HTMLElement>('#glist-install-password'),
   location: element<HTMLElement>('#glist-install-location'),
   progress: element<HTMLElement>('#glist-install-progress'),
   bar: element<HTMLProgressElement>('#glist-install-bar'),

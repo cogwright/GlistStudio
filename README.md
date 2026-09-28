@@ -51,7 +51,7 @@ Copy and paste work as elsewhere: Cmd+C and Cmd+V on macOS; on Windows and Linux
 
 ## Installing Glist from the studio
 
-When Glist is not where its install scripts put it (`~/dev/glist`, or `C:\dev\glist` on Windows), the welcome screen and the Help menu offer to install it. That runs Glist Engine's own installer, the current script from [GlistEngine/InstallScripts](https://github.com/GlistEngine/InstallScripts), in a terminal inside a dialog: a password it asks for can be typed there, and a progress bar follows the steps it reports. It clones from GlistEngine's repositories without asking for a GitHub name, and skips the Eclipse setup the studio does not need.
+When Glist is not where its install scripts put it (`~/dev/glist`, or `C:\dev\glist` on Windows), the welcome screen and the Help menu offer to install it. That runs Glist Engine's own installer, the current script from [GlistEngine/InstallScripts](https://github.com/GlistEngine/InstallScripts), with its output in a dialog and a progress bar that follows the steps it reports. A password it needs is asked for by the system, not by the studio: the installer runs without a terminal, so sudo asks through `SUDO_ASKPASS`, which Glist Studio points at a macOS dialog, or on Linux at the desktop's password dialog (zenity, kdialog or ssh-askpass). Only on a Linux desktop without any of those is it typed into the dialog's terminal. It clones from GlistEngine's repositories without asking for a GitHub name, and skips the Eclipse setup the studio does not need.
 
 ## Agents
 
