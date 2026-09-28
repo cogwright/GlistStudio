@@ -46,6 +46,8 @@ interface Window {
     openCommandPrompt(entryPath: string): Promise<void>;
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
+    getProjectsDirectory(): Promise<string>;
+    getPlatform(): Promise<string>;
     writeFile(filePath: string, contents: string): Promise<boolean>;
     buildProject(): Promise<GlistProcessResult>;
     runProject(): Promise<GlistProcessResult>;
@@ -62,5 +64,6 @@ interface Window {
     onRunStatus(callback: (status: { running: boolean; exitCode?: number }) => void): () => void;
     onClangdMessage(callback: (message: unknown) => void): () => void;
     onClangdStatus(callback: (status: GlistClangdStatus) => void): () => void;
+    onSaveAndClose(callback: () => void): () => void;
   };
 }

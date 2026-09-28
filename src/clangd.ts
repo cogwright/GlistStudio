@@ -6,6 +6,7 @@ import type {
   WorkDoneProgressBegin, WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit,
 } from 'vscode-languageserver-protocol';
 import { t } from './localization';
+import { baseName, pathUri } from './paths';
 
 export interface ClangdHost {
   // A model for reading, created without a tab when needed. Null if the file cannot be read.
@@ -159,14 +160,14 @@ export class ClangdClient {
     if (!status.running) return;
     this.restartAfterBuild = !status.compileCommands;
     this.host.status('clangd', true);
-    const rootUri = monaco.Uri.file(rootPath).toString();
+    const rootUri = pathUri(rootPath).toString();
     let result: InitializeResult;
     try {
       result = await this.request<InitializeResult>('initialize', {
         processId: null,
         clientInfo: { name: 'Glist Studio' },
         rootUri,
-        workspaceFolders: [{ uri: rootUri, name: rootPath.split(/[\\/]/).pop() ?? rootPath }],
+        workspaceFolders: [{ uri: rootUri, name: baseName(rootPath) }],
         capabilities: {
           general: { positionEncodings: ['utf-16'] },
           window: { workDoneProgress: true },
@@ -178,6 +179,8 @@ export class ClangdClient {
                 snippetSupport: true, documentationFormat: ['markdown', 'plaintext'], labelDetailsSupport: true,
               },
               contextSupport: true,
+              // A clangd extension: completing members after '.' on a pointer, with an edit to '->'.
+              editsNearCursor: true,
             },
             hover: { contentFormat: ['markdown', 'plaintext'] },
             signatureHelp: {
@@ -368,7 +371,7 @@ export class ClangdClient {
       if (value.kind === 'begin') this.progress.set(token, value.title);
       if (value.kind === 'end') {
         this.progress.delete(token);
-        this.host.status('clangd', false);
+        if (this.progress.size === 0) this.host.status('clangd', false);
       } else {
         const detail = value.message ?? (value.percentage === undefined ? '' : `${value.percentage}%`);
         this.host.status(`clangd: ${this.progress.get(token) ?? ''} ${detail}`.replace(/\s+/g, ' ').trim(), true);
@@ -440,6 +443,12 @@ export class ClangdClient {
             const edit = item.textEdit;
             let range: monaco.IRange | monaco.languages.CompletionItemRanges = wordRange;
             if (edit) range = 'range' in edit ? toRange(edit.range) : { insert: toRange(edit.insert), replace: toRange(edit.replace) };
+            // Monaco filters on the text from the start of the edit, which for
+            // '.' to '->' includes the '.', so lead the filter text with it.
+            const start = monaco.Range.getStartPosition('insert' in range ? range.insert : range);
+            const lead = start.column < word.startColumn ? model.getValueInRange({
+              startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: position.lineNumber, endColumn: word.startColumn,
+            }) : '';
             return {
               label: item.labelDetails
                 ? { label: item.label, detail: item.labelDetails.detail, description: item.labelDetails.description }
@@ -451,7 +460,7 @@ export class ClangdClient {
               insertTextRules: item.insertTextFormat === 2
                 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
               range,
-              filterText: item.filterText,
+              filterText: `${lead}${item.filterText ?? item.label}`,
               sortText: item.sortText,
               preselect: item.preselect,
               commitCharacters: item.commitCharacters,

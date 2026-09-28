@@ -35,4 +35,12 @@ const extensionChanged = synchronizeCmake(added, { kind: 'rename', from: 'src/Ne
 assert.doesNotMatch(extensionChanged, /\$\{APP_DIR\}\/src\/NewClass\.cpp/);
 assert.match(extensionChanged, /\$\{APP_DIR\}\/src\/NewClass\.hpp/);
 
+const twoCases = synchronizeCmake(template, { kind: 'add', paths: ['src/Foo.cpp', 'src/foo.cpp'] }, true);
+assert.match(twoCases, /\$\{APP_DIR\}\/src\/Foo\.cpp/);
+assert.match(twoCases, /\$\{APP_DIR\}\/src\/foo\.cpp/);
+const oneCaseRemoved = synchronizeCmake(twoCases, { kind: 'remove', path: 'src/Foo.cpp' }, true);
+assert.doesNotMatch(oneCaseRemoved, /\$\{APP_DIR\}\/src\/Foo\.cpp/);
+assert.match(oneCaseRemoved, /\$\{APP_DIR\}\/src\/foo\.cpp/);
+assert.doesNotMatch(synchronizeCmake(twoCases, { kind: 'remove', path: 'src/Foo.cpp' }), /src\/foo\.cpp/i);
+
 console.log('CMake synchronization tests passed.');

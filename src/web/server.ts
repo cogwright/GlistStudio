@@ -44,7 +44,15 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     send: (channel, payload) => send({ channel, payload }),
     trashItem: async (entryPath) => {
       await fs.mkdir(trashDirectory, { recursive: true });
-      await fs.rename(entryPath, path.join(trashDirectory, `${Date.now()}-${path.basename(entryPath)}`));
+      const target = path.join(trashDirectory, `${Date.now()}-${path.basename(entryPath)}`);
+      try {
+        await fs.rename(entryPath, target);
+      } catch (error) {
+        // The temporary folder is often another file system, a tmpfs on Linux.
+        if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+        await fs.cp(entryPath, target, { recursive: true });
+        await fs.rm(entryPath, { recursive: true });
+      }
     },
     showItemInFolder: unavailable,
     openPath: async () => unavailable(),
@@ -55,8 +63,8 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
   const handlers: Handlers = {
     ...studio,
     openProject: (projectRoot: string) => openProjectAt(projectRoot),
+    openCommandPrompt: unavailable,
     setTheme: (theme: string) => theme,
-    setZoomFactor: (factor: number) => factor,
   };
 
   const server = http.createServer(async (request, response) => {
@@ -77,9 +85,10 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     }
     let filePath = '';
     try {
-      // Normalizing a rooted path drops any '..' that would climb out of it.
-      const relative = path.posix.normalize(decodeURIComponent(url.pathname)).replace(/^\/+/, '') || 'index.html';
-      filePath = path.join(options.staticRoot, relative);
+      const relative = decodeURIComponent(url.pathname).replace(/^[\\/]+/, '') || 'index.html';
+      filePath = path.resolve(options.staticRoot, relative);
+      const inside = path.relative(options.staticRoot, filePath);
+      if (inside.startsWith('..') || path.isAbsolute(inside)) throw new Error('outside the bundle');
       if (!(await fs.stat(filePath)).isFile()) throw new Error('not a file');
     } catch {
       response.writeHead(404);
@@ -109,7 +118,6 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     // One page drives the backend at a time; a newer one takes over.
     client?.close(4000, 'Glist Studio was opened in another tab.');
     client = socket;
-    send({ channel: 'web:hello', payload: { projectsDirectory: options.projectsDirectory } });
     socket.on('message', async (data) => {
       let request: { id: number; method: string; args: unknown[] };
       try { request = JSON.parse(data.toString()); } catch { return; }

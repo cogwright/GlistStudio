@@ -2,12 +2,13 @@ import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { invokeChannels, type Handler, type InvokeMethod } from './api';
-import { initializeStudio, msg, openProjectAt, stopClangd, stopProcesses, studio } from './studio';
+import {
+  defaultProjectsDirectory, initializeStudio, msg, openProjectAt, projectsDirectory, stopClangd, stopProcesses, studio,
+} from './studio';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 
-const projectsDirectory = 'C:\\dev\\glist\\myglistapps';
 let mainWindow: BrowserWindow | null = null;
 
 if (require('electron-squirrel-startup')) app.quit();
@@ -24,7 +25,7 @@ initializeStudio({
   templateRoot: app.isPackaged
     ? path.join(process.resourcesPath, 'glistapp-template')
     : path.join(app.getAppPath(), 'glistapp-template'),
-  projectsDirectory,
+  projectsDirectory: defaultProjectsDirectory(),
 });
 
 const registerIpcHandlers = (): void => {
@@ -36,7 +37,8 @@ const registerIpcHandlers = (): void => {
     const window = BrowserWindow.fromWebContents(event.sender);
     nativeTheme.themeSource = theme;
     window?.setBackgroundColor(theme === 'light' ? '#ffffff' : '#1e1e1e');
-    window?.setTitleBarOverlay({
+    // macOS draws its own window buttons and has no overlay to recolor.
+    if (process.platform !== 'darwin') window?.setTitleBarOverlay({
       color: theme === 'light' ? '#f5f5f5' : '#181818',
       symbolColor: theme === 'light' ? '#333333' : '#cccccc',
       height: 35,
@@ -44,9 +46,10 @@ const registerIpcHandlers = (): void => {
     return theme;
   });
   ipcMain.handle(invokeChannels.openProject, async () => {
+    const defaultPath = projectsDirectory();
     const result = await dialog.showOpenDialog({
       title: msg('openTitle'),
-      defaultPath: existsSync(projectsDirectory) ? projectsDirectory : undefined,
+      defaultPath: existsSync(defaultPath) ? defaultPath : undefined,
       properties: ['openDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -69,6 +72,7 @@ const createWindow = (): void => {
       ? path.join(process.resourcesPath, 'glistengine.ico')
       : path.join(app.getAppPath(), 'assets', 'glistengine.ico'),
     titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 12, y: 10 },
     titleBarOverlay: {
       color: '#181818',
       symbolColor: '#cccccc',
@@ -88,6 +92,19 @@ const createWindow = (): void => {
   });
   createdWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
   createdWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // The renderer blocks unloading while tabs are unsaved; Electron would then
+  // silently refuse to close, so ask instead.
+  createdWindow.webContents.on('will-prevent-unload', (event) => {
+    const choice = dialog.showMessageBoxSync(createdWindow, {
+      type: 'warning',
+      message: msg('unsavedChanges'),
+      buttons: [msg('saveAndClose'), msg('closeWithoutSaving'), msg('cancel')],
+      defaultId: 0,
+      cancelId: 2,
+    });
+    if (choice === 0) createdWindow.webContents.send('app:save-and-close', null);
+    else if (choice === 1) event.preventDefault();
+  });
   createdWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== MAIN_WINDOW_WEBPACK_ENTRY) event.preventDefault();
   });

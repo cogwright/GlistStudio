@@ -1,3 +1,6 @@
+import { getHostPlatform } from './host';
+import { shortcutLabel } from './shortcuts';
+
 export type Language = 'en' | 'tr';
 
 const en = {
@@ -31,7 +34,7 @@ const en = {
   fileCreated: 'File created', folderCreated: 'Folder created', classCreated: 'C++ class created',
   projectCreated: 'Project created', movedToTrash: 'Moved to Recycle Bin', renamed: 'Renamed',
   createFailed: 'Could not create item', deleteFailed: 'Could not delete item', renameFailed: 'Could not rename item',
-  fileOpenFailed: 'Could not open file', treeFailed: 'Could not load files', saveFailed: 'Save failed',
+  fileOpenFailed: 'Could not open file', projectOpenFailed: 'Could not open project', treeFailed: 'Could not load files', saveFailed: 'Save failed',
   saved: 'saved', buildSucceeded: 'Build succeeded', buildFailed: 'Build failed',
   running: 'Application running', exit: 'Exit',
   confirmProjectSwitch: 'You have unsaved files. Open another project?',
@@ -79,7 +82,7 @@ const tr: Record<TranslationKey, string> = {
   fileCreated: 'Dosya oluşturuldu', folderCreated: 'Klasör oluşturuldu', classCreated: 'C++ sınıfı oluşturuldu',
   projectCreated: 'Proje oluşturuldu', movedToTrash: 'Geri Dönüşüm Kutusu’na taşındı', renamed: 'Yeniden adlandırıldı',
   createFailed: 'Öğe oluşturulamadı', deleteFailed: 'Öğe silinemedi', renameFailed: 'Öğe yeniden adlandırılamadı',
-  fileOpenFailed: 'Dosya açılamadı', treeFailed: 'Dosyalar yüklenemedi', saveFailed: 'Kaydetme başarısız',
+  fileOpenFailed: 'Dosya açılamadı', projectOpenFailed: 'Proje açılamadı', treeFailed: 'Dosyalar yüklenemedi', saveFailed: 'Kaydetme başarısız',
   saved: 'kaydedildi', buildSucceeded: 'Derleme başarılı', buildFailed: 'Derleme başarısız',
   running: 'Uygulama çalışıyor', exit: 'Çıkış',
   confirmProjectSwitch: 'Kaydedilmemiş dosyalar var. Başka proje açılsın mı?',
@@ -96,6 +99,41 @@ const tr: Record<TranslationKey, string> = {
 
 const dictionaries = { en, tr };
 
+type Wording = Partial<Record<TranslationKey, string>>;
+
+// Names the host gives its trash, file manager and terminal; the dictionaries
+// above use the Windows ones.
+const hostWording: Record<string, Record<Language, Wording>> = {
+  darwin: {
+    en: {
+      delete: 'Move to Trash', deleteTitle: 'Move Selected Item to Trash', movedToTrash: 'Moved to Trash',
+      confirmDeleteFile: 'Move this file to the Trash?',
+      confirmDeleteFolder: 'Move this folder and all its contents to the Trash?',
+      systemExplorer: 'Finder', commandPrompt: 'Terminal',
+    },
+    tr: {
+      delete: 'Çöp Sepeti’ne Taşı', deleteTitle: 'Seçili Öğeyi Çöp Sepeti’ne Taşı', movedToTrash: 'Çöp Sepeti’ne taşındı',
+      confirmDeleteFile: 'Bu dosya Çöp Sepeti’ne taşınsın mı?',
+      confirmDeleteFolder: 'Bu klasör ve içindekiler Çöp Sepeti’ne taşınsın mı?',
+      systemExplorer: 'Finder', commandPrompt: 'Terminal',
+    },
+  },
+  linux: {
+    en: {
+      delete: 'Move to Trash', deleteTitle: 'Move Selected Item to Trash', movedToTrash: 'Moved to Trash',
+      confirmDeleteFile: 'Move this file to the Trash?',
+      confirmDeleteFolder: 'Move this folder and all its contents to the Trash?',
+      systemExplorer: 'File Manager', commandPrompt: 'Terminal',
+    },
+    tr: {
+      delete: 'Çöp Kutusu’na Taşı', deleteTitle: 'Seçili Öğeyi Çöp Kutusu’na Taşı', movedToTrash: 'Çöp Kutusu’na taşındı',
+      confirmDeleteFile: 'Bu dosya Çöp Kutusu’na taşınsın mı?',
+      confirmDeleteFolder: 'Bu klasör ve içindekiler Çöp Kutusu’na taşınsın mı?',
+      systemExplorer: 'Dosya Yöneticisi', commandPrompt: 'Terminal',
+    },
+  },
+};
+
 export const savedLanguage = (): Language => {
   try { return window.localStorage.getItem('glist-studio-language') === 'tr' ? 'tr' : 'en'; }
   catch { return 'en'; }
@@ -104,7 +142,8 @@ export const savedLanguage = (): Language => {
 let language: Language = savedLanguage();
 
 export const getLanguage = (): Language => language;
-export const t = (key: TranslationKey): string => dictionaries[language][key];
+export const t = (key: TranslationKey): string =>
+  hostWording[getHostPlatform()]?.[language][key] ?? dictionaries[language][key];
 
 export const applyLanguage = (next: Language): void => {
   language = next;
@@ -116,10 +155,11 @@ export const applyLanguage = (next: Language): void => {
   });
   document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((node) => {
     const key = node.dataset.i18nTitle as TranslationKey;
-    if (key in en) node.title = t(key);
+    if (key in en) node.title = shortcutLabel(t(key));
   });
   document.querySelectorAll<HTMLElement>('[data-i18n-aria-label]').forEach((node) => {
     const key = node.dataset.i18nAriaLabel as TranslationKey;
     if (key in en) node.setAttribute('aria-label', t(key));
   });
+  document.querySelectorAll('kbd').forEach((node) => { node.textContent = shortcutLabel(node.textContent ?? ''); });
 };

@@ -22,10 +22,10 @@ const entryPath = (line: string): string | null => {
   return match ? normalize((match[2] ?? match[3]).slice('${APP_DIR}/'.length)) : null;
 };
 
-const matchingPath = (candidate: string, target: string): boolean => {
-  const lowerCandidate = candidate.toLowerCase();
-  const lowerTarget = target.toLowerCase();
-  return lowerCandidate === lowerTarget || lowerCandidate.startsWith(`${lowerTarget}/`);
+const matchingPath = (candidate: string, target: string, fold: (value: string) => string): boolean => {
+  const foldedCandidate = fold(candidate);
+  const foldedTarget = fold(target);
+  return foldedCandidate === foldedTarget || foldedCandidate.startsWith(`${foldedTarget}/`);
 };
 
 const formatEntry = (relativePath: string): string => {
@@ -38,8 +38,10 @@ export const hasGlistSourceLists = (cmake: string): boolean => {
   return lists.includes('SOURCES') && lists.includes('HEADERS');
 };
 
-export const synchronizeCmake = (cmake: string, change: CmakeChange): string => {
+// Paths compare without case unless caseSensitive, which suits Linux file systems.
+export const synchronizeCmake = (cmake: string, change: CmakeChange, caseSensitive = false): string => {
   if (!hasGlistSourceLists(cmake)) return cmake;
+  const fold = (value: string): string => (caseSensitive ? value : value.toLowerCase());
   const newline = cmake.includes('\r\n') ? '\r\n' : '\n';
   const additions: string[] = change.kind === 'add' ? change.paths.map(normalize) : [];
 
@@ -50,8 +52,8 @@ export const synchronizeCmake = (cmake: string, change: CmakeChange): string => 
     lines.forEach((line) => {
       const relative = entryPath(line);
       if (!relative || change.kind === 'add') { nextLines.push(line); return; }
-      if (change.kind === 'remove' && matchingPath(relative, normalize(change.path))) return;
-      if (change.kind === 'rename' && matchingPath(relative, normalize(change.from))) {
+      if (change.kind === 'remove' && matchingPath(relative, normalize(change.path), fold)) return;
+      if (change.kind === 'rename' && matchingPath(relative, normalize(change.from), fold)) {
         const oldRelative = normalize(change.from);
         const nextRelative = `${normalize(change.to)}${relative.slice(oldRelative.length)}`;
         if (listFor(nextRelative) !== listName) {
@@ -72,13 +74,13 @@ export const synchronizeCmake = (cmake: string, change: CmakeChange): string => 
   [...updated.matchAll(listPattern)].forEach((block) => {
     block[3].split(/\r?\n/).forEach((line) => {
       const relative = entryPath(line);
-      if (relative) existing.add(relative.toLowerCase());
+      if (relative) existing.add(fold(relative));
     });
   });
   updated = updated.replace(listPattern, (whole, start: string, list: string, body: string, end: string) => {
     const listName = list.toUpperCase() as ListName;
-    const pending = additions.filter((relative) => listFor(relative) === listName && !existing.has(relative.toLowerCase()));
-    pending.forEach((relative) => existing.add(relative.toLowerCase()));
+    const pending = additions.filter((relative) => listFor(relative) === listName && !existing.has(fold(relative)));
+    pending.forEach((relative) => existing.add(fold(relative)));
     if (pending.length === 0) return whole;
     const indent = body.split(/\r?\n/).map((line) => line.match(entryPattern)?.[1]).find((value) => value !== undefined) ?? '\t\t';
     const separator = body.endsWith(newline) ? '' : newline;

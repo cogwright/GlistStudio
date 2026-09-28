@@ -4,6 +4,9 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 import appIconUrl from '../assets/glistengine.ico';
 import { ClangdClient } from './clangd';
+import { setHostPlatform } from './host';
+import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
+import { isMac, primaryKey, shortcutLabel } from './shortcuts';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
 import './index.css';
 
@@ -11,7 +14,8 @@ interface OpenFile {
   path: string;
   name: string;
   model: monaco.editor.ITextModel;
-  savedValue: string;
+  // The model's alternative version id when it matched the file on disk.
+  savedVersion: number;
   readOnly: boolean;
 }
 
@@ -59,6 +63,8 @@ let selectedEntry: GlistFileEntry | null = null;
 let copiedEntryPath: string | null = null;
 let isBuildRunning = false;
 let isRunRunning = false;
+// Build or Run was pressed and the backend has not taken it over yet.
+let isStarting = false;
 const openFiles = new Map<string, OpenFile>();
 const expandedDirectories = new Set<string>();
 let draggedTabPath: string | null = null;
@@ -115,6 +121,10 @@ const changeZoom = (direction: -1 | 1): void => {
 
 applyLanguage(getLanguage());
 void window.glistAPI.setLanguage(getLanguage());
+void window.glistAPI.getPlatform().then((platform) => {
+  setHostPlatform(platform);
+  applyLanguage(getLanguage());
+});
 setZoom(zoomPercentage);
 
 const refreshLanguage = (): void => {
@@ -227,9 +237,9 @@ const setTheme = (theme: GlistTheme): void => {
   void window.glistAPI.setTheme(theme);
 };
 
+// Appends a text node; rewriting textContent made long builds quadratic.
 const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'normal'): void => {
-  if (kind === 'normal') output.textContent += text;
-  else output.textContent += `\n${kind === 'success' ? '✓' : '✕'} ${text}\n`;
+  output.append(kind === 'normal' ? text : `\n${kind === 'success' ? '✓' : '✕'} ${text}\n`);
   output.scrollTop = output.scrollHeight;
 };
 
@@ -254,13 +264,13 @@ const languageForFile = (filePath: string): { id: string; label: string } => {
   return languages[extension] ?? { id: 'plaintext', label: 'Plain Text' };
 };
 
-const isDirty = (file: OpenFile): boolean => file.model.getValue() !== file.savedValue;
+const isDirty = (file: OpenFile): boolean => file.model.getAlternativeVersionId() !== file.savedVersion;
 
 const updateButtons = (): void => {
   const hasProject = Boolean(activeProject);
   saveButton.disabled = !activeFilePath;
-  buildButton.disabled = !hasProject || isBuildRunning;
-  runButton.disabled = !hasProject || isRunRunning || isBuildRunning;
+  buildButton.disabled = !hasProject || isBuildRunning || isStarting;
+  runButton.disabled = !hasProject || isRunRunning || isBuildRunning || isStarting;
   stopButton.disabled = !isBuildRunning && !isRunRunning;
   refreshButton.disabled = !hasProject;
   newFileButton.disabled = !hasProject;
@@ -333,6 +343,7 @@ const renderTabs = (): void => {
     tab.type = 'button';
     tab.draggable = true;
     tab.className = 'editor-tab';
+    tab.dataset.path = file.path;
     tab.classList.toggle('active', file.path === activeFilePath);
     tab.classList.toggle('read-only', file.readOnly);
     tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
@@ -408,20 +419,18 @@ tabsHost.addEventListener('drop', (event) => {
 });
 
 const isProjectPath = (filePath: string): boolean =>
-  Boolean(activeProject && pathBelongsToEntry(filePath, activeProject.root));
+  Boolean(activeProject && isWithin(filePath, activeProject.root));
 
 const readContents = (filePath: string): Promise<string> => (isProjectPath(filePath)
   ? window.glistAPI.readFile(filePath) : window.glistAPI.readWorkspaceFile(filePath));
-
-const fileName = (filePath: string): string => filePath.split(/[\\/]/).pop() ?? filePath;
 
 // clangd and the explorer may spell one path differently, the URI does not.
 const findOpenFile = (uri: monaco.Uri): OpenFile | undefined =>
   [...openFiles.values()].find((file) => file.model.uri.toString() === uri.toString());
 
 // Gives a file a tab without switching to it. Files outside the project open read-only.
-const loadFile = async (filePath: string, name: string): Promise<OpenFile> => {
-  const uri = monaco.Uri.file(filePath);
+const loadFile = async (filePath: string): Promise<OpenFile> => {
+  const uri = pathUri(filePath);
   let file = findOpenFile(uri);
   if (file) return file;
   const contents = await readContents(filePath);
@@ -430,16 +439,38 @@ const loadFile = async (filePath: string, name: string): Promise<OpenFile> => {
   // clangd may already hold a model of this file for a preview.
   const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
   if (model.getValue() !== contents) model.setValue(contents);
-  file = { path: filePath, name, model, savedValue: contents, readOnly: !isProjectPath(filePath) };
+  const added = addTab(filePath, model, !isProjectPath(filePath));
+  renderTabs();
+  return added;
+};
+
+const refreshDirtyMark = (file: OpenFile): void => {
+  const tab = [...tabsHost.children].find((child) => (child as HTMLElement).dataset.path === file.path);
+  const mark = tab?.querySelector('.dirty-dot');
+  if (mark) mark.textContent = isDirty(file) ? '●' : '';
+};
+
+// Opens a tab on a model that matches the file on disk, without switching to it.
+const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
+  const file: OpenFile = { path: filePath, name: baseName(filePath), model, savedVersion: model.getAlternativeVersionId(), readOnly };
   openFiles.set(filePath, file);
-  model.onDidChangeContent(() => renderTabs());
+  model.onDidChangeContent(() => refreshDirtyMark(file));
   clangd.track(model);
   return file;
 };
 
+// The text is taken once, so anything typed while it is written stays unsaved.
+const saveFile = async (file: OpenFile): Promise<void> => {
+  const version = file.model.getAlternativeVersionId();
+  await window.glistAPI.writeFile(file.path, file.model.getValue());
+  file.savedVersion = version;
+  clangd.saved(file.model);
+  refreshDirtyMark(file);
+};
+
 const openFile = async (filePath: string, name: string): Promise<boolean> => {
   try {
-    activateFile((await loadFile(filePath, name)).path);
+    activateFile((await loadFile(filePath)).path);
     return true;
   } catch (error) {
     appendOutput(`\n${t('fileOpenFailed')}: ${name}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
@@ -448,7 +479,8 @@ const openFile = async (filePath: string, name: string): Promise<boolean> => {
 };
 
 const revealLocation = async (uri: monaco.Uri, selection?: monaco.IRange | monaco.IPosition): Promise<boolean> => {
-  if (!(await openFile(uri.fsPath, fileName(uri.fsPath)))) return false;
+  const filePath = uriPath(uri);
+  if (!(await openFile(filePath, baseName(filePath)))) return false;
   if (!selection) return true;
   if ('startLineNumber' in selection) {
     editor.setSelection(selection);
@@ -465,15 +497,30 @@ const clangd = new ClangdClient({
     const existing = monaco.editor.getModel(uri);
     if (existing) return existing;
     try {
-      const contents = await readContents(uri.fsPath);
-      return monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(uri.fsPath).id, uri);
+      const filePath = uriPath(uri);
+      const contents = await readContents(filePath);
+      const loaded = monaco.editor.getModel(uri);
+      if (loaded) return loaded;
+      const model = monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
+      // A peek view can edit this model; give it a tab then, so the change can be saved.
+      const cleanVersion = model.getAlternativeVersionId();
+      const watcher = model.onDidChangeContent((event) => {
+        // Opening the file for real resets the text, which is not an edit.
+        if (event.isFlush) return;
+        watcher.dispose();
+        if (findOpenFile(uri) || !isProjectPath(filePath)) return;
+        addTab(filePath, model, false).savedVersion = cleanVersion;
+        renderTabs();
+      });
+      return model;
     } catch {
       return null;
     }
   },
   openForEdit: async (uri) => {
-    if (!isProjectPath(uri.fsPath)) return null;
-    try { return (await loadFile(uri.fsPath, fileName(uri.fsPath))).model; } catch { return null; }
+    const filePath = uriPath(uri);
+    if (!isProjectPath(filePath)) return null;
+    try { return (await loadFile(filePath)).model; } catch { return null; }
   },
   log: (text) => appendOutput(`\n${text}\n`),
   status: (text, busy) => {
@@ -647,16 +694,22 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
   return container;
 };
 
+// Only the latest load fills the tree, so overlapping loads and project
+// switches cannot mix their rows.
+let treeGeneration = 0;
+
 const loadProjectTree = async (): Promise<void> => {
   if (!activeProject) return;
-  fileTree.textContent = '';
+  treeGeneration += 1;
+  const generation = treeGeneration;
   clearTreeSelection();
+  let rows: Array<HTMLElement | string>;
   try {
-    const entries = await window.glistAPI.listDirectory(activeProject.root);
-    fileTree.append(...entries.map((entry) => createTreeRow(entry, 0)));
+    rows = (await window.glistAPI.listDirectory(activeProject.root)).map((entry) => createTreeRow(entry, 0));
   } catch (error) {
-    fileTree.textContent = `${t('treeFailed')}: ${error instanceof Error ? error.message : String(error)}`;
+    rows = [`${t('treeFailed')}: ${errorText(error)}`];
   }
+  if (generation === treeGeneration) fileTree.replaceChildren(...rows);
 };
 
 const directoryForNewEntry = (): string | null => {
@@ -673,14 +726,11 @@ const revealTargetDirectory = (directory: string): void => {
 const errorText = (error: unknown): string => error instanceof Error ? error.message : String(error);
 
 const openCmakeFile = (): OpenFile | undefined =>
-  activeProject ? openFiles.get(`${activeProject.root}\\CMakeLists.txt`) : undefined;
+  activeProject ? findOpenFile(pathUri(joinPath(activeProject.root, 'CMakeLists.txt'))) : undefined;
 
 const saveOpenCmake = async (): Promise<void> => {
   const file = openCmakeFile();
-  if (!file || !isDirty(file)) return;
-  await window.glistAPI.writeFile(file.path, file.model.getValue());
-  file.savedValue = file.model.getValue();
-  renderTabs();
+  if (file && isDirty(file)) await saveFile(file);
 };
 
 const reloadOpenCmake = async (): Promise<void> => {
@@ -688,8 +738,8 @@ const reloadOpenCmake = async (): Promise<void> => {
   if (!file) return;
   const contents = await window.glistAPI.readFile(file.path);
   if (file.model.getValue() !== contents) file.model.setValue(contents);
-  file.savedValue = contents;
-  renderTabs();
+  file.savedVersion = file.model.getAlternativeVersionId();
+  refreshDirtyMark(file);
 };
 
 const createFile = async (): Promise<void> => {
@@ -757,12 +807,8 @@ const pasteCopiedEntry = async (): Promise<void> => {
   }
   try {
     for (const file of openFiles.values()) {
-      if (pathBelongsToEntry(file.path, copiedEntryPath) && isDirty(file)) {
-        await window.glistAPI.writeFile(file.path, file.model.getValue());
-        file.savedValue = file.model.getValue();
-      }
+      if (isWithin(file.path, copiedEntryPath) && isDirty(file)) await saveFile(file);
     }
-    renderTabs();
     const copiedPath = await window.glistAPI.copyEntry(copiedEntryPath, directory);
     if (activeProject && directory !== activeProject.root) expandedDirectories.add(directory);
     await loadProjectTree();
@@ -786,16 +832,10 @@ const openCommandPrompt = async (): Promise<void> => {
   catch (error) { appendOutput(`\n${t('showFailed')}: ${errorText(error)}\n`, 'error'); }
 };
 
-const pathBelongsToEntry = (filePath: string, entryPath: string): boolean => {
-  const normalizedFile = filePath.replace(/\//g, '\\').toLowerCase();
-  const normalizedEntry = entryPath.replace(/\//g, '\\').toLowerCase();
-  return normalizedFile === normalizedEntry || normalizedFile.startsWith(`${normalizedEntry}\\`);
-};
-
 const closeFilesUnderEntry = (entryPath: string): void => {
   let activeWasDeleted = false;
   openFiles.forEach((file, filePath) => {
-    if (!pathBelongsToEntry(filePath, entryPath)) return;
+    if (!isWithin(filePath, entryPath)) return;
     if (activeFilePath === filePath) activeWasDeleted = true;
     file.model.dispose();
     openFiles.delete(filePath);
@@ -814,22 +854,20 @@ const closeFilesUnderEntry = (entryPath: string): void => {
   updateButtons();
 };
 
+// Follows a rename on disk. Renamed tabs keep their place in the tab strip.
 const relocateOpenFiles = (oldPath: string, newPath: string): void => {
-  const relocated: OpenFile[] = [];
-  openFiles.forEach((file, filePath) => {
-    if (!pathBelongsToEntry(filePath, oldPath)) return;
-    const suffix = filePath.slice(oldPath.length);
-    const nextPath = `${newPath}${suffix}`;
-    const nextModel = monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, monaco.Uri.file(nextPath));
+  const tabs = [...openFiles.entries()];
+  openFiles.clear();
+  tabs.forEach(([filePath, file]) => {
+    if (!isWithin(filePath, oldPath)) { openFiles.set(filePath, file); return; }
+    const nextPath = `${newPath}${filePath.slice(oldPath.length)}`;
+    const nextUri = pathUri(nextPath);
+    // Only a clangd preview of a file that used to be at the new path can be there.
+    monaco.editor.getModel(nextUri)?.dispose();
+    addTab(nextPath, monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, nextUri), false);
     file.model.dispose();
-    openFiles.delete(filePath);
-    const renamedFile: OpenFile = { path: nextPath, name: nextPath.split(/[\\/]/).pop() ?? file.name, model: nextModel, savedValue: nextModel.getValue(), readOnly: false };
-    nextModel.onDidChangeContent(() => renderTabs());
-    clangd.track(nextModel);
-    relocated.push(renamedFile);
     if (activeFilePath === filePath) activeFilePath = nextPath;
   });
-  relocated.forEach((file) => openFiles.set(file.path, file));
   if (activeFilePath) editor.setModel(openFiles.get(activeFilePath)?.model ?? null);
   renderTabs();
 };
@@ -842,14 +880,11 @@ const renameSelectedEntry = async (): Promise<void> => {
   try {
     await saveOpenCmake();
     for (const file of openFiles.values()) {
-      if (pathBelongsToEntry(file.path, entry.path) && isDirty(file)) {
-        await window.glistAPI.writeFile(file.path, file.model.getValue());
-        file.savedValue = file.model.getValue();
-      }
+      if (isWithin(file.path, entry.path) && isDirty(file)) await saveFile(file);
     }
     const nextPath = await window.glistAPI.renameEntry(entry.path, newName);
     relocateOpenFiles(entry.path, nextPath);
-    if (copiedEntryPath && pathBelongsToEntry(copiedEntryPath, entry.path)) {
+    if (copiedEntryPath && isWithin(copiedEntryPath, entry.path)) {
       copiedEntryPath = `${nextPath}${copiedEntryPath.slice(entry.path.length)}`;
     }
     await reloadOpenCmake();
@@ -866,12 +901,12 @@ const deleteSelectedEntry = async (): Promise<void> => {
   const entry = selectedEntry;
   const description = `“${entry.name}”: ${t(entry.isDirectory ? 'confirmDeleteFolder' : 'confirmDeleteFile')}`;
   if (!window.confirm(description)) return;
-  if ([...openFiles.values()].some((file) => pathBelongsToEntry(file.path, entry.path) && isDirty(file))
+  if ([...openFiles.values()].some((file) => isWithin(file.path, entry.path) && isDirty(file))
     && !window.confirm(t('confirmDirtyDelete'))) return;
   try {
-    if (entry.path !== `${activeProject?.root}\\CMakeLists.txt`) await saveOpenCmake();
+    if (activeProject && !isWithin(entry.path, joinPath(activeProject.root, 'CMakeLists.txt'))) await saveOpenCmake();
     await window.glistAPI.deleteEntry(entry.path);
-    if (copiedEntryPath && pathBelongsToEntry(copiedEntryPath, entry.path)) copiedEntryPath = null;
+    if (copiedEntryPath && isWithin(copiedEntryPath, entry.path)) copiedEntryPath = null;
     closeFilesUnderEntry(entry.path);
     await reloadOpenCmake();
     await loadProjectTree();
@@ -896,7 +931,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   copiedEntryPath = null;
   expandedDirectories.clear();
   projectRootLabel.textContent = selected.name.toUpperCase();
-  document.title = `${selected.name} — Glist Studio`;
+  document.title = `${selected.name} - Glist Studio`;
   await loadProjectTree(); updateButtons();
   output.textContent = `Glist Studio\n${t('openedProject')}: ${selected.root}\n`;
   if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
@@ -905,11 +940,18 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
 
 const chooseProject = async (): Promise<void> => {
   if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
-  const selected = await window.glistAPI.openProject();
-  if (selected) await openSelectedProject(selected);
+  try {
+    const selected = await window.glistAPI.openProject();
+    if (selected) await openSelectedProject(selected);
+  } catch (error) {
+    appendOutput(`\n${t('projectOpenFailed')}: ${errorText(error)}\n`, 'error');
+  }
 };
 
 const showNewProjectDialog = (): void => {
+  const location = element<HTMLElement>('#project-location');
+  location.textContent = '';
+  void window.glistAPI.getProjectsDirectory().then((directory) => { location.textContent = directory; });
   element<HTMLInputElement>('#project-name-input').value = '';
   element<HTMLElement>('#project-dialog-error').textContent = '';
   projectDialog.showModal();
@@ -917,32 +959,56 @@ const showNewProjectDialog = (): void => {
 };
 
 const saveActiveFile = async (): Promise<void> => {
-  if (!activeFilePath) return;
-  const file = openFiles.get(activeFilePath);
-  if (!file || file.readOnly) return;
+  const file = activeFilePath ? openFiles.get(activeFilePath) : undefined;
+  if (!file || file.readOnly || !isDirty(file)) return;
   try {
-    await window.glistAPI.writeFile(file.path, file.model.getValue());
-    file.savedValue = file.model.getValue(); clangd.saved(file.model); renderTabs(); setProcessStatus(`${file.name} ${t('saved')}`, false);
+    await saveFile(file);
+    setProcessStatus(`${file.name} ${t('saved')}`, false);
   } catch (error) {
-    appendOutput(`\n${t('saveFailed')}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
+    appendOutput(`\n${t('saveFailed')}: ${errorText(error)}\n`, 'error');
   }
 };
 
+// Build and Run compile what is on screen, so every changed tab is saved first.
+const saveProjectFiles = async (): Promise<boolean> => {
+  try {
+    for (const file of openFiles.values()) {
+      if (!file.readOnly && isDirty(file)) await saveFile(file);
+    }
+    return true;
+  } catch (error) {
+    appendOutput(`\n${t('saveFailed')}: ${errorText(error)}\n`, 'error');
+    return false;
+  }
+};
+
+// Keeps a second click from reaching the backend while the first is on its way.
+const whileStarting = async (task: () => Promise<void>): Promise<void> => {
+  isStarting = true;
+  updateButtons();
+  try { await task(); } finally { isStarting = false; updateButtons(); }
+};
+
 const buildProject = async (): Promise<void> => {
-  if (!activeProject || isBuildRunning) return;
-  if (activeFilePath) await saveActiveFile();
-  appendOutput('\n── BUILD ────────────────────────────────────────\n');
-  const result = await window.glistAPI.buildProject();
-  clangd.buildFinished();
-  appendOutput(result.message, result.success ? 'success' : 'error');
-  setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
+  if (!activeProject || isBuildRunning || isStarting) return;
+  await whileStarting(async () => {
+    if (!(await saveProjectFiles())) return;
+    appendOutput('\n── BUILD ────────────────────────────────────────\n');
+    const result = await window.glistAPI.buildProject();
+    clangd.buildFinished();
+    appendOutput(result.message, result.success ? 'success' : 'error');
+    setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
+  });
 };
 
 const runProject = async (): Promise<void> => {
-  if (!activeProject || isRunRunning) return;
-  const result = await window.glistAPI.runProject();
-  clangd.buildFinished();
-  appendOutput(result.message, result.success ? 'success' : 'error');
+  if (!activeProject || isRunRunning || isBuildRunning || isStarting) return;
+  await whileStarting(async () => {
+    if (!(await saveProjectFiles())) return;
+    const result = await window.glistAPI.runProject();
+    clangd.buildFinished();
+    appendOutput(result.message, result.success ? 'success' : 'error');
+  });
 };
 
 const stopProject = async (): Promise<void> => {
@@ -1008,7 +1074,7 @@ const configureMenus = (): void => {
       ],
       edit: [
         item(t('undo'), () => editor.trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFilePath }),
-        item(t('redo'), () => editor.trigger('menu', 'redo', null), { shortcut: 'Ctrl+Y', disabled: !activeFilePath }),
+        item(t('redo'), () => editor.trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFilePath }),
         { kind: 'separator' },
         item(t('find'), () => editor.getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFilePath }),
       ],
@@ -1035,10 +1101,10 @@ const configureMenus = (): void => {
       ],
       run: [
         item(t('build'), buildProject, {
-          shortcut: 'Ctrl+Shift+B', disabled: !activeProject || isBuildRunning,
+          shortcut: 'Ctrl+Shift+B', disabled: !activeProject || isBuildRunning || isStarting,
         }),
         item(t('run'), runProject, {
-          shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning,
+          shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning || isStarting,
         }),
         { kind: 'separator' },
         item(t('stop'), stopProject, { shortcut: 'Shift+F5', disabled: !isRunRunning && !isBuildRunning }),
@@ -1092,7 +1158,7 @@ const configureMenus = (): void => {
         metadata.append(hint);
       }
       const shortcut = document.createElement('kbd');
-      shortcut.textContent = entry.shortcut ?? '';
+      shortcut.textContent = shortcutLabel(entry.shortcut ?? '');
       metadata.append(shortcut);
       itemButton.append(label, metadata);
       itemButton.addEventListener('click', () => { closeMenu(); entry.action(); });
@@ -1224,30 +1290,36 @@ window.addEventListener('resize', closeContextMenu);
 
 window.addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase();
-  if (event.ctrlKey && !event.altKey && (key === '+' || key === '=')) { event.preventDefault(); changeZoom(1); return; }
-  if (event.ctrlKey && !event.altKey && key === '-') { event.preventDefault(); changeZoom(-1); return; }
-  if (event.ctrlKey && !event.altKey && key === '0') { event.preventDefault(); setZoom(defaultZoom); return; }
+  if (primaryKey(event) && !event.altKey && (key === '+' || key === '=')) { event.preventDefault(); changeZoom(1); return; }
+  if (primaryKey(event) && !event.altKey && key === '-') { event.preventDefault(); changeZoom(-1); return; }
+  if (primaryKey(event) && !event.altKey && key === '0') { event.preventDefault(); setZoom(defaultZoom); return; }
 }, { capture: true });
 
 window.addEventListener('keydown', (event) => {
   if (inputDialog.open || projectDialog.open || settingsDialog.open) return;
   if (event.key === 'Escape') closeContextMenu();
-  if (event.ctrlKey && event.key.toLowerCase() === 'c' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntry(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'v' && copiedEntryPath && fileTree.contains(document.activeElement)) { event.preventDefault(); pasteCopiedEntry(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); saveActiveFile(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'o') { event.preventDefault(); chooseProject(); }
-  else if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); buildProject(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'b') { event.preventDefault(); toggleExplorer(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'j') { event.preventDefault(); toggleOutput(); }
+  if (primaryKey(event) && event.key.toLowerCase() === 'c' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntry(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'v' && copiedEntryPath && fileTree.contains(document.activeElement)) { event.preventDefault(); pasteCopiedEntry(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 's') { event.preventDefault(); saveActiveFile(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'o') { event.preventDefault(); chooseProject(); }
+  else if (primaryKey(event) && event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); buildProject(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'b') { event.preventDefault(); toggleExplorer(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'j') { event.preventDefault(); toggleOutput(); }
   else if (event.shiftKey && event.key === 'F5') { event.preventDefault(); stopProject(); }
   else if (event.key === 'F5') { event.preventDefault(); runProject(); }
   else if (event.key === 'F2' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); renameSelectedEntry(); }
-  else if (event.key === 'Delete' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntry(); }
+  else if ((event.key === 'Delete' || (isMac && event.metaKey && event.key === 'Backspace')) && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntry(); }
 });
+// A mouse wheel notch is one zoom step; a trackpad pinch arrives as many small
+// Ctrl+wheel events and has to add up to one first.
+let pinchDelta = 0;
 window.addEventListener('wheel', (event) => {
   if (!event.ctrlKey || event.deltaY === 0) return;
   event.preventDefault();
-  changeZoom(event.deltaY < 0 ? 1 : -1);
+  pinchDelta += event.deltaY;
+  if (Math.abs(pinchDelta) < 50) return;
+  changeZoom(pinchDelta < 0 ? 1 : -1);
+  pinchDelta = 0;
 }, { passive: false, capture: true });
 window.addEventListener('beforeunload', (event) => {
   if (hasDirtyFiles()) { event.preventDefault(); event.returnValue = ''; }
@@ -1258,6 +1330,9 @@ window.glistAPI.onBuildStatus((status) => {
   isBuildRunning = status.running; setProcessStatus(status.label, status.running); updateButtons();
 });
 window.glistAPI.onRunOutput((text) => appendOutput(text));
+window.glistAPI.onSaveAndClose(async () => {
+  if (await saveProjectFiles()) window.close();
+});
 window.glistAPI.onRunStatus((status) => {
   isRunRunning = status.running;
   const suffix = status.exitCode !== undefined ? ` · ${t('exit')} ${status.exitCode}` : '';

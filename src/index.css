@@ -25,12 +25,16 @@ button:focus-visible { outline: 1px solid #007acc; outline-offset: -1px; }
   justify-content: space-between;
   align-items: center;
   height: 35px;
-  padding: 0 138px 0 8px;
+  padding: 0 8px;
   border-bottom: 1px solid #2b2b2b;
   background: #181818;
   user-select: none;
   -webkit-app-region: drag;
 }
+
+/* Room for the window buttons Electron draws over the title bar. */
+html[data-window-controls="left"] .topbar { padding-left: 78px; }
+html[data-window-controls="right"] .topbar { padding-right: 138px; }
 
 .titlebar-left, .menubar, .toolbar-actions {
   display: flex;

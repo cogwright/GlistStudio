@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
-import os from 'node:os';
 import path from 'node:path';
 import webpack from 'webpack';
+import { defaultProjectsDirectory } from '../src/studio';
 import { startWebServer } from '../src/web/server';
 import { webConfig } from '../webpack.web.config';
 
@@ -13,9 +13,7 @@ import { webConfig } from '../webpack.web.config';
 
 const port = Number(process.env.GLIST_STUDIO_PORT ?? 8787);
 const token = process.env.GLIST_STUDIO_TOKEN ?? randomBytes(18).toString('base64url');
-const defaultProjects = process.platform === 'win32'
-  ? 'C:\\dev\\glist\\myglistapps' : path.join(os.homedir(), 'dev', 'glist', 'myglistapps');
-const projectsDirectory = path.resolve(process.env.GLIST_STUDIO_PROJECTS ?? defaultProjects);
+const projectsDirectory = path.resolve(process.env.GLIST_STUDIO_PROJECTS ?? defaultProjectsDirectory());
 
 webpack(webConfig).watch({}, (error, stats) => {
   if (error) console.error(error);

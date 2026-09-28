@@ -23,6 +23,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   openCommandPrompt: 'project:open-command-prompt',
   readFile: 'project:read-file',
   readWorkspaceFile: 'project:read-workspace-file',
+  getProjectsDirectory: 'project:projects-directory',
+  getPlatform: 'app:platform',
   writeFile: 'project:write-file',
   buildProject: 'project:build',
   runProject: 'project:run',
@@ -42,4 +44,5 @@ export const eventChannels: Record<EventMethod, string> = {
   onRunStatus: 'run:status',
   onClangdMessage: 'clangd:message',
   onClangdStatus: 'clangd:status',
+  onSaveAndClose: 'app:save-and-close',
 };

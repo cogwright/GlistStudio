@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
-import { userInfo } from 'node:os';
+import { availableParallelism, homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { Handlers } from './api';
 import { ClangdProcess } from './clangd-process';
@@ -15,8 +15,13 @@ export interface StudioHost {
   showItemInFolder(entryPath: string): void;
   openPath(entryPath: string): Promise<unknown>;
   templateRoot: string;
+  // Where new projects go when no open project points at a workspace.
   projectsDirectory: string;
 }
+
+// The myglistapps folder of a default Glist install.
+export const defaultProjectsDirectory = (): string => (process.platform === 'win32'
+  ? 'C:\\dev\\glist\\myglistapps' : path.join(homedir(), 'dev', 'glist', 'myglistapps'));
 
 interface FileEntry {
   name: string;
@@ -64,6 +69,9 @@ const messages = {
     copyIntoSelf: 'A folder cannot be copied into itself or one of its subfolders.',
     clangdMissing: 'clangd could not be started, so C++ code intelligence is off',
     clangdNoDatabase: 'clangd: build once so it can find the engine headers.',
+    unsavedChanges: 'Some files have unsaved changes.', saveAndClose: 'Save and Close',
+    closeWithoutSaving: 'Close Without Saving', cancel: 'Cancel',
+    terminalMissing: 'No terminal was found. Set the TERMINAL environment variable to the one you use.',
   },
   tr: {
     noProject: 'Önce bir Glist projesi açın.', invalidName: 'Geçerli bir dosya veya klasör adı girin.',
@@ -87,6 +95,9 @@ const messages = {
     copyIntoSelf: 'Bir klasör kendi içine veya alt klasörlerinden birine kopyalanamaz.',
     clangdMissing: 'clangd başlatılamadı, C++ kod zekâsı kapalı',
     clangdNoDatabase: 'clangd: motor başlıklarını bulabilmesi için projeyi bir kez derleyin.',
+    unsavedChanges: 'Bazı dosyalarda kaydedilmemiş değişiklikler var.', saveAndClose: 'Kaydet ve Kapat',
+    closeWithoutSaving: 'Kaydetmeden Kapat', cancel: 'İptal',
+    terminalMissing: 'Terminal bulunamadı. Kullandığınız terminali TERMINAL ortam değişkeniyle belirtin.',
   },
 } as const;
 
@@ -169,7 +180,7 @@ const cmakeChange = async (change: CmakeChange): Promise<{
   const cmakePath = path.join(requireProjectRoot(), 'CMakeLists.txt');
   if (!existsSync(cmakePath)) return null;
   const before = await fs.readFile(cmakePath, 'utf8');
-  const after = synchronizeCmake(before, change);
+  const after = synchronizeCmake(before, change, process.platform === 'linux');
   return { path: cmakePath, before, after };
 };
 
@@ -208,12 +219,18 @@ const deleteProjectEntry = async (entryPath: string): Promise<boolean> => {
   return true;
 };
 
+const sameFile = async (left: string, right: string): Promise<boolean> => {
+  const [leftStats, rightStats] = await Promise.all([fs.stat(left), fs.stat(right)]);
+  return leftStats.dev === rightStats.dev && leftStats.ino === rightStats.ino;
+};
+
 const renameProjectEntry = async (entryPath: string, newName: string): Promise<string> => {
   const oldPath = await assertExistingPathInProject(entryPath);
   if (oldPath === path.resolve(requireProjectRoot())) throw new Error(msg('rootDelete'));
   const nextPath = assertPathInProject(path.join(path.dirname(oldPath), validateEntryName(newName)));
   if (oldPath === nextPath) return oldPath;
-  if (existsSync(nextPath)) throw new Error(msg('alreadyExists'));
+  // On file systems that ignore case, renaming foo.h to Foo.h finds itself.
+  if (existsSync(nextPath) && !(await sameFile(oldPath, nextPath))) throw new Error(msg('alreadyExists'));
   const change = oldPath === path.join(requireProjectRoot(), 'CMakeLists.txt')
     ? null : await cmakeChange({ kind: 'rename', from: relativeProjectPath(oldPath), to: relativeProjectPath(nextPath) });
   await fs.rename(oldPath, nextPath);
@@ -277,18 +294,27 @@ const showInSystemExplorer = async (entryPath: string): Promise<void> => {
   else host.showItemInFolder(safePath);
 };
 
+// Linux has no single terminal; $TERMINAL is how tiling setups name theirs.
+const terminals = (directory: string): Array<[string, string[]]> => {
+  if (process.platform === 'win32') return [['cmd.exe', ['/K']]];
+  if (process.platform === 'darwin') return [['open', ['-a', 'Terminal', directory]]];
+  return [process.env.TERMINAL, 'x-terminal-emulator', 'gnome-terminal', 'konsole', 'kitty', 'alacritty', 'foot', 'xterm']
+    .filter((command): command is string => Boolean(command))
+    .map((command): [string, string[]] => [command, []]);
+};
+
 const openCommandPrompt = async (entryPath: string): Promise<void> => {
-  if (process.platform !== 'win32') return;
   const safePath = await assertExistingPathInProject(entryPath);
   const directory = (await fs.stat(safePath)).isDirectory() ? safePath : path.dirname(safePath);
-  const child = spawn('cmd.exe', ['/K'], {
-    cwd: directory, detached: true, stdio: 'ignore', windowsHide: false,
-  });
-  await new Promise<void>((resolve, reject) => {
-    child.once('spawn', () => resolve());
-    child.once('error', reject);
-  });
-  child.unref();
+  for (const [command, args] of terminals(directory)) {
+    const child = spawn(command, args, { cwd: directory, detached: true, stdio: 'ignore', windowsHide: false });
+    const started = await new Promise<boolean>((resolve) => {
+      child.once('spawn', () => resolve(true));
+      child.once('error', () => resolve(false));
+    });
+    if (started) { child.unref(); return; }
+  }
+  throw new Error(msg('terminalMissing'));
 };
 
 const createProjectFromTemplate = async (
@@ -298,9 +324,10 @@ const createProjectFromTemplate = async (
   if (!templateNames.has(templateName)) throw new Error(msg('invalidTemplate'));
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(projectName)) throw new Error(msg('invalidName'));
   const source = path.join(host.templateRoot, templateName);
-  const target = path.join(host.projectsDirectory, projectName);
+  const directory = projectsDirectory();
+  const target = path.join(directory, projectName);
   if (existsSync(target)) throw new Error(msg('projectExists'));
-  await fs.mkdir(host.projectsDirectory, { recursive: true });
+  await fs.mkdir(directory, { recursive: true });
   await fs.cp(source, target, { recursive: true, force: false, errorOnExist: true });
   const eclipsePath = path.join(target, '.project');
   if (existsSync(eclipsePath)) {
@@ -320,6 +347,13 @@ const findAncestorWith = (projectRoot: string, marker: string): string | null =>
     cursor = parent;
   }
   return null;
+};
+
+// A project builds only from <workspace>/myglistapps, since the template reaches
+// the engine through ../../GlistEngine. Prefer the workspace of the open project.
+export const projectsDirectory = (): string => {
+  const workspaceRoot = activeProjectRoot && findAncestorWith(activeProjectRoot, path.join('GlistEngine', 'engine'));
+  return workspaceRoot ? path.join(workspaceRoot, 'myglistapps') : host.projectsDirectory;
 };
 
 const resolveToolchain = (projectRoot: string): Toolchain => {
@@ -343,6 +377,20 @@ const processEnvironment = (toolchain: Toolchain): NodeJS.ProcessEnv => ({
 
 const buildDirectoryFor = (projectRoot: string): string => path.join(projectRoot, '_build', 'Release');
 
+// Builds and runs get a process group of their own on POSIX, so Stop can end
+// what they started too: make, the compilers, and whatever the app spawns.
+const ownProcessGroup = process.platform !== 'win32';
+
+const killTree = (child: ChildProcessWithoutNullStreams): void => {
+  if (child.pid === undefined) return;
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+      .once('error', () => child.kill());
+    return;
+  }
+  try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
+};
+
 const runBuildCommand = (
   executable: string,
   args: string[],
@@ -354,16 +402,27 @@ const runBuildCommand = (
     cwd: workingDirectory,
     env: processEnvironment(toolchain),
     windowsHide: true,
+    detached: ownProcessGroup,
   });
   buildProcess = child;
   child.stdout.on('data', (chunk: Buffer) => sendToRenderer('build:output', chunk.toString()));
   child.stderr.on('data', (chunk: Buffer) => sendToRenderer('build:output', chunk.toString()));
-  child.once('error', (error) => { buildProcess = null; reject(error); });
-  child.once('close', (exitCode) => { buildProcess = null; resolve(exitCode ?? 1); });
+  // A stopped build may end after the next one started; leave that one alone.
+  child.once('error', (error) => { if (buildProcess === child) buildProcess = null; reject(error); });
+  child.once('close', (exitCode) => { if (buildProcess === child) buildProcess = null; resolve(exitCode ?? 1); });
 });
 
+// Stop bumps the generation, so a stopped build notices at its next step and
+// leaves the build that follows it alone.
+let building = false;
+let buildGeneration = 0;
+
 const configureAndBuild = async (): Promise<ProcessResult> => {
-  if (buildProcess) return { success: false, message: msg('buildRunning') };
+  if (building) return { success: false, message: msg('buildRunning') };
+  building = true;
+  buildGeneration += 1;
+  const generation = buildGeneration;
+  const stopped = (): boolean => generation !== buildGeneration;
   const projectRoot = requireProjectRoot();
   const toolchain = resolveToolchain(projectRoot);
   const buildDirectory = buildDirectoryFor(projectRoot);
@@ -380,12 +439,14 @@ const configureAndBuild = async (): Promise<ProcessResult> => {
     const configureCode = await runBuildCommand(
       toolchain.cmake, configureArgs, projectRoot, toolchain,
     );
+    if (stopped()) return { success: false, message: msg('stopped') };
     if (configureCode !== 0) {
       return { success: false, message: `${msg('configureFailed')}: ${configureCode}.` };
     }
     sendToRenderer('build:status', { running: true, label: msg('building') });
     const buildCode = await runBuildCommand(
-      toolchain.cmake, ['--build', buildDirectory, '--parallel'], projectRoot, toolchain,
+      // A bare --parallel lets make start every job at once.
+      toolchain.cmake, ['--build', buildDirectory, '--parallel', String(availableParallelism())], projectRoot, toolchain,
     );
     return buildCode === 0
       ? { success: true, message: msg('buildSucceeded') }
@@ -394,7 +455,10 @@ const configureAndBuild = async (): Promise<ProcessResult> => {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, message: `${msg('buildStartFailed')}: ${message}` };
   } finally {
-    sendToRenderer('build:status', { running: false, label: msg('ready') });
+    if (!stopped()) {
+      building = false;
+      sendToRenderer('build:status', { running: false, label: msg('ready') });
+    }
   }
 };
 
@@ -416,11 +480,14 @@ const findRunnable = async (projectRoot: string): Promise<string | null> => {
   if (existsSync(expected)) return expected;
   try {
     const files = await fs.readdir(buildDirectory, { withFileTypes: true });
-    const fallback = files.find((file) =>
-      file.isFile()
-      && (process.platform !== 'win32' || file.name.endsWith('.exe'))
-      && !file.name.toLowerCase().includes('shadertoheader'));
-    return fallback ? path.join(buildDirectory, fallback.name) : null;
+    for (const file of files) {
+      if (!file.isFile() || file.name.toLowerCase().includes('shadertoheader')) continue;
+      const candidate = path.join(buildDirectory, file.name);
+      if (process.platform === 'win32' ? file.name.endsWith('.exe') : ((await fs.stat(candidate)).mode & 0o111) !== 0) {
+        return candidate;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -447,6 +514,7 @@ const runProject = async (): Promise<ProcessResult> => {
       cwd: projectRoot,
       env: processEnvironment(toolchain),
       windowsHide: false,
+      detached: ownProcessGroup,
     });
     runProcess = child;
     sendToRenderer('run:status', { running: true });
@@ -454,8 +522,10 @@ const runProject = async (): Promise<ProcessResult> => {
     child.stderr.on('data', (chunk: Buffer) => sendToRenderer('run:output', chunk.toString()));
     child.once('error', (error) => sendToRenderer('run:output', `${msg('launchFailed')}: ${error.message}\n`));
     child.once('close', (exitCode) => {
+      if (runProcess !== child) return;
       runProcess = null;
-      sendToRenderer('run:status', { running: false, exitCode });
+      // A stopped app has no exit code, only the signal that ended it.
+      sendToRenderer('run:status', { running: false, exitCode: exitCode ?? undefined });
     });
     return { success: true, message: `${path.basename(executable)} ${msg('launched')}.` };
   } catch (error) {
@@ -467,8 +537,14 @@ const runProject = async (): Promise<ProcessResult> => {
 
 export const stopProcesses = (): ProcessResult => {
   let stopped = false;
-  if (buildProcess) { buildProcess.kill(); buildProcess = null; stopped = true; }
-  if (runProcess) { runProcess.kill(); runProcess = null; stopped = true; }
+  if (building) {
+    buildGeneration += 1;
+    building = false;
+    if (buildProcess) killTree(buildProcess);
+    buildProcess = null;
+    stopped = true;
+  }
+  if (runProcess) { killTree(runProcess); runProcess = null; stopped = true; }
   sendToRenderer('build:status', { running: false, label: msg('ready') });
   sendToRenderer('run:status', { running: false });
   return { success: stopped, message: msg(stopped ? 'stopped' : 'nothingToStop') };
@@ -505,7 +581,11 @@ const readWorkspaceFile = async (filePath: string): Promise<string> => {
 };
 
 const writeProjectFile = async (filePath: string, contents: string): Promise<boolean> => {
-  await fs.writeFile(await assertExistingPathInProject(filePath), contents, 'utf8');
+  // A file deleted behind the editor's back is written again, into a folder that still exists.
+  const target = existsSync(filePath)
+    ? await assertExistingPathInProject(filePath)
+    : path.join(await assertExistingPathInProject(path.dirname(assertPathInProject(filePath))), path.basename(filePath));
+  await fs.writeFile(target, contents, 'utf8');
   return true;
 };
 
@@ -548,6 +628,8 @@ export const studio: Handlers = {
   openCommandPrompt,
   readFile: readProjectFile,
   readWorkspaceFile,
+  getProjectsDirectory: projectsDirectory,
+  getPlatform: () => process.platform,
   writeFile: writeProjectFile,
   buildProject: configureAndBuild,
   runProject,
