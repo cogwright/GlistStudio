@@ -73,8 +73,12 @@ Object.assign(api, {
     return project;
   },
   openEngineSite: async () => { window.open('https://www.glistengine.com/', '_blank', 'noopener'); },
+  // A page cannot set the browser's zoom, so this is CSS zoom. Mouse coordinates
+  // then stay in screen pixels while CSS lengths grow; --page-zoom lets the
+  // stylesheet and the renderer convert between the two.
   setZoomFactor: async (factor: number) => {
     document.documentElement.style.zoom = String(factor);
+    document.documentElement.style.setProperty('--page-zoom', String(factor));
     return factor;
   },
 });

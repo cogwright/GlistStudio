@@ -155,6 +155,9 @@ const togglePanel = (view: PanelView): void => {
 
 // Up to 300%, for projectors in classrooms.
 const zoomLevels = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300] as const;
+// The browser build's CSS zoom, by which screen pixels from the mouse are
+// divided to place things in CSS pixels. Electron zooms natively: always 1.
+const pageZoom = (): number => Number(document.documentElement.style.getPropertyValue('--page-zoom')) || 1;
 const defaultZoom = 100;
 
 const loadZoom = (): number => {
@@ -202,6 +205,7 @@ const setZoom = (percentage: number): void => {
   zoomPercentage = closest;
   try { window.localStorage.setItem('glist-studio-zoom', String(closest)); } catch { /* Storage may be unavailable. */ }
   void window.glistAPI.setZoomFactor(closest / 100);
+  studioTerminal.setScale(pageZoom());
   showZoom();
 };
 
@@ -714,12 +718,13 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
     { key: 'commandPrompt', action: openCommandPrompt },
   ]);
   contextMenu.hidden = false;
-  const width = contextMenu.offsetWidth;
-  const height = contextMenu.offsetHeight;
+  const zoom = pageZoom();
+  const width = contextMenu.offsetWidth * zoom;
+  const height = contextMenu.offsetHeight * zoom;
   const left = Math.max(0, Math.min(event.clientX, window.innerWidth - width - 6));
-  contextMenu.classList.toggle('submenu-left', left + width + 210 > window.innerWidth);
-  contextMenu.style.left = `${left}px`;
-  contextMenu.style.top = `${Math.max(0, Math.min(event.clientY, window.innerHeight - height - 6))}px`;
+  contextMenu.classList.toggle('submenu-left', left + width + 210 * zoom > window.innerWidth);
+  contextMenu.style.left = `${left / zoom}px`;
+  contextMenu.style.top = `${Math.max(0, Math.min(event.clientY, window.innerHeight - height - 6)) / zoom}px`;
 };
 
 const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => {
@@ -1129,14 +1134,14 @@ const configureResizers = (): void => {
   sidebarResizer.addEventListener('pointerdown', (downEvent) => {
     const startX = downEvent.clientX;
     const current = parseInt(getComputedStyle(shell).getPropertyValue('--sidebar-width'), 10);
-    const onMove = (moveEvent: PointerEvent): void => shell.style.setProperty('--sidebar-width', `${Math.min(460, Math.max(180, current + moveEvent.clientX - startX))}px`);
+    const onMove = (moveEvent: PointerEvent): void => shell.style.setProperty('--sidebar-width', `${Math.min(460, Math.max(180, current + (moveEvent.clientX - startX) / pageZoom()))}px`);
     const onUp = (): void => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
   });
   panelResizer.addEventListener('pointerdown', (downEvent) => {
     const startY = downEvent.clientY;
     const current = parseInt(getComputedStyle(shell).getPropertyValue('--panel-height'), 10);
-    const onMove = (moveEvent: PointerEvent): void => shell.style.setProperty('--panel-height', `${Math.min(430, Math.max(110, current + startY - moveEvent.clientY))}px`);
+    const onMove = (moveEvent: PointerEvent): void => shell.style.setProperty('--panel-height', `${Math.min(430, Math.max(110, current + (startY - moveEvent.clientY) / pageZoom()))}px`);
     const onUp = (): void => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
   });
@@ -1285,7 +1290,7 @@ const configureMenus = (): void => {
     });
 
     const bounds = button.getBoundingClientRect();
-    popover.style.left = `${bounds.left}px`;
+    popover.style.left = `${bounds.left / pageZoom()}px`;
     popover.hidden = false;
     button.classList.add('active');
     button.setAttribute('aria-expanded', 'true');
