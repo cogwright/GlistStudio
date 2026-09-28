@@ -23,6 +23,9 @@ const en = {
   cancel: 'Cancel', create: 'Create', close: 'Close', template: 'Template',
   projectName: 'Project name', language: 'Language', appearance: 'Appearance',
   importTheme: 'Import a Theme File...', removeTheme: 'Remove',
+  fonts: 'Fonts', codeFont: 'Code font', codeFontSize: 'Code size', interfaceFont: 'Interface font', systemFont: 'System',
+  ligatures: 'Join characters such as => where the font supports it',
+  fontsHint: 'Pick a font from the list or type the name of one installed on this computer.',
   themeImportFailed: 'This file is not a VS Code color theme.',
   languageHint: 'The interface language changes immediately.',
   themeHint: 'Themes color the whole studio. Color themes from VS Code (.json) can be imported.',
@@ -83,6 +86,10 @@ const tr: Record<TranslationKey, string> = {
   cancel: 'İptal', create: 'Oluştur', close: 'Kapat', template: 'Şablon',
   projectName: 'Proje adı', language: 'Dil', appearance: 'Görünüm',
   importTheme: 'Tema Dosyası İçe Aktar...', removeTheme: 'Kaldır',
+  fonts: 'Yazı Tipleri', codeFont: 'Kod yazı tipi', codeFontSize: 'Kod boyutu', interfaceFont: 'Arayüz yazı tipi',
+  systemFont: 'Sistem',
+  ligatures: 'Yazı tipi destekliyorsa => gibi karakterleri birleştir',
+  fontsHint: 'Listeden bir yazı tipi seçin ya da bu bilgisayarda kurulu olanın adını yazın.',
   themeImportFailed: 'Bu dosya bir VS Code renk teması değil.',
   languageHint: 'Arayüz dili hemen değişir.',
   themeHint: 'Temalar tüm stüdyoyu renklendirir. VS Code renk temaları (.json) içe aktarılabilir.',
@@ -181,6 +188,10 @@ export const applyLanguage = (next: Language): void => {
   document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((node) => {
     const key = node.dataset.i18nTitle as TranslationKey;
     if (key in en) node.title = shortcutLabel(t(key));
+  });
+  document.querySelectorAll<HTMLInputElement>('[data-i18n-placeholder]').forEach((node) => {
+    const key = node.dataset.i18nPlaceholder as TranslationKey;
+    if (key in en) node.placeholder = t(key);
   });
   document.querySelectorAll<HTMLElement>('[data-i18n-aria-label]').forEach((node) => {
     const key = node.dataset.i18nAriaLabel as TranslationKey;

@@ -29,7 +29,14 @@ export const rules: Required<ModuleOptions>['rules'] = [
     },
   },
   {
-    test: /\.(ico|png|svg)$/i,
+    test: /\.(ico|png|svg|woff)$/i,
+    exclude: /[/\\]@vscode[/\\]codicons[/\\]/,
     type: 'asset/resource',
+  },
+  // Codicons are inlined as SVG markup, so they take the color of the text around them.
+  {
+    test: /\.svg$/i,
+    include: /[/\\]@vscode[/\\]codicons[/\\]/,
+    type: 'asset/source',
   },
 ];

@@ -177,6 +177,7 @@ const paletteRules = (palette: ThemePalette): monaco.editor.ITokenThemeRule[] =>
     rule('parameter', palette.parameter),
     rule('property', palette.property),
     rule('enumMember', palette.constant),
+    rule('constant', palette.constant),
     rule('macro', palette.macro),
   ];
 };
@@ -218,6 +219,10 @@ export const interfaceVariables = (palette: ThemePalette): Record<string, string
   '--ui-success': palette.success,
   '--ui-on-success': luminance(palette.success) > 0.5 ? '#000000' : '#ffffff',
   '--ui-warning': palette.warning,
+  '--code-string': palette.string,
+  '--code-keyword': palette.keyword,
+  '--code-function': palette.function,
+  '--code-type': palette.type,
 });
 
 // Importing VS Code color themes

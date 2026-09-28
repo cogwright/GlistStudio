@@ -417,7 +417,9 @@ const runBuildCommand = (
   sendToRenderer('build:output', `\n> ${path.basename(executable)} ${args.join(' ')}\n`);
   const child = spawn(executable, args, {
     cwd: workingDirectory,
-    env: processEnvironment(toolchain),
+    // Colored progress from CMake's makefiles, and colored diagnostics from the
+    // compiler in build trees created from now on.
+    env: { ...processEnvironment(toolchain), CLICOLOR_FORCE: '1', CMAKE_COLOR_DIAGNOSTICS: 'ON' },
     windowsHide: true,
     detached: ownProcessGroup,
   });

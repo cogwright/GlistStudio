@@ -9,6 +9,12 @@ declare module '*.ico' {
   export default assetUrl;
 }
 
+// Codicons, as SVG markup.
+declare module '@vscode/codicons/src/icons/*.svg' {
+  const markup: string;
+  export default markup;
+}
+
 interface GlistProjectInfo {
   root: string;
   name: string;

@@ -20,7 +20,7 @@ const config: ForgeConfig = {
     icon: './assets/glistengine',
     // A plain name for the Linux binary, which the AppImage launcher runs.
     executableName: 'gliststudio',
-    extraResource: ['./assets/glistengine.ico', './assets/glistengine.png', './glistapp-template'],
+    extraResource: ['./assets/glistengine.ico', './assets/glistengine.png', './glistapp-template', './THIRD_PARTY_NOTICES.md'],
     // Ad-hoc, until there is a Developer ID. Signing here, after the two halves
     // of a universal build are merged, also keeps the fuses plugin from
     // signing only the arm64 half, which the merge rejects. The hardened

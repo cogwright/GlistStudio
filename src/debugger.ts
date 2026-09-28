@@ -1,6 +1,7 @@
 // eslint-disable-next-line import/no-unresolved
 import * as monaco from 'monaco-editor/editor/editor.api';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import { icon } from './icons';
 import { t } from './localization';
 import { baseName, pathUri, uriPath } from './paths';
 
@@ -404,7 +405,7 @@ export class Debugger {
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'debug-remove';
-      remove.textContent = '×';
+      remove.append(icon('close'));
       remove.title = t('removeBreakpoint');
       remove.addEventListener('click', () => {
         const uri = pathUri(file.path).toString();
@@ -443,7 +444,8 @@ export class Debugger {
     row.style.paddingLeft = `${6 + depth * 12}px`;
     row.title = type;
     const arrow = document.createElement('span');
-    arrow.className = `tree-arrow${reference ? '' : ' is-file'}`;
+    arrow.className = 'tree-arrow';
+    if (reference) arrow.append(icon('chevron-right'));
     const label = document.createElement('span');
     label.className = 'debug-name';
     label.textContent = name;
