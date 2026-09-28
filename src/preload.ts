@@ -16,3 +16,7 @@ Object.entries(eventChannels).forEach(([method, channel]) => {
 });
 
 contextBridge.exposeInMainWorld('glistAPI', api);
+
+window.addEventListener('DOMContentLoaded', () => {
+  document.documentElement.dataset.windowControls = process.platform === 'darwin' ? 'left' : 'right';
+});

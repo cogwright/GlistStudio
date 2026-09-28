@@ -37,7 +37,8 @@ const registerIpcHandlers = (): void => {
     const window = BrowserWindow.fromWebContents(event.sender);
     nativeTheme.themeSource = theme;
     window?.setBackgroundColor(theme === 'light' ? '#ffffff' : '#1e1e1e');
-    window?.setTitleBarOverlay({
+    // macOS draws its own window buttons and has no overlay to recolor.
+    if (process.platform !== 'darwin') window?.setTitleBarOverlay({
       color: theme === 'light' ? '#f5f5f5' : '#181818',
       symbolColor: theme === 'light' ? '#333333' : '#cccccc',
       height: 35,
@@ -71,6 +72,7 @@ const createWindow = (): void => {
       ? path.join(process.resourcesPath, 'glistengine.ico')
       : path.join(app.getAppPath(), 'assets', 'glistengine.ico'),
     titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 12, y: 10 },
     titleBarOverlay: {
       color: '#181818',
       symbolColor: '#cccccc',
