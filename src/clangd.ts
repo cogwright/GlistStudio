@@ -178,6 +178,8 @@ export class ClangdClient {
                 snippetSupport: true, documentationFormat: ['markdown', 'plaintext'], labelDetailsSupport: true,
               },
               contextSupport: true,
+              // A clangd extension: completing members after '.' on a pointer, with an edit to '->'.
+              editsNearCursor: true,
             },
             hover: { contentFormat: ['markdown', 'plaintext'] },
             signatureHelp: {
@@ -440,6 +442,12 @@ export class ClangdClient {
             const edit = item.textEdit;
             let range: monaco.IRange | monaco.languages.CompletionItemRanges = wordRange;
             if (edit) range = 'range' in edit ? toRange(edit.range) : { insert: toRange(edit.insert), replace: toRange(edit.replace) };
+            // Monaco filters on the text from the start of the edit, which for
+            // '.' to '->' includes the '.', so lead the filter text with it.
+            const start = monaco.Range.getStartPosition('insert' in range ? range.insert : range);
+            const lead = start.column < word.startColumn ? model.getValueInRange({
+              startLineNumber: start.lineNumber, startColumn: start.column, endLineNumber: position.lineNumber, endColumn: word.startColumn,
+            }) : '';
             return {
               label: item.labelDetails
                 ? { label: item.label, detail: item.labelDetails.detail, description: item.labelDetails.description }
@@ -451,7 +459,7 @@ export class ClangdClient {
               insertTextRules: item.insertTextFormat === 2
                 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
               range,
-              filterText: item.filterText,
+              filterText: `${lead}${item.filterText ?? item.label}`,
               sortText: item.sortText,
               preselect: item.preselect,
               commitCharacters: item.commitCharacters,
