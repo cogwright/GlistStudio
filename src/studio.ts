@@ -71,6 +71,7 @@ const messages = {
     clangdNoDatabase: 'clangd: build once so it can find the engine headers.',
     unsavedChanges: 'Some files have unsaved changes.', saveAndClose: 'Save and Close',
     closeWithoutSaving: 'Close Without Saving', cancel: 'Cancel',
+    terminalMissing: 'No terminal was found. Set the TERMINAL environment variable to the one you use.',
   },
   tr: {
     noProject: 'Önce bir Glist projesi açın.', invalidName: 'Geçerli bir dosya veya klasör adı girin.',
@@ -96,6 +97,7 @@ const messages = {
     clangdNoDatabase: 'clangd: motor başlıklarını bulabilmesi için projeyi bir kez derleyin.',
     unsavedChanges: 'Bazı dosyalarda kaydedilmemiş değişiklikler var.', saveAndClose: 'Kaydet ve Kapat',
     closeWithoutSaving: 'Kaydetmeden Kapat', cancel: 'İptal',
+    terminalMissing: 'Terminal bulunamadı. Kullandığınız terminali TERMINAL ortam değişkeniyle belirtin.',
   },
 } as const;
 
@@ -292,18 +294,27 @@ const showInSystemExplorer = async (entryPath: string): Promise<void> => {
   else host.showItemInFolder(safePath);
 };
 
+// Linux has no single terminal; $TERMINAL is how tiling setups name theirs.
+const terminals = (directory: string): Array<[string, string[]]> => {
+  if (process.platform === 'win32') return [['cmd.exe', ['/K']]];
+  if (process.platform === 'darwin') return [['open', ['-a', 'Terminal', directory]]];
+  return [process.env.TERMINAL, 'x-terminal-emulator', 'gnome-terminal', 'konsole', 'kitty', 'alacritty', 'foot', 'xterm']
+    .filter((command): command is string => Boolean(command))
+    .map((command): [string, string[]] => [command, []]);
+};
+
 const openCommandPrompt = async (entryPath: string): Promise<void> => {
-  if (process.platform !== 'win32') return;
   const safePath = await assertExistingPathInProject(entryPath);
   const directory = (await fs.stat(safePath)).isDirectory() ? safePath : path.dirname(safePath);
-  const child = spawn('cmd.exe', ['/K'], {
-    cwd: directory, detached: true, stdio: 'ignore', windowsHide: false,
-  });
-  await new Promise<void>((resolve, reject) => {
-    child.once('spawn', () => resolve());
-    child.once('error', reject);
-  });
-  child.unref();
+  for (const [command, args] of terminals(directory)) {
+    const child = spawn(command, args, { cwd: directory, detached: true, stdio: 'ignore', windowsHide: false });
+    const started = await new Promise<boolean>((resolve) => {
+      child.once('spawn', () => resolve(true));
+      child.once('error', () => resolve(false));
+    });
+    if (started) { child.unref(); return; }
+  }
+  throw new Error(msg('terminalMissing'));
 };
 
 const createProjectFromTemplate = async (

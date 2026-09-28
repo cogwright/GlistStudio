@@ -4,7 +4,8 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 import appIconUrl from '../assets/glistengine.ico';
 import { ClangdClient } from './clangd';
-import { baseName, isWithin, joinPath, pathUri, setHostPlatform, uriPath } from './paths';
+import { setHostPlatform } from './host';
+import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isMac, primaryKey, shortcutLabel } from './shortcuts';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
 import './index.css';
@@ -120,7 +121,10 @@ const changeZoom = (direction: -1 | 1): void => {
 
 applyLanguage(getLanguage());
 void window.glistAPI.setLanguage(getLanguage());
-void window.glistAPI.getPlatform().then(setHostPlatform);
+void window.glistAPI.getPlatform().then((platform) => {
+  setHostPlatform(platform);
+  applyLanguage(getLanguage());
+});
 setZoom(zoomPercentage);
 
 const refreshLanguage = (): void => {

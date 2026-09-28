@@ -1,3 +1,4 @@
+import { getHostPlatform } from './host';
 import { shortcutLabel } from './shortcuts';
 
 export type Language = 'en' | 'tr';
@@ -98,6 +99,41 @@ const tr: Record<TranslationKey, string> = {
 
 const dictionaries = { en, tr };
 
+type Wording = Partial<Record<TranslationKey, string>>;
+
+// Names the host gives its trash, file manager and terminal; the dictionaries
+// above use the Windows ones.
+const hostWording: Record<string, Record<Language, Wording>> = {
+  darwin: {
+    en: {
+      delete: 'Move to Trash', deleteTitle: 'Move Selected Item to Trash', movedToTrash: 'Moved to Trash',
+      confirmDeleteFile: 'Move this file to the Trash?',
+      confirmDeleteFolder: 'Move this folder and all its contents to the Trash?',
+      systemExplorer: 'Finder', commandPrompt: 'Terminal',
+    },
+    tr: {
+      delete: 'Çöp Sepeti’ne Taşı', deleteTitle: 'Seçili Öğeyi Çöp Sepeti’ne Taşı', movedToTrash: 'Çöp Sepeti’ne taşındı',
+      confirmDeleteFile: 'Bu dosya Çöp Sepeti’ne taşınsın mı?',
+      confirmDeleteFolder: 'Bu klasör ve içindekiler Çöp Sepeti’ne taşınsın mı?',
+      systemExplorer: 'Finder', commandPrompt: 'Terminal',
+    },
+  },
+  linux: {
+    en: {
+      delete: 'Move to Trash', deleteTitle: 'Move Selected Item to Trash', movedToTrash: 'Moved to Trash',
+      confirmDeleteFile: 'Move this file to the Trash?',
+      confirmDeleteFolder: 'Move this folder and all its contents to the Trash?',
+      systemExplorer: 'File Manager', commandPrompt: 'Terminal',
+    },
+    tr: {
+      delete: 'Çöp Kutusu’na Taşı', deleteTitle: 'Seçili Öğeyi Çöp Kutusu’na Taşı', movedToTrash: 'Çöp Kutusu’na taşındı',
+      confirmDeleteFile: 'Bu dosya Çöp Kutusu’na taşınsın mı?',
+      confirmDeleteFolder: 'Bu klasör ve içindekiler Çöp Kutusu’na taşınsın mı?',
+      systemExplorer: 'Dosya Yöneticisi', commandPrompt: 'Terminal',
+    },
+  },
+};
+
 export const savedLanguage = (): Language => {
   try { return window.localStorage.getItem('glist-studio-language') === 'tr' ? 'tr' : 'en'; }
   catch { return 'en'; }
@@ -106,7 +142,8 @@ export const savedLanguage = (): Language => {
 let language: Language = savedLanguage();
 
 export const getLanguage = (): Language => language;
-export const t = (key: TranslationKey): string => dictionaries[language][key];
+export const t = (key: TranslationKey): string =>
+  hostWording[getHostPlatform()]?.[language][key] ?? dictionaries[language][key];
 
 export const applyLanguage = (next: Language): void => {
   language = next;

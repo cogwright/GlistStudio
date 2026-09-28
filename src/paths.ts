@@ -1,14 +1,11 @@
 // eslint-disable-next-line import/no-unresolved
 import { Uri } from 'monaco-editor/editor/editor.api';
+import { getHostPlatform } from './host';
 
 // Paths on the host, as seen by the renderer. The host can run another OS than
 // the browser showing it, so nothing here asks the browser for its platform.
 
 const windowsPath = /^([a-zA-Z]:[\\/]|\\\\)/;
-let hostPlatform = 'win32';
-
-export const setHostPlatform = (platform: string): void => { hostPlatform = platform; };
-export const getHostPlatform = (): string => hostPlatform;
 
 export const baseName = (hostPath: string): string => hostPath.split(/[\\/]/).pop() ?? hostPath;
 
@@ -29,7 +26,7 @@ export const uriPath = (uri: Uri): string => {
 export const isWithin = (hostPath: string, entryPath: string): boolean => {
   const normalize = (value: string): string => {
     const slashes = value.replace(/\\/g, '/').replace(/\/+$/, '');
-    return hostPlatform === 'linux' ? slashes : slashes.toLowerCase();
+    return getHostPlatform() === 'linux' ? slashes : slashes.toLowerCase();
   };
   const candidate = normalize(hostPath);
   const entry = normalize(entryPath);
