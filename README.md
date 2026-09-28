@@ -7,15 +7,15 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 ## Features
 
 - Project explorer with file and folder operations, context menus, and copy/paste
-- Tabbed C/C++ editor powered by Monaco
+- Tabbed C/C++ editor powered by Monaco, which also highlights CMake files
 - C++ code intelligence from clangd: diagnostics, completion, hover, signature help, go to definition, references, rename, quick fixes, formatting, outline, and header/source switching (Alt+O)
-- Save, build, run, and stop commands with live output
+- Save, build, run, and stop commands with live output, colored as the compiler colors it, where file locations open the file at that line
 - A debugger: breakpoints, stepping, variables, the call stack, and values on hover, through lldb-dap or GDB
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - C++ class generation with matching header and source files
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
 - English and Turkish interface languages (English by default)
-- Themes for the whole studio: Glist, Gruvbox, Solarized, Dracula, Nord, One Dark, Monokai and Tokyo Night, plus VS Code color themes imported from their `.json` files
+- Themes for the whole studio: Glist, Gruvbox, Solarized, Dracula, Nord, One Dark, Monokai and Tokyo Night, plus VS Code color themes imported from their `.json` files, and a choice of code and interface fonts
 
 ## C++ code intelligence
 
@@ -36,6 +36,8 @@ The debugger is an external program that speaks the Debug Adapter Protocol:
 ## Themes
 
 Settings shows every theme as a small preview; picking one recolors the interface and the editor at once. To add a theme made for VS Code, choose Import a Theme File and pick its `.json` (in a VS Code extension it sits under `themes/`). Its interface colors and code colors are translated, and it stays in the list until removed.
+
+Under Fonts, the code font, its size and the interface font can be picked from a list or typed in, for any font installed on the computer.
 
 ## Development
 
@@ -95,6 +97,10 @@ Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which build
 - `src/web/` and `scripts/web.ts`: Browser version of the API and the server behind `npm run web`
 - `src/themes.ts` and `src/appearance.ts`: Built-in themes, VS Code theme import, and the theme picker
 - `src/debug-adapters.ts` and `src/debugger.ts`: Finding a debug adapter, and the debugger client and its view
+- `src/cmake-language.ts`: CMake syntax highlighting
+- `src/output-format.ts`: Colors and file links in the Output panel
+- `src/fonts.ts`: Font settings
+- `src/icons.ts` and `src/file-icons.ts`: Interface icons (Codicons) and file icons (Seti); see `THIRD_PARTY_NOTICES.md`
 - `src/renderer.ts`: Editor and interface behavior
 - `src/index.html` and `src/index.css`: Interface structure and styling
 - `src/localization.ts`: English and Turkish interface text
