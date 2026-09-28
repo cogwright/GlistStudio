@@ -1296,6 +1296,9 @@ window.glistAPI.onBuildStatus((status) => {
   isBuildRunning = status.running; setProcessStatus(status.label, status.running); updateButtons();
 });
 window.glistAPI.onRunOutput((text) => appendOutput(text));
+window.glistAPI.onSaveAndClose(async () => {
+  if (await saveProjectFiles()) window.close();
+});
 window.glistAPI.onRunStatus((status) => {
   isRunRunning = status.running;
   const suffix = status.exitCode !== undefined ? ` · ${t('exit')} ${status.exitCode}` : '';

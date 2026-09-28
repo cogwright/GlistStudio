@@ -44,4 +44,5 @@ export const eventChannels: Record<EventMethod, string> = {
   onRunStatus: 'run:status',
   onClangdMessage: 'clangd:message',
   onClangdStatus: 'clangd:status',
+  onSaveAndClose: 'app:save-and-close',
 };

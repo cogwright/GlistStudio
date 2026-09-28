@@ -69,6 +69,8 @@ const messages = {
     copyIntoSelf: 'A folder cannot be copied into itself or one of its subfolders.',
     clangdMissing: 'clangd could not be started, so C++ code intelligence is off',
     clangdNoDatabase: 'clangd: build once so it can find the engine headers.',
+    unsavedChanges: 'Some files have unsaved changes.', saveAndClose: 'Save and Close',
+    closeWithoutSaving: 'Close Without Saving', cancel: 'Cancel',
   },
   tr: {
     noProject: 'Önce bir Glist projesi açın.', invalidName: 'Geçerli bir dosya veya klasör adı girin.',
@@ -92,6 +94,8 @@ const messages = {
     copyIntoSelf: 'Bir klasör kendi içine veya alt klasörlerinden birine kopyalanamaz.',
     clangdMissing: 'clangd başlatılamadı, C++ kod zekâsı kapalı',
     clangdNoDatabase: 'clangd: motor başlıklarını bulabilmesi için projeyi bir kez derleyin.',
+    unsavedChanges: 'Bazı dosyalarda kaydedilmemiş değişiklikler var.', saveAndClose: 'Kaydet ve Kapat',
+    closeWithoutSaving: 'Kaydetmeden Kapat', cancel: 'İptal',
   },
 } as const;
 

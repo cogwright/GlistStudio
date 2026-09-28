@@ -64,5 +64,6 @@ interface Window {
     onRunStatus(callback: (status: { running: boolean; exitCode?: number }) => void): () => void;
     onClangdMessage(callback: (message: unknown) => void): () => void;
     onClangdStatus(callback: (status: GlistClangdStatus) => void): () => void;
+    onSaveAndClose(callback: () => void): () => void;
   };
 }
