@@ -15,6 +15,7 @@ export interface StudioHost {
   showItemInFolder(entryPath: string): void;
   openPath(entryPath: string): Promise<unknown>;
   templateRoot: string;
+  projectsDirectory: string;
 }
 
 interface FileEntry {
@@ -38,7 +39,6 @@ type AppLanguage = 'en' | 'tr';
 type ProjectTemplate = 'GlistApp' | 'GlistConsoleApp' | 'GlistGUIApp';
 
 const templateNames = new Set<ProjectTemplate>(['GlistApp', 'GlistConsoleApp', 'GlistGUIApp']);
-export const projectsDirectory = 'C:\\dev\\glist\\myglistapps';
 let language: AppLanguage = 'en';
 
 const messages = {
@@ -298,9 +298,9 @@ const createProjectFromTemplate = async (
   if (!templateNames.has(templateName)) throw new Error(msg('invalidTemplate'));
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(projectName)) throw new Error(msg('invalidName'));
   const source = path.join(host.templateRoot, templateName);
-  const target = path.join(projectsDirectory, projectName);
+  const target = path.join(host.projectsDirectory, projectName);
   if (existsSync(target)) throw new Error(msg('projectExists'));
-  await fs.mkdir(projectsDirectory, { recursive: true });
+  await fs.mkdir(host.projectsDirectory, { recursive: true });
   await fs.cp(source, target, { recursive: true, force: false, errorOnExist: true });
   const eclipsePath = path.join(target, '.project');
   if (existsSync(eclipsePath)) {

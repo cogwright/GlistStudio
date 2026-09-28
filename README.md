@@ -38,6 +38,18 @@ npm run lint
 npx tsc --noEmit
 ```
 
+Use the IDE from a browser, for example on another machine:
+
+```powershell
+npm run web
+```
+
+This builds the renderer as a web page, runs the same backend in Node, and prints a link with an access token. The server listens on `127.0.0.1:8787`; reach it from elsewhere through a tunnel or reverse proxy. Anyone with the link can build and run code on the host, so share it accordingly. Open Project asks for a folder path on the host, and showing items in the system explorer is not available. Settings come from environment variables:
+
+- `GLIST_STUDIO_PORT`: port to listen on
+- `GLIST_STUDIO_PROJECTS`: folder for new projects, and the default when opening one
+- `GLIST_STUDIO_TOKEN`: a fixed access token instead of a new one per run
+
 Build a Windows application folder:
 
 ```powershell
@@ -51,6 +63,7 @@ npm run package
 - `src/api.ts`: The renderer API and the IPC channel for each call
 - `src/preload.ts`: Restricted bridge between the renderer and main process
 - `src/clangd-process.ts` and `src/clangd.ts`: clangd process and the language client that feeds Monaco
+- `src/web/` and `scripts/web.ts`: Browser version of the API and the server behind `npm run web`
 - `src/renderer.ts`: Editor and interface behavior
 - `src/index.html` and `src/index.css`: Interface structure and styling
 - `src/localization.ts`: English and Turkish interface text
