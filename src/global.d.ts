@@ -47,6 +47,7 @@ interface Window {
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
     getProjectsDirectory(): Promise<string>;
+    getPlatform(): Promise<string>;
     writeFile(filePath: string, contents: string): Promise<boolean>;
     buildProject(): Promise<GlistProcessResult>;
     runProject(): Promise<GlistProcessResult>;

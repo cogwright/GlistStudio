@@ -4,6 +4,7 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 import appIconUrl from '../assets/glistengine.ico';
 import { ClangdClient } from './clangd';
+import { baseName, isWithin, joinPath, pathUri, setHostPlatform, uriPath } from './paths';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
 import './index.css';
 
@@ -115,6 +116,7 @@ const changeZoom = (direction: -1 | 1): void => {
 
 applyLanguage(getLanguage());
 void window.glistAPI.setLanguage(getLanguage());
+void window.glistAPI.getPlatform().then(setHostPlatform);
 setZoom(zoomPercentage);
 
 const refreshLanguage = (): void => {
@@ -408,12 +410,10 @@ tabsHost.addEventListener('drop', (event) => {
 });
 
 const isProjectPath = (filePath: string): boolean =>
-  Boolean(activeProject && pathBelongsToEntry(filePath, activeProject.root));
+  Boolean(activeProject && isWithin(filePath, activeProject.root));
 
 const readContents = (filePath: string): Promise<string> => (isProjectPath(filePath)
   ? window.glistAPI.readFile(filePath) : window.glistAPI.readWorkspaceFile(filePath));
-
-const fileName = (filePath: string): string => filePath.split(/[\\/]/).pop() ?? filePath;
 
 // clangd and the explorer may spell one path differently, the URI does not.
 const findOpenFile = (uri: monaco.Uri): OpenFile | undefined =>
@@ -421,7 +421,7 @@ const findOpenFile = (uri: monaco.Uri): OpenFile | undefined =>
 
 // Gives a file a tab without switching to it. Files outside the project open read-only.
 const loadFile = async (filePath: string, name: string): Promise<OpenFile> => {
-  const uri = monaco.Uri.file(filePath);
+  const uri = pathUri(filePath);
   let file = findOpenFile(uri);
   if (file) return file;
   const contents = await readContents(filePath);
@@ -448,7 +448,8 @@ const openFile = async (filePath: string, name: string): Promise<boolean> => {
 };
 
 const revealLocation = async (uri: monaco.Uri, selection?: monaco.IRange | monaco.IPosition): Promise<boolean> => {
-  if (!(await openFile(uri.fsPath, fileName(uri.fsPath)))) return false;
+  const filePath = uriPath(uri);
+  if (!(await openFile(filePath, baseName(filePath)))) return false;
   if (!selection) return true;
   if ('startLineNumber' in selection) {
     editor.setSelection(selection);
@@ -465,15 +466,17 @@ const clangd = new ClangdClient({
     const existing = monaco.editor.getModel(uri);
     if (existing) return existing;
     try {
-      const contents = await readContents(uri.fsPath);
-      return monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(uri.fsPath).id, uri);
+      const filePath = uriPath(uri);
+      const contents = await readContents(filePath);
+      return monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
     } catch {
       return null;
     }
   },
   openForEdit: async (uri) => {
-    if (!isProjectPath(uri.fsPath)) return null;
-    try { return (await loadFile(uri.fsPath, fileName(uri.fsPath))).model; } catch { return null; }
+    const filePath = uriPath(uri);
+    if (!isProjectPath(filePath)) return null;
+    try { return (await loadFile(filePath, baseName(filePath))).model; } catch { return null; }
   },
   log: (text) => appendOutput(`\n${text}\n`),
   status: (text, busy) => {
@@ -673,7 +676,7 @@ const revealTargetDirectory = (directory: string): void => {
 const errorText = (error: unknown): string => error instanceof Error ? error.message : String(error);
 
 const openCmakeFile = (): OpenFile | undefined =>
-  activeProject ? openFiles.get(`${activeProject.root}\\CMakeLists.txt`) : undefined;
+  activeProject ? findOpenFile(pathUri(joinPath(activeProject.root, 'CMakeLists.txt'))) : undefined;
 
 const saveOpenCmake = async (): Promise<void> => {
   const file = openCmakeFile();
@@ -757,7 +760,7 @@ const pasteCopiedEntry = async (): Promise<void> => {
   }
   try {
     for (const file of openFiles.values()) {
-      if (pathBelongsToEntry(file.path, copiedEntryPath) && isDirty(file)) {
+      if (isWithin(file.path, copiedEntryPath) && isDirty(file)) {
         await window.glistAPI.writeFile(file.path, file.model.getValue());
         file.savedValue = file.model.getValue();
       }
@@ -786,16 +789,10 @@ const openCommandPrompt = async (): Promise<void> => {
   catch (error) { appendOutput(`\n${t('showFailed')}: ${errorText(error)}\n`, 'error'); }
 };
 
-const pathBelongsToEntry = (filePath: string, entryPath: string): boolean => {
-  const normalizedFile = filePath.replace(/\//g, '\\').toLowerCase();
-  const normalizedEntry = entryPath.replace(/\//g, '\\').toLowerCase();
-  return normalizedFile === normalizedEntry || normalizedFile.startsWith(`${normalizedEntry}\\`);
-};
-
 const closeFilesUnderEntry = (entryPath: string): void => {
   let activeWasDeleted = false;
   openFiles.forEach((file, filePath) => {
-    if (!pathBelongsToEntry(filePath, entryPath)) return;
+    if (!isWithin(filePath, entryPath)) return;
     if (activeFilePath === filePath) activeWasDeleted = true;
     file.model.dispose();
     openFiles.delete(filePath);
@@ -817,10 +814,10 @@ const closeFilesUnderEntry = (entryPath: string): void => {
 const relocateOpenFiles = (oldPath: string, newPath: string): void => {
   const relocated: OpenFile[] = [];
   openFiles.forEach((file, filePath) => {
-    if (!pathBelongsToEntry(filePath, oldPath)) return;
+    if (!isWithin(filePath, oldPath)) return;
     const suffix = filePath.slice(oldPath.length);
     const nextPath = `${newPath}${suffix}`;
-    const nextModel = monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, monaco.Uri.file(nextPath));
+    const nextModel = monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, pathUri(nextPath));
     file.model.dispose();
     openFiles.delete(filePath);
     const renamedFile: OpenFile = { path: nextPath, name: nextPath.split(/[\\/]/).pop() ?? file.name, model: nextModel, savedValue: nextModel.getValue(), readOnly: false };
@@ -842,14 +839,14 @@ const renameSelectedEntry = async (): Promise<void> => {
   try {
     await saveOpenCmake();
     for (const file of openFiles.values()) {
-      if (pathBelongsToEntry(file.path, entry.path) && isDirty(file)) {
+      if (isWithin(file.path, entry.path) && isDirty(file)) {
         await window.glistAPI.writeFile(file.path, file.model.getValue());
         file.savedValue = file.model.getValue();
       }
     }
     const nextPath = await window.glistAPI.renameEntry(entry.path, newName);
     relocateOpenFiles(entry.path, nextPath);
-    if (copiedEntryPath && pathBelongsToEntry(copiedEntryPath, entry.path)) {
+    if (copiedEntryPath && isWithin(copiedEntryPath, entry.path)) {
       copiedEntryPath = `${nextPath}${copiedEntryPath.slice(entry.path.length)}`;
     }
     await reloadOpenCmake();
@@ -866,12 +863,12 @@ const deleteSelectedEntry = async (): Promise<void> => {
   const entry = selectedEntry;
   const description = `“${entry.name}”: ${t(entry.isDirectory ? 'confirmDeleteFolder' : 'confirmDeleteFile')}`;
   if (!window.confirm(description)) return;
-  if ([...openFiles.values()].some((file) => pathBelongsToEntry(file.path, entry.path) && isDirty(file))
+  if ([...openFiles.values()].some((file) => isWithin(file.path, entry.path) && isDirty(file))
     && !window.confirm(t('confirmDirtyDelete'))) return;
   try {
-    if (entry.path !== `${activeProject?.root}\\CMakeLists.txt`) await saveOpenCmake();
+    if (activeProject && !isWithin(entry.path, joinPath(activeProject.root, 'CMakeLists.txt'))) await saveOpenCmake();
     await window.glistAPI.deleteEntry(entry.path);
-    if (copiedEntryPath && pathBelongsToEntry(copiedEntryPath, entry.path)) copiedEntryPath = null;
+    if (copiedEntryPath && isWithin(copiedEntryPath, entry.path)) copiedEntryPath = null;
     closeFilesUnderEntry(entry.path);
     await reloadOpenCmake();
     await loadProjectTree();

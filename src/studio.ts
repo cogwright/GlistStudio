@@ -579,6 +579,7 @@ export const studio: Handlers = {
   readFile: readProjectFile,
   readWorkspaceFile,
   getProjectsDirectory: projectsDirectory,
+  getPlatform: () => process.platform,
   writeFile: writeProjectFile,
   buildProject: configureAndBuild,
   runProject,

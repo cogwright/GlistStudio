@@ -24,6 +24,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   readFile: 'project:read-file',
   readWorkspaceFile: 'project:read-workspace-file',
   getProjectsDirectory: 'project:projects-directory',
+  getPlatform: 'app:platform',
   writeFile: 'project:write-file',
   buildProject: 'project:build',
   runProject: 'project:run',

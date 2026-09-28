@@ -6,6 +6,7 @@ import type {
   WorkDoneProgressBegin, WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit,
 } from 'vscode-languageserver-protocol';
 import { t } from './localization';
+import { baseName, pathUri } from './paths';
 
 export interface ClangdHost {
   // A model for reading, created without a tab when needed. Null if the file cannot be read.
@@ -159,14 +160,14 @@ export class ClangdClient {
     if (!status.running) return;
     this.restartAfterBuild = !status.compileCommands;
     this.host.status('clangd', true);
-    const rootUri = monaco.Uri.file(rootPath).toString();
+    const rootUri = pathUri(rootPath).toString();
     let result: InitializeResult;
     try {
       result = await this.request<InitializeResult>('initialize', {
         processId: null,
         clientInfo: { name: 'Glist Studio' },
         rootUri,
-        workspaceFolders: [{ uri: rootUri, name: rootPath.split(/[\\/]/).pop() ?? rootPath }],
+        workspaceFolders: [{ uri: rootUri, name: baseName(rootPath) }],
         capabilities: {
           general: { positionEncodings: ['utf-16'] },
           window: { workDoneProgress: true },
