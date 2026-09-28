@@ -681,16 +681,22 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
   return container;
 };
 
+// Only the latest load fills the tree, so overlapping loads and project
+// switches cannot mix their rows.
+let treeGeneration = 0;
+
 const loadProjectTree = async (): Promise<void> => {
   if (!activeProject) return;
-  fileTree.textContent = '';
+  treeGeneration += 1;
+  const generation = treeGeneration;
   clearTreeSelection();
+  let rows: Array<HTMLElement | string>;
   try {
-    const entries = await window.glistAPI.listDirectory(activeProject.root);
-    fileTree.append(...entries.map((entry) => createTreeRow(entry, 0)));
+    rows = (await window.glistAPI.listDirectory(activeProject.root)).map((entry) => createTreeRow(entry, 0));
   } catch (error) {
-    fileTree.textContent = `${t('treeFailed')}: ${error instanceof Error ? error.message : String(error)}`;
+    rows = [`${t('treeFailed')}: ${errorText(error)}`];
   }
+  if (generation === treeGeneration) fileTree.replaceChildren(...rows);
 };
 
 const directoryForNewEntry = (): string | null => {
