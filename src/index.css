@@ -480,11 +480,11 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .studio-dialog input:focus, .studio-dialog select:focus { border-color: var(--ui-accent); }
 .settings-section + .settings-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--ui-border-strong); }
 .theme-settings { padding-right: 0; padding-bottom: 0; padding-left: 0; border: 0; }
-.theme-settings legend { padding: 0; color: var(--ui-fg); font-size: 12px; }
+.theme-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 /* --page-zoom: the browser build's CSS zoom, under which viewport units do not shrink. */
 #settings-dialog { width: min(640px, calc((100vw - 32px) / var(--page-zoom, 1))); max-height: calc((100vh - 48px) / var(--page-zoom, 1)); overflow-y: auto; }
 .font-settings { padding: 0; border: 0; }
-.font-settings legend { padding: 0; color: var(--ui-fg); font-size: 12px; }
+.font-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .font-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 14px; margin-top: 10px; }
 .studio-dialog .font-grid label { margin: 0; }
 .studio-dialog .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; cursor: pointer; }
@@ -518,7 +518,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .zoom-indicator { font-size: 11px; font-variant-numeric: tabular-nums; }
 .zoom-indicator[hidden] { display: none; }
 .agent-settings { padding: 0; border: 0; }
-.agent-settings legend { padding: 0; color: var(--ui-fg); font-size: 12px; }
+.agent-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .agent-options { display: grid; gap: 6px; margin-top: 12px; }
 .agent-option { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 34px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: var(--ui-bg); }
 .studio-dialog .agent-toggle { display: flex; min-width: 0; align-items: center; gap: 10px; margin: 0; font-size: 13px; cursor: pointer; }
