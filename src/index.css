@@ -311,9 +311,46 @@ html[data-window-controls="right"] .topbar { padding-right: 138px; }
 .empty-tree-action { display: flex; width: 100%; height: 30px; align-items: center; justify-content: flex-start; gap: 8px; padding: 0 10px; border: 1px solid transparent; border-radius: 4px; color: var(--ui-fg); background: transparent; cursor: pointer; text-align: left; }
 .empty-tree-action svg { width: 15px; height: 15px; flex: 0 0 auto; fill: currentColor; }
 .empty-tree-action.primary { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
-.empty-tree-action.primary:hover { border-color: var(--ui-accent-hover); background: var(--ui-accent-hover); }
+.empty-tree-action.primary:hover:not(:disabled) { border-color: var(--ui-accent-hover); background: var(--ui-accent-hover); }
+.empty-tree-action:disabled { cursor: default; opacity: .5; }
 .empty-tree-action.secondary { border-color: var(--ui-border-strong); color: var(--ui-fg); background: var(--ui-inset); }
 .empty-tree-action.secondary:hover { color: var(--ui-fg-strong); background: var(--ui-hover); }
+
+.sidebar-view { height: 100%; }
+.sidebar-view[hidden] { display: none; }
+.activity-icon { width: 22px !important; height: 22px !important; }
+
+.debug-view { overflow-y: auto; }
+.debug-start { padding: 10px 14px 12px; }
+.debug-status { margin: 10px 0 0; color: var(--ui-fg-muted); font-size: 11px; line-height: 1.45; user-select: text; }
+.debug-section { border-top: 1px solid var(--ui-border); }
+.debug-section summary { padding: 7px 12px; color: var(--ui-fg); font-size: 11px; font-weight: 700; list-style: none; cursor: pointer; }
+.debug-section summary::-webkit-details-marker { display: none; }
+.debug-section summary::before { display: inline-block; width: 5px; height: 5px; margin: 0 8px 2px 0; border-right: 1.4px solid currentColor; border-top: 1.4px solid currentColor; content: ''; transform: rotate(45deg); }
+.debug-section[open] summary::before { transform: rotate(135deg); }
+.debug-section > div { padding-bottom: 6px; }
+.debug-row { display: flex; width: 100%; min-height: 23px; align-items: center; gap: 8px; padding: 0 8px 0 24px; border: 0; color: var(--ui-fg); background: transparent; font-size: 12px; text-align: left; cursor: pointer; }
+.debug-row:hover { background: var(--ui-hover); }
+.debug-row.active { color: var(--ui-fg-strong); background: var(--ui-selected); }
+.debug-row.muted { color: var(--ui-fg-muted); }
+.debug-name { flex: 1; min-width: 0; overflow: hidden; padding: 0; border: 0; color: inherit; background: transparent; font: inherit; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.debug-detail { flex: 0 0 auto; color: var(--ui-fg-muted); font-size: 11px; }
+.debug-remove { display: grid; width: 20px; height: 20px; padding: 0; place-items: center; border: 0; border-radius: 4px; color: var(--ui-fg-muted); background: transparent; font-size: 14px; cursor: pointer; }
+.debug-remove:hover { color: #fff; background: var(--ui-danger-strong); }
+.debug-variable { display: grid; width: 100%; min-height: 22px; grid-template-columns: 14px auto minmax(0, 1fr); align-items: center; gap: 5px; padding-right: 8px; border: 0; color: var(--ui-fg); background: transparent; font: 12px/1.4 "Cascadia Code", Consolas, monospace; text-align: left; cursor: default; }
+.debug-variable:hover { background: var(--ui-hover); }
+.debug-variable .debug-name { flex: none; color: var(--ui-fg-strong); cursor: inherit; }
+.debug-value { overflow: hidden; color: var(--ui-fg-muted); text-overflow: ellipsis; white-space: nowrap; }
+.debug-empty { margin: 2px 12px 8px 24px; color: var(--ui-fg-muted); font-size: 11px; line-height: 1.45; }
+.debug-controls { display: flex; gap: 2px; }
+.debug-controls[hidden] { display: none; }
+
+/* Breakpoints and the current line, in the editor's glyph margin. */
+.debug-breakpoint::before, .debug-breakpoint-hint::before { display: block; width: 10px; height: 10px; margin: 6px 0 0 5px; border-radius: 50%; background: #e51400; content: ''; }
+.debug-breakpoint.unverified::before { border: 1.5px solid #9a9a9a; background: transparent; }
+.debug-breakpoint-hint::before { background: color-mix(in srgb, #e51400 45%, transparent); }
+.debug-current-line { background: color-mix(in srgb, #ffcc00 22%, transparent); }
+.debug-current-arrow::before { display: block; width: 12px; height: 12px; margin: 5px 0 0 4px; background: #ffcc00; clip-path: polygon(0 20%, 55% 20%, 55% 0, 100% 50%, 55% 100%, 55% 80%, 0 80%); content: ''; }
 
 .vertical-resizer, .horizontal-resizer { position: relative; z-index: 20; background: transparent; }
 .vertical-resizer { cursor: col-resize; }

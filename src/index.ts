@@ -3,7 +3,8 @@ import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { invokeChannels, type Handler, type InvokeMethod } from './api';
 import {
-  defaultProjectsDirectory, initializeStudio, msg, openProjectAt, projectsDirectory, stopClangd, stopProcesses, studio,
+  defaultProjectsDirectory, initializeStudio, msg, openProjectAt, projectsDirectory, stopClangd, stopDebugging, stopProcesses,
+  studio,
 } from './studio';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
@@ -145,7 +146,7 @@ const createWindow = (): void => {
       app.quit();
     }, 1000);
   });
-  createdWindow.on('closed', () => { stopProcesses(); stopClangd(); mainWindow = null; });
+  createdWindow.on('closed', () => { stopProcesses(); stopClangd(); stopDebugging(); mainWindow = null; });
 };
 
 app.whenReady().then(() => { registerIpcHandlers(); createWindow(); });
