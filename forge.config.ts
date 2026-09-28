@@ -49,7 +49,10 @@ const config: ForgeConfig = {
     // Single-architecture files that both halves have, which the merge would otherwise refuse.
     osxUniversal: { x64ArchFiles: '**/node_modules/node-pty/prebuilds/**' },
   },
-  rebuildConfig: {},
+  // node-pty ships prebuilt N-API binaries, which copyNodePty packages. Building
+  // it from source needs a C++ toolchain node-gyp recognizes, which the Windows
+  // runners' Visual Studio 18 is not.
+  rebuildConfig: { ignoreModules: ['node-pty'] },
   hooks: {
     packageAfterCopy: async (_config, buildPath, _electronVersion, platform, arch) => copyNodePty(buildPath, platform, arch),
   },
