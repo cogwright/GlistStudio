@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { hasGlistSourceLists, synchronizeCmake } from '../src/cmake.ts';
+import { hasGlistSourceLists, pluginsInCmake, synchronizeCmake } from '../src/cmake.ts';
 
 const template = readFileSync(new URL('../glistapp-template/GlistApp/CMakeLists.txt', import.meta.url), 'utf8');
 assert.equal(hasGlistSourceLists(template), true);
@@ -42,5 +42,18 @@ const oneCaseRemoved = synchronizeCmake(twoCases, { kind: 'remove', path: 'src/F
 assert.doesNotMatch(oneCaseRemoved, /\$\{APP_DIR\}\/src\/Foo\.cpp/);
 assert.match(oneCaseRemoved, /\$\{APP_DIR\}\/src\/foo\.cpp/);
 assert.doesNotMatch(synchronizeCmake(twoCases, { kind: 'remove', path: 'src/Foo.cpp' }), /src\/foo\.cpp/i);
+
+// Plugins an app uses, as the explorer lists them.
+assert.deepEqual(pluginsInCmake(template), []);
+assert.deepEqual(pluginsInCmake(`
+set(PLUGINS gipBox2D "gipImGui";gipNetworking) # the physics and the UI
+# set(PLUGINS gipCommentedOut)
+if(ANDROID)
+  list(APPEND PLUGINS gipAndroid gipBox2D)
+endif()
+list(APPEND OTHER_LIST notAPlugin)
+set(PLUGINS_DIR \${TOP_DIR}/glistplugins)
+set(PLUGINS \${EXTRA} ../escape)
+`), ['gipBox2D', 'gipImGui', 'gipNetworking', 'gipAndroid']);
 
 console.log('CMake synchronization tests passed.');

@@ -14,7 +14,7 @@ import { registerCmakeLanguage } from './cmake-language';
 import { codeFontStack, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
 import { formatOutput, newOutputStyle } from './output-format';
 import { fileIconElement } from './file-icons';
-import { icon, placeIcons } from './icons';
+import { icon, placeIcons, type IconName } from './icons';
 import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
@@ -582,6 +582,7 @@ const saveFile = async (file: OpenFile): Promise<void> => {
   file.savedVersion = version;
   clangd.saved(file.model);
   refreshDirtyMark(file);
+  if (baseName(file.path) === 'CMakeLists.txt' && isProjectPath(file.path)) void refreshDependencies();
 };
 
 const openFile = async (filePath: string, name: string): Promise<boolean> => {
@@ -766,7 +767,15 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
   contextMenu.style.top = `${Math.max(0, Math.min(event.clientY, window.innerHeight - height - 6)) / zoom}px`;
 };
 
-const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => {
+// Rows of the engine and plugins are read-only: they list through the
+// workspace, offer no file operations, and open files read-only.
+interface TreeRowOptions {
+  readOnly?: boolean;
+  // Instead of the folder icon, for the engine and plugins.
+  icon?: IconName;
+}
+
+const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOptions = {}): HTMLDivElement => {
   const container = document.createElement('div');
   const row = document.createElement('button');
   row.type = 'button';
@@ -778,13 +787,19 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
   let kind = fileIconElement(entry.name);
   if (entry.isDirectory) {
     kind = document.createElement('span');
-    kind.className = 'file-icon folder';
-    kind.append(icon('folder'));
+    kind.className = `file-icon ${options.icon ? 'dependency' : 'folder'}`;
+    kind.append(icon(options.icon ?? 'folder'));
   }
   const label = document.createElement('span'); label.className = 'tree-label'; label.textContent = entry.name;
   row.append(arrow, kind, label);
   container.append(row);
-  row.addEventListener('contextmenu', (event) => showContextMenu(event, entry, row));
+  const select = (): void => {
+    if (!options.readOnly) { selectTreeEntry(entry, row); return; }
+    // Selecting one would aim New File and Delete at the engine.
+    clearTreeSelection();
+    row.classList.add('selected');
+  };
+  if (!options.readOnly) row.addEventListener('contextmenu', (event) => showContextMenu(event, entry, row));
 
   if (entry.isDirectory) {
     const children = document.createElement('div');
@@ -794,8 +809,8 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
       if (!loaded) {
         loaded = true;
         try {
-          const entries = await window.glistAPI.listDirectory(entry.path);
-          children.append(...entries.map((child) => createTreeRow(child, depth + 1)));
+          const entries = await (options.readOnly ? window.glistAPI.listWorkspaceDirectory(entry.path) : window.glistAPI.listDirectory(entry.path));
+          children.append(...entries.map((child) => createTreeRow(child, depth + 1, { readOnly: options.readOnly })));
         } catch (error) {
           children.textContent = error instanceof Error ? error.message : String(error);
         }
@@ -803,11 +818,11 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
     };
     const showExpanded = (): void => {
       arrow.classList.toggle('expanded', !children.hidden);
-      kind.replaceChildren(icon(children.hidden ? 'folder' : 'folder-opened'));
+      if (!options.icon) kind.replaceChildren(icon(children.hidden ? 'folder' : 'folder-opened'));
     };
     if (!children.hidden) { showExpanded(); void loadChildren(); }
     row.addEventListener('click', async () => {
-      selectTreeEntry(entry, row);
+      select();
       children.hidden = !children.hidden;
       if (children.hidden) expandedDirectories.delete(entry.path);
       else expandedDirectories.add(entry.path);
@@ -815,13 +830,64 @@ const createTreeRow = (entry: GlistFileEntry, depth: number): HTMLDivElement => 
       if (!children.hidden) await loadChildren();
     });
   } else {
-    row.addEventListener('click', () => selectTreeEntry(entry, row));
+    row.addEventListener('click', select);
     row.addEventListener('dblclick', () => {
-      selectTreeEntry(entry, row);
+      select();
       void openFile(entry.path, entry.name);
     });
   }
   return container;
+};
+
+// Below the project, like CLion's External Libraries: the engine and the
+// plugins the app's CMakeLists.txt names, to browse and read. Collapsed on
+// request, and kept so per project.
+const dependencySection = async (projectRoot: string): Promise<HTMLElement | null> => {
+  let dependencies: GlistDependency[];
+  try { dependencies = await window.glistAPI.listDependencies(); } catch { return null; }
+  const section = document.createElement('div');
+  section.className = 'tree-section';
+  const title = document.createElement('button');
+  title.type = 'button';
+  title.className = 'tree-row tree-section-title';
+  const arrow = document.createElement('span');
+  arrow.className = 'tree-arrow';
+  arrow.append(icon('chevron-right'));
+  const label = document.createElement('span');
+  label.className = 'tree-label';
+  label.textContent = t('dependencies');
+  title.append(arrow, label);
+  const children = document.createElement('div');
+  children.className = 'tree-children';
+  const collapsedKey = `${projectRoot}#dependencies-collapsed`;
+  children.hidden = expandedDirectories.has(collapsedKey);
+  arrow.classList.toggle('expanded', !children.hidden);
+  title.addEventListener('click', () => {
+    children.hidden = !children.hidden;
+    if (children.hidden) expandedDirectories.add(collapsedKey); else expandedDirectories.delete(collapsedKey);
+    arrow.classList.toggle('expanded', !children.hidden);
+  });
+  children.append(...dependencies.map((dependency) => {
+    const dependencyIcon: IconName = dependency.kind === 'engine' ? 'package' : 'extensions';
+    if (dependency.exists) {
+      return createTreeRow({ name: dependency.name, path: dependency.path, isDirectory: true }, 0, { readOnly: true, icon: dependencyIcon });
+    }
+    // Named in CMakeLists.txt but not downloaded: the build will stop on it.
+    const missing = document.createElement('div');
+    missing.className = 'tree-row missing';
+    missing.style.paddingLeft = '10px';
+    missing.title = t(dependency.kind === 'engine' ? 'engineMissing' : 'pluginMissing');
+    const warningIcon = document.createElement('span');
+    warningIcon.className = 'file-icon dependency';
+    warningIcon.append(icon('warning'));
+    const name = document.createElement('span');
+    name.className = 'tree-label';
+    name.textContent = dependency.name;
+    missing.append(document.createElement('span'), warningIcon, name);
+    return missing;
+  }));
+  section.append(title, children);
+  return section;
 };
 
 // Only the latest load fills the tree, so overlapping loads and project
@@ -839,7 +905,17 @@ const loadProjectTree = async (): Promise<void> => {
   } catch (error) {
     rows = [`${t('treeFailed')}: ${errorText(error)}`];
   }
+  const dependencies = await dependencySection(activeProject.root);
+  if (dependencies) rows.push(dependencies);
   if (generation === treeGeneration) fileTree.replaceChildren(...rows);
+};
+
+// The plugins come from CMakeLists.txt, so saving it may change them.
+const refreshDependencies = async (): Promise<void> => {
+  if (!activeProject) return;
+  const section = await dependencySection(activeProject.root);
+  const current = fileTree.querySelector('.tree-section');
+  if (section && current) current.replaceWith(section);
 };
 
 const directoryForNewEntry = (): string | null => {

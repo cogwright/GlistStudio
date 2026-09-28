@@ -15,6 +15,15 @@ declare module '@vscode/codicons/src/icons/*.svg' {
   export default markup;
 }
 
+// The engine or a plugin an app is built with. A plugin the app names may be
+// missing from glistplugins.
+interface GlistDependency {
+  name: string;
+  kind: 'engine' | 'plugin';
+  path: string;
+  exists: boolean;
+}
+
 interface GlistProjectInfo {
   root: string;
   name: string;
@@ -78,6 +87,8 @@ interface Window {
     openCommandPrompt(entryPath: string): Promise<void>;
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
+    listDependencies(): Promise<GlistDependency[]>;
+    listWorkspaceDirectory(directoryPath: string): Promise<GlistFileEntry[]>;
     getProjectsDirectory(): Promise<string>;
     getPlatform(): Promise<string>;
     writeFile(filePath: string, contents: string): Promise<boolean>;

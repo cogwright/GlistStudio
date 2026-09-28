@@ -10,17 +10,20 @@ import debugStepInto from '@vscode/codicons/src/icons/debug-step-into.svg';
 import debugStepOut from '@vscode/codicons/src/icons/debug-step-out.svg';
 import debugStepOver from '@vscode/codicons/src/icons/debug-step-over.svg';
 import debugStop from '@vscode/codicons/src/icons/debug-stop.svg';
+import extensions from '@vscode/codicons/src/icons/extensions.svg';
 import files from '@vscode/codicons/src/icons/files.svg';
 import folder from '@vscode/codicons/src/icons/folder.svg';
 import folderOpened from '@vscode/codicons/src/icons/folder-opened.svg';
 import newFile from '@vscode/codicons/src/icons/new-file.svg';
 import newFolder from '@vscode/codicons/src/icons/new-folder.svg';
+import packageIcon from '@vscode/codicons/src/icons/package.svg';
 import play from '@vscode/codicons/src/icons/play.svg';
 import refresh from '@vscode/codicons/src/icons/refresh.svg';
 import save from '@vscode/codicons/src/icons/save.svg';
 import settingsGear from '@vscode/codicons/src/icons/settings-gear.svg';
 import tools from '@vscode/codicons/src/icons/tools.svg';
 import trash from '@vscode/codicons/src/icons/trash.svg';
+import warning from '@vscode/codicons/src/icons/warning.svg';
 import zoomIn from '@vscode/codicons/src/icons/zoom-in.svg';
 import zoomOut from '@vscode/codicons/src/icons/zoom-out.svg';
 
@@ -39,17 +42,20 @@ const icons = {
   'debug-step-out': debugStepOut,
   'debug-step-over': debugStepOver,
   'debug-stop': debugStop,
+  extensions,
   files,
   folder,
   'folder-opened': folderOpened,
   'new-file': newFile,
   'new-folder': newFolder,
+  package: packageIcon,
   play,
   refresh,
   save,
   'settings-gear': settingsGear,
   tools,
   trash,
+  warning,
   'zoom-in': zoomIn,
   'zoom-out': zoomOut,
 };

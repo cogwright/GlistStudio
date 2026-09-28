@@ -8,7 +8,7 @@ import type { Handlers } from './api';
 import { findDebugAdapter } from './debug-adapters';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
-import { synchronizeCmake, type CmakeChange } from './cmake';
+import { pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
 
 // What the backend needs from whoever hosts it: the Electron main process or
 // the browser preview server.
@@ -172,8 +172,11 @@ const assertExistingPathInProject = async (candidatePath: string): Promise<strin
   return safePath;
 };
 
-const listDirectory = async (directoryPath: string): Promise<FileEntry[]> => {
-  const entries = await fs.readdir(await assertExistingPathInProject(directoryPath), { withFileTypes: true });
+const listDirectory = async (directoryPath: string): Promise<FileEntry[]> =>
+  listEntries(await assertExistingPathInProject(directoryPath), directoryPath);
+
+const listEntries = async (safeDirectory: string, directoryPath: string): Promise<FileEntry[]> => {
+  const entries = await fs.readdir(safeDirectory, { withFileTypes: true });
   return entries
     .filter((entry) => !entry.isDirectory() || !ignoredDirectories.has(entry.name))
     .map((entry) => ({
@@ -624,6 +627,30 @@ const readWorkspaceFile = async (filePath: string): Promise<string> => {
   return readTextFile(realFile);
 };
 
+// What an app is built with, for the explorer: the engine, and the plugins its
+// CMakeLists.txt names, from the Glist workspace it reaches as ../..
+const listDependencies = async (): Promise<GlistDependency[]> => {
+  const projectRoot = requireProjectRoot();
+  const workspaceRoot = findAncestorWith(projectRoot, path.join('GlistEngine', 'engine')) ?? path.resolve(projectRoot, '..', '..');
+  const cmake = await fs.readFile(path.join(projectRoot, 'CMakeLists.txt'), 'utf8').catch(() => '');
+  const engine = path.join(workspaceRoot, 'GlistEngine');
+  return [
+    { name: 'GlistEngine', kind: 'engine' as const, path: engine, exists: existsSync(engine) },
+    ...pluginsInCmake(cmake).map((name) => {
+      const plugin = path.join(workspaceRoot, 'glistplugins', name);
+      return { name, kind: 'plugin' as const, path: plugin, exists: existsSync(plugin) };
+    }),
+  ];
+};
+
+// Folders of the engine and plugins, to browse; like their files, never written.
+const listWorkspaceDirectory = async (directoryPath: string): Promise<FileEntry[]> => {
+  const workspaceRoot = findAncestorWith(requireProjectRoot(), path.join('GlistEngine', 'engine'));
+  const realDirectory = await fs.realpath(path.resolve(directoryPath));
+  if (!workspaceRoot || !isInside(await fs.realpath(workspaceRoot), realDirectory)) throw new Error(msg('outsideProject'));
+  return listEntries(realDirectory, directoryPath);
+};
+
 const writeProjectFile = async (filePath: string, contents: string): Promise<boolean> => {
   // A file deleted behind the editor's back is written again, into a folder that still exists.
   const target = existsSync(filePath)
@@ -798,6 +825,8 @@ export const studio: Handlers = {
   openCommandPrompt,
   readFile: readProjectFile,
   readWorkspaceFile,
+  listDependencies,
+  listWorkspaceDirectory,
   getProjectsDirectory: projectsDirectory,
   getPlatform: () => process.platform,
   writeFile: writeProjectFile,

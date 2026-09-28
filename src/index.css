@@ -324,6 +324,12 @@ html[data-window-controls="right"] .topbar { padding-right: 138px; }
 .file-icon.grey { color: var(--file-grey); }
 .file-icon.git { color: var(--file-git); }
 .tree-label { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.tree-section { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--ui-border); }
+.tree-row.tree-section-title { grid-template-columns: 14px minmax(0, 1fr); padding-left: 10px; }
+.tree-section-title .tree-label { color: var(--ui-fg-muted); font-size: 11px; font-weight: 700; }
+.file-icon.dependency { color: var(--ui-accent); }
+.tree-row.missing { color: var(--ui-fg-muted); cursor: help; }
+.tree-row.missing .file-icon { color: var(--ui-warning); }
 
 .empty-tree { padding: 18px 14px; color: var(--ui-fg-muted); font-size: 12px; }
 .empty-tree-title { margin: 0; color: var(--ui-fg); font-weight: 600; line-height: 1.4; }

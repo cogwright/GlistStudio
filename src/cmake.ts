@@ -88,3 +88,16 @@ export const synchronizeCmake = (cmake: string, change: CmakeChange, caseSensiti
   });
   return updated;
 };
+
+// The plugins an app uses, from set(PLUGINS ...) and list(APPEND PLUGINS ...)
+// in its CMakeLists.txt, in order. The engine looks for each in glistplugins.
+export const pluginsInCmake = (cmake: string): string[] => {
+  const code = cmake.replace(/#[^\n]*/g, '');
+  const names: string[] = [];
+  for (const match of code.matchAll(/\b(?:set\s*\(\s*PLUGINS|list\s*\(\s*APPEND\s+PLUGINS)\b([^)]*)\)/gi)) {
+    match[1].split(/[\s;"]+/)
+      .filter((name) => /^[A-Za-z0-9_.-]+$/.test(name) && name !== '..' && !names.includes(name))
+      .forEach((name) => names.push(name));
+  }
+  return names;
+};
