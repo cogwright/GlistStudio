@@ -143,6 +143,18 @@
         </form>
       </dialog>
 
+      <dialog id="open-project-dialog" class="studio-dialog project-picker">
+        <h2 data-i18n="openProject">Open Project</h2>
+        <input id="project-filter" type="search" autocomplete="off" placeholder="Search projects" data-i18n-placeholder="searchProjects" />
+        <div id="project-list" class="project-list" role="listbox" aria-labelledby="project-filter"></div>
+        <p id="project-list-empty" class="dialog-hint" data-i18n="noProjects" hidden>No projects here yet. Make one with New Project, or browse for a folder.</p>
+        <div class="dialog-actions">
+          <button type="button" id="project-picker-browse" class="dialog-action-left" data-i18n="browse">Browse...</button>
+          <button type="button" id="project-picker-new" data-i18n="newProject">New Project</button>
+          <button type="button" id="project-picker-cancel" data-i18n="cancel">Cancel</button>
+        </div>
+      </dialog>
+
       <dialog id="new-project-dialog" class="studio-dialog">
         <form method="dialog" id="new-project-form">
           <h2 data-i18n="newProject">New Project</h2>

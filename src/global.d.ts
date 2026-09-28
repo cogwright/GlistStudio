@@ -24,6 +24,15 @@ interface GlistDependency {
   exists: boolean;
 }
 
+// A project Open Project offers; lastOpened is when the studio last opened it.
+interface GlistProjectSummary {
+  root: string;
+  name: string;
+  // The root as shown, such as ~/dev/glist/myglistapps/MyApp.
+  location: string;
+  lastOpened?: number;
+}
+
 interface GlistProjectInfo {
   root: string;
   name: string;
@@ -90,6 +99,8 @@ interface Window {
     listDependencies(): Promise<GlistDependency[]>;
     listWorkspaceDirectory(directoryPath: string): Promise<GlistFileEntry[]>;
     getProjectsDirectory(): Promise<string>;
+    listProjects(): Promise<GlistProjectSummary[]>;
+    openProjectPath(root: string): Promise<GlistProjectInfo>;
     getPlatform(): Promise<string>;
     writeFile(filePath: string, contents: string): Promise<boolean>;
     buildProject(): Promise<GlistProcessResult>;

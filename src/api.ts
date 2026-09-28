@@ -26,6 +26,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   listDependencies: 'project:dependencies',
   listWorkspaceDirectory: 'project:list-workspace-directory',
   getProjectsDirectory: 'project:projects-directory',
+  listProjects: 'project:list-projects',
+  openProjectPath: 'project:open-path',
   getPlatform: 'app:platform',
   writeFile: 'project:write-file',
   buildProject: 'project:build',
