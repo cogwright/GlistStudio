@@ -1,3 +1,5 @@
+import { shortcutLabel } from './shortcuts';
+
 export type Language = 'en' | 'tr';
 
 const en = {
@@ -116,10 +118,11 @@ export const applyLanguage = (next: Language): void => {
   });
   document.querySelectorAll<HTMLElement>('[data-i18n-title]').forEach((node) => {
     const key = node.dataset.i18nTitle as TranslationKey;
-    if (key in en) node.title = t(key);
+    if (key in en) node.title = shortcutLabel(t(key));
   });
   document.querySelectorAll<HTMLElement>('[data-i18n-aria-label]').forEach((node) => {
     const key = node.dataset.i18nAriaLabel as TranslationKey;
     if (key in en) node.setAttribute('aria-label', t(key));
   });
+  document.querySelectorAll('kbd').forEach((node) => { node.textContent = shortcutLabel(node.textContent ?? ''); });
 };

@@ -5,6 +5,7 @@ import * as monaco from 'monaco-editor/editor/editor.api';
 import appIconUrl from '../assets/glistengine.ico';
 import { ClangdClient } from './clangd';
 import { baseName, isWithin, joinPath, pathUri, setHostPlatform, uriPath } from './paths';
+import { isMac, primaryKey, shortcutLabel } from './shortcuts';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
 import './index.css';
 
@@ -1046,7 +1047,7 @@ const configureMenus = (): void => {
       ],
       edit: [
         item(t('undo'), () => editor.trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFilePath }),
-        item(t('redo'), () => editor.trigger('menu', 'redo', null), { shortcut: 'Ctrl+Y', disabled: !activeFilePath }),
+        item(t('redo'), () => editor.trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFilePath }),
         { kind: 'separator' },
         item(t('find'), () => editor.getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFilePath }),
       ],
@@ -1130,7 +1131,7 @@ const configureMenus = (): void => {
         metadata.append(hint);
       }
       const shortcut = document.createElement('kbd');
-      shortcut.textContent = entry.shortcut ?? '';
+      shortcut.textContent = shortcutLabel(entry.shortcut ?? '');
       metadata.append(shortcut);
       itemButton.append(label, metadata);
       itemButton.addEventListener('click', () => { closeMenu(); entry.action(); });
@@ -1262,25 +1263,25 @@ window.addEventListener('resize', closeContextMenu);
 
 window.addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase();
-  if (event.ctrlKey && !event.altKey && (key === '+' || key === '=')) { event.preventDefault(); changeZoom(1); return; }
-  if (event.ctrlKey && !event.altKey && key === '-') { event.preventDefault(); changeZoom(-1); return; }
-  if (event.ctrlKey && !event.altKey && key === '0') { event.preventDefault(); setZoom(defaultZoom); return; }
+  if (primaryKey(event) && !event.altKey && (key === '+' || key === '=')) { event.preventDefault(); changeZoom(1); return; }
+  if (primaryKey(event) && !event.altKey && key === '-') { event.preventDefault(); changeZoom(-1); return; }
+  if (primaryKey(event) && !event.altKey && key === '0') { event.preventDefault(); setZoom(defaultZoom); return; }
 }, { capture: true });
 
 window.addEventListener('keydown', (event) => {
   if (inputDialog.open || projectDialog.open || settingsDialog.open) return;
   if (event.key === 'Escape') closeContextMenu();
-  if (event.ctrlKey && event.key.toLowerCase() === 'c' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntry(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'v' && copiedEntryPath && fileTree.contains(document.activeElement)) { event.preventDefault(); pasteCopiedEntry(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 's') { event.preventDefault(); saveActiveFile(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'o') { event.preventDefault(); chooseProject(); }
-  else if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); buildProject(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'b') { event.preventDefault(); toggleExplorer(); }
-  else if (event.ctrlKey && event.key.toLowerCase() === 'j') { event.preventDefault(); toggleOutput(); }
+  if (primaryKey(event) && event.key.toLowerCase() === 'c' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntry(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'v' && copiedEntryPath && fileTree.contains(document.activeElement)) { event.preventDefault(); pasteCopiedEntry(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 's') { event.preventDefault(); saveActiveFile(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'o') { event.preventDefault(); chooseProject(); }
+  else if (primaryKey(event) && event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); buildProject(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'b') { event.preventDefault(); toggleExplorer(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'j') { event.preventDefault(); toggleOutput(); }
   else if (event.shiftKey && event.key === 'F5') { event.preventDefault(); stopProject(); }
   else if (event.key === 'F5') { event.preventDefault(); runProject(); }
   else if (event.key === 'F2' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); renameSelectedEntry(); }
-  else if (event.key === 'Delete' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntry(); }
+  else if ((event.key === 'Delete' || (isMac && event.metaKey && event.key === 'Backspace')) && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntry(); }
 });
 window.addEventListener('wheel', (event) => {
   if (!event.ctrlKey || event.deltaY === 0) return;
