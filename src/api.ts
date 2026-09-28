@@ -42,6 +42,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   writeTerminal: 'terminal:write',
   resizeTerminal: 'terminal:resize',
   stopTerminal: 'terminal:stop',
+  listAgents: 'agents:list',
+  installAgent: 'agents:install',
 };
 
 export const eventChannels: Record<EventMethod, string> = {
@@ -56,4 +58,5 @@ export const eventChannels: Record<EventMethod, string> = {
   onDebugStatus: 'debug:status',
   onTerminalData: 'terminal:data',
   onTerminalExit: 'terminal:exit',
+  onAgentInstall: 'agent:install',
 };

@@ -14,6 +14,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 - Save, build, run, and stop commands with live output, colored as the compiler colors it, where file locations open the file at that line
 - A debugger: breakpoints, stepping, variables, the call stack, and values on hover, through lldb-dap or GDB
 - A terminal next to the output, in the project folder, with the same tools on `PATH` as builds
+- Coding agents (Claude Code, Codex, Gemini CLI, Antigravity) in an Agent tab, off until turned on, and installable into the Glist folder
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - C++ class generation with matching header and source files
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
@@ -46,6 +47,22 @@ The Terminal tab beside Output runs a shell in the project folder: PowerShell on
 ![The Terminal tab under the editor, with cmake, clang and ls run in the project folder](docs/images/terminal.png)
 
 Copy and paste work as elsewhere: Cmd+C and Cmd+V on macOS; on Windows and Linux, Ctrl+C copies selected text and otherwise stops the running command, and Ctrl+V pastes. The studio's own shortcuts, such as F5 to run and Ctrl+S to save, keep working while the terminal has focus.
+
+## Agents
+
+Settings, under Agents, lists the coding agents the studio knows: Claude Code, Codex, Gemini CLI and Antigravity. All are off until turned on. Turning one on adds an Agent tab beside Terminal, which runs it in the open project with the same tools on `PATH` as builds; with more than one on, the tab has a list to pick from.
+
+The studio finds an agent installed from Settings, then the Gemini CLI in Glist's zbin (ready on Windows, and on macOS once zbin's `gemini.sh` has run), then one on `PATH`. Install puts Claude Code, Codex or Gemini CLI into the Glist folder, and changes nothing else on the computer:
+
+- It downloads Node.js 24 from nodejs.org into `GlistStudio/runtime`, and checks it against the SHA-256 nodejs.org publishes.
+- It installs the agent with that Node.js's npm into `GlistStudio/agents`, with npm's cache kept there and removed afterwards.
+- An agent installed this way keeps its settings and sign-in in `GlistStudio/agents/config`.
+
+Antigravity's own installer sets it up for the whole computer, so the studio only finds it.
+
+## Glist Studio's folder
+
+Glist Studio keeps everything of its own in the Glist folder, next to the engine and the projects: `~/dev/glist/GlistStudio` on macOS and Linux, `C:\dev\glist\GlistStudio` on Windows. Settings are in `data`, and agents installed from Settings in `agents` and `runtime`. Settings saved by an earlier version move there on first start.
 
 ## Themes
 
@@ -118,7 +135,8 @@ Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which build
 - `src/cmake-language.ts`: CMake syntax highlighting
 - `src/output-format.ts`: Colors and file links in the Output panel
 - `src/fonts.ts`: Font settings
-- `src/terminal.ts`: The terminal tab (xterm.js); the shell behind it runs through node-pty in `src/studio.ts`
+- `src/terminal.ts`: The Terminal and Agent tabs (xterm.js); the programs behind them run through node-pty in `src/studio.ts`
+- `src/agents.ts` and `src/agent-settings.ts`: Finding and installing agents, and their rows in Settings
 - `src/icons.ts` and `src/file-icons.ts`: Interface icons (Codicons) and file icons (Seti); see `THIRD_PARTY_NOTICES.md`
 - `src/renderer.ts`: Editor and interface behavior
 - `src/index.html` and `src/index.css`: Interface structure and styling

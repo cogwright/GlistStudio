@@ -1,7 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-import { t } from './localization';
+import { t, type TranslationKey } from './localization';
 import { isMac, primaryKey } from './shortcuts';
 
 // Keys the studio uses, which reach it instead of the shell, as in VS Code:
@@ -12,8 +12,8 @@ const studioKey = (event: KeyboardEvent): boolean => {
   return primaryKey(event) && !event.altKey && ['s', 'o', 'b', 'j', '+', '=', '-', '0'].includes(event.key.toLowerCase());
 };
 
-// The Terminal tab: xterm.js showing a shell that the backend runs in the
-// project folder (startTerminal in studio.ts).
+// The Terminal and Agent tabs: xterm.js showing a shell, or an agent, that the
+// backend runs in the project folder (startTerminal in studio.ts).
 export class StudioTerminal {
   private readonly terminal: Terminal;
   private readonly fit = new FitAddon();
@@ -22,22 +22,29 @@ export class StudioTerminal {
   private starting: Promise<void> | null = null;
   private fontSize = 12;
   private scale = 1;
+  // The agent the agent session runs.
+  private agent?: GlistAgentId;
 
-  constructor(private readonly host: HTMLElement) {
+  constructor(
+    private readonly host: HTMLElement,
+    private readonly session: GlistTerminalSession,
+    private readonly exitedMessage: TranslationKey = 'terminalExited',
+  ) {
     this.terminal = new Terminal({ cursorBlink: true, scrollback: 5000 });
     this.terminal.loadAddon(this.fit);
     this.terminal.attachCustomKeyEventHandler((event) => this.handleKey(event));
     this.terminal.onData((data) => {
-      if (this.running) void window.glistAPI.writeTerminal(data);
+      if (this.running) void window.glistAPI.writeTerminal(this.session, data);
       else void this.start();
     });
     this.terminal.onResize(({ cols, rows }) => {
-      if (this.running) void window.glistAPI.resizeTerminal(cols, rows);
+      if (this.running) void window.glistAPI.resizeTerminal(this.session, cols, rows);
     });
-    window.glistAPI.onTerminalData((data) => this.terminal.write(data));
-    window.glistAPI.onTerminalExit((exitCode) => {
+    window.glistAPI.onTerminalData(({ session, data }) => { if (session === this.session) this.terminal.write(data); });
+    window.glistAPI.onTerminalExit(({ session, exitCode }) => {
+      if (session !== this.session) return;
       this.running = false;
-      this.terminal.write(`\r\n\x1b[2m${t('terminalExited')} ${exitCode}. ${t('terminalRestartHint')}\x1b[0m\r\n`);
+      this.terminal.write(`\r\n\x1b[2m${t(this.exitedMessage)} ${exitCode}. ${t('terminalRestartHint')}\x1b[0m\r\n`);
     });
     new ResizeObserver(() => this.fitToHost()).observe(host);
   }
@@ -66,6 +73,18 @@ export class StudioTerminal {
     if (this.running) void this.restart();
   }
 
+  // Runs another agent; a running one is ended first.
+  setAgent(agent: GlistAgentId | undefined): void {
+    if (agent === this.agent) return;
+    this.agent = agent;
+    if (this.running) void this.restart();
+  }
+
+  stop(): void {
+    this.running = false;
+    void window.glistAPI.stopTerminal(this.session);
+  }
+
   clear(): void {
     this.terminal.clear();
     this.terminal.focus();
@@ -91,7 +110,7 @@ export class StudioTerminal {
   private async start(): Promise<void> {
     if (this.starting) return this.starting;
     this.starting = (async () => {
-      const result = await window.glistAPI.startTerminal(this.terminal.cols, this.terminal.rows);
+      const result = await window.glistAPI.startTerminal(this.session, this.terminal.cols, this.terminal.rows, this.agent);
       this.running = result.success;
       if (!result.success) this.terminal.write(`\x1b[31m${result.message}\x1b[0m\r\n`);
     })();
