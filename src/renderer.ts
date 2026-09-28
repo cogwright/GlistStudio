@@ -19,6 +19,7 @@ import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isMac, primaryKey, shortcutLabel } from './shortcuts';
+import { setUpProjectPicker } from './project-picker';
 import { StudioTerminal } from './terminal';
 import { terminalTheme } from './themes';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
@@ -1148,14 +1149,33 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   debug.setProject(selected.root);
 };
 
-const chooseProject = async (): Promise<void> => {
-  if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
+const openProjectWith = async (open: () => Promise<GlistProjectInfo | null>): Promise<void> => {
   try {
-    const selected = await window.glistAPI.openProject();
+    const selected = await open();
     if (selected) await openSelectedProject(selected);
   } catch (error) {
     appendOutput(`\n${t('projectOpenFailed')}: ${errorText(error)}\n`, 'error');
   }
+};
+
+// Open Project lists the projects to pick from; Browse opens any other folder.
+const showProjectPicker = setUpProjectPicker({
+  dialog: element<HTMLDialogElement>('#open-project-dialog'),
+  filter: element<HTMLInputElement>('#project-filter'),
+  list: element<HTMLElement>('#project-list'),
+  empty: element<HTMLElement>('#project-list-empty'),
+  browse: element<HTMLButtonElement>('#project-picker-browse'),
+  create: element<HTMLButtonElement>('#project-picker-new'),
+  cancel: element<HTMLButtonElement>('#project-picker-cancel'),
+}, {
+  open: (root) => { void openProjectWith(() => window.glistAPI.openProjectPath(root)); },
+  browse: () => { void openProjectWith(() => window.glistAPI.openProject()); },
+  create: () => showNewProjectDialog(),
+});
+
+const chooseProject = async (): Promise<void> => {
+  if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
+  await showProjectPicker();
 };
 
 const showNewProjectDialog = (): void => {

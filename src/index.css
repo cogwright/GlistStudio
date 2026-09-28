@@ -512,6 +512,16 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .theme-import button { height: 28px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .theme-import button:hover { background: var(--ui-hover-strong); }
 .dialog-hint { margin: 10px 0 0; color: var(--ui-fg-muted); font-size: 11px; }
+#open-project-dialog { width: min(560px, calc((100vw - 32px) / var(--page-zoom, 1))); }
+.project-list { display: grid; max-height: min(420px, calc(55vh / var(--page-zoom, 1))); margin-top: 10px; overflow-y: auto; gap: 2px; }
+.project-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; grid-template-areas: "icon name time" "icon path path"; align-items: center; column-gap: 8px; row-gap: 1px; width: 100%; padding: 7px 10px; border: 0; border-radius: 5px; color: var(--ui-fg); background: transparent; text-align: left; cursor: pointer; }
+.project-item:hover, .project-item:focus-visible { outline: none; background: var(--ui-hover); }
+.project-item:focus-visible { box-shadow: inset 0 0 0 1px var(--ui-accent); }
+.project-item-icon { grid-area: icon; color: var(--file-folder); }
+.project-item-name { grid-area: name; overflow: hidden; color: var(--ui-fg-strong); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.project-item-time { grid-area: time; color: var(--ui-fg-muted); font-size: 11px; white-space: nowrap; }
+.project-item-path { grid-area: path; overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.dialog-actions .dialog-action-left { margin-right: auto; }
 .scale-row { display: flex; align-items: center; gap: 8px; }
 .studio-dialog .scale-row input[type="range"] { flex: 1; height: 24px; padding: 0; border: 0; background: transparent; accent-color: var(--ui-accent); cursor: pointer; }
 .scale-step { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }

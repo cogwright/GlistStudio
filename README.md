@@ -18,6 +18,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - C++ class generation with matching header and source files
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
+- Open Project lists the projects in `myglistapps` and the ones opened before, most recently opened first, with a search box
 - English and Turkish interface languages (English by default)
 - Themes for the whole studio: Glist, Gruvbox, Solarized, Dracula, Nord, One Dark, Monokai and Tokyo Night, plus VS Code color themes imported from their `.json` files, and a choice of code and interface fonts
 - A scale setting for the whole studio, up to 300% for projectors
@@ -62,7 +63,7 @@ Antigravity's own installer sets it up for the whole computer, so the studio onl
 
 ## Glist Studio's folder
 
-Glist Studio keeps everything of its own in the Glist folder, next to the engine and the projects: `~/dev/glist/GlistStudio` on macOS and Linux, `C:\dev\glist\GlistStudio` on Windows. Settings are in `data`, and agents installed from Settings in `agents` and `runtime`. Settings saved by an earlier version move there on first start.
+Glist Studio keeps everything of its own in the Glist folder, next to the engine and the projects: `~/dev/glist/GlistStudio` on macOS and Linux, `C:\dev\glist\GlistStudio` on Windows. Settings are in `data`, the projects opened recently in `recent-projects.json`, and agents installed from Settings in `agents` and `runtime`. Settings saved by an earlier version move there on first start.
 
 ## Themes
 

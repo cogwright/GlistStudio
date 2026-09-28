@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { existsSync, promises as fs } from 'node:fs';
+import { existsSync, promises as fs, type Dirent } from 'node:fs';
 import { availableParallelism, homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { IPty } from 'node-pty';
@@ -369,6 +369,7 @@ const createProjectFromTemplate = async (
     await fs.writeFile(eclipsePath, eclipse.replace(/<name>[^<]+<\/name>/, `<name>${projectName}</name>`), 'utf8');
   }
   activeProjectRoot = target;
+  await rememberProject(target).catch((): undefined => undefined);
   return { root: target, name: projectName, hasCMakeProject: true };
 };
 
@@ -597,10 +598,56 @@ export const stopProcesses = (): ProcessResult => {
   return { success: stopped, message: msg(stopped ? 'stopped' : 'nothingToStop') };
 };
 
+// Projects opened before, newest first, kept in Glist Studio's folder so both
+// the app and the browser build share them.
+interface RecentProject { root: string; openedAt: number }
+const recentProjectsFile = (): string => path.join(studioHome(), 'recent-projects.json');
+
+const readRecentProjects = async (): Promise<RecentProject[]> => {
+  try {
+    const saved = JSON.parse(await fs.readFile(recentProjectsFile(), 'utf8')) as unknown;
+    return Array.isArray(saved)
+      ? saved.filter((entry): entry is RecentProject => typeof entry?.root === 'string' && Number.isFinite(entry?.openedAt))
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const rememberProject = async (root: string): Promise<void> => {
+  const recent = [{ root, openedAt: Date.now() }, ...(await readRecentProjects()).filter((entry) => entry.root !== root)];
+  await fs.mkdir(studioHome(), { recursive: true });
+  await fs.writeFile(recentProjectsFile(), JSON.stringify(recent.slice(0, 50), null, 2), 'utf8');
+};
+
+// A path as people write it, with the home folder as ~ outside Windows.
+const shortPath = (target: string): string => (process.platform !== 'win32' && isInside(homedir(), target)
+  ? `~${target.slice(homedir().length)}` : target);
+
+// What Open Project offers: the projects in the workspace's myglistapps folder
+// and the ones opened before that still exist, most recently opened first,
+// then the rest by name.
+const listProjects = async (): Promise<GlistProjectSummary[]> => {
+  const recent = await readRecentProjects();
+  const openedAt = new Map(recent.map((entry) => [entry.root, entry.openedAt]));
+  const roots = new Set<string>();
+  const directory = projectsDirectory();
+  const entries = await fs.readdir(directory, { withFileTypes: true }).catch((): Dirent[] => []);
+  entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && existsSync(path.join(directory, entry.name, 'CMakeLists.txt')))
+    .forEach((entry) => roots.add(path.join(directory, entry.name)));
+  recent.filter((entry) => existsSync(entry.root)).forEach((entry) => roots.add(entry.root));
+  return [...roots]
+    .map((root) => ({ root, name: path.basename(root), location: shortPath(root), lastOpened: openedAt.get(root) }))
+    .sort((left, right) => (right.lastOpened ?? 0) - (left.lastOpened ?? 0)
+      || left.name.localeCompare(right.name, undefined, { sensitivity: 'base', numeric: true }));
+};
+
 export const openProjectAt = async (projectRoot: string): Promise<GlistProjectInfo> => {
   const root = path.resolve(projectRoot);
   if (!(await fs.stat(root)).isDirectory()) throw new Error(msg('folderRequired'));
   activeProjectRoot = root;
+  await rememberProject(root).catch((): undefined => undefined);
   return {
     root,
     name: path.basename(root),
@@ -828,6 +875,11 @@ export const studio: Handlers = {
   listDependencies,
   listWorkspaceDirectory,
   getProjectsDirectory: projectsDirectory,
+  listProjects,
+  openProjectPath: (root: unknown) => {
+    if (typeof root !== 'string') throw new Error(msg('folderRequired'));
+    return openProjectAt(root);
+  },
   getPlatform: () => process.platform,
   writeFile: writeProjectFile,
   buildProject: () => configureAndBuild('Release'),
