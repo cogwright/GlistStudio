@@ -21,6 +21,8 @@ import save from '@vscode/codicons/src/icons/save.svg';
 import settingsGear from '@vscode/codicons/src/icons/settings-gear.svg';
 import tools from '@vscode/codicons/src/icons/tools.svg';
 import trash from '@vscode/codicons/src/icons/trash.svg';
+import zoomIn from '@vscode/codicons/src/icons/zoom-in.svg';
+import zoomOut from '@vscode/codicons/src/icons/zoom-out.svg';
 
 // Interface icons: Codicons, the set VS Code uses (CC BY 4.0, see THIRD_PARTY_NOTICES.md).
 // They are inline SVG, so they take the color of the text around them.
@@ -48,6 +50,8 @@ const icons = {
   'settings-gear': settingsGear,
   tools,
   trash,
+  'zoom-in': zoomIn,
+  'zoom-out': zoomOut,
 };
 
 export type IconName = keyof typeof icons;

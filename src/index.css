@@ -403,8 +403,8 @@ html[data-window-controls="right"] .topbar { padding-right: 138px; }
 .shortcut-list { display: flex; margin-top: 18px; gap: 18px; color: var(--ui-fg-muted); font-size: 11px; }
 kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-strong); border-radius: 3px; color: var(--ui-fg-muted); background: var(--ui-raised); font: inherit; }
 
-.output-panel { min-height: 0; overflow: hidden; border-top: 1px solid var(--ui-border); background: var(--ui-chrome); }
-.output-heading { padding: 0 8px 0 12px; border-bottom: 1px solid var(--ui-border); }
+.output-panel { display: flex; min-height: 0; flex-direction: column; overflow: hidden; border-top: 1px solid var(--ui-border); background: var(--ui-chrome); }
+.output-heading { flex: 0 0 auto; padding: 0 8px 0 12px; border-bottom: 1px solid var(--ui-border); }
 .output-tabs, .output-tools { display: flex; height: 100%; align-items: center; gap: 7px; }
 .output-tab { position: relative; height: 100%; padding: 0 4px; border: 0; color: var(--ui-fg-muted); background: transparent; font-size: 11px; cursor: pointer; }
 .output-tab:hover { color: var(--ui-fg); }
@@ -417,10 +417,13 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .process-status.active i { background: var(--ui-warning); }
 .process-status.error { color: var(--ui-danger); }
 .process-status.error i { background: var(--ui-danger); }
-.output { height: calc(100% - 35px); margin: 0; overflow: auto; padding: 10px 14px 24px; color: var(--ui-fg); background: var(--ui-bg); font: var(--font-code-size)/1.55 var(--font-code); white-space: pre-wrap; }
+.output { flex: 1; min-height: 0; margin: 0; overflow: auto; padding: 10px 14px 24px; color: var(--ui-fg); background: var(--ui-bg); font: var(--font-code-size)/1.55 var(--font-code); white-space: pre-wrap; }
 
 /* ANSI colors in the output, in the theme's own colors. */
-.terminal-host { height: calc(100% - 35px); padding: 6px 0 2px 14px; background: var(--ui-bg); }
+/* xterm.js maps the mouse wrongly under the browser build's CSS zoom, so the
+   terminal is zoomed back to 1 there and gets a larger font instead
+   (StudioTerminal.setScale). --page-zoom is unset in Electron, which zooms natively. */
+.terminal-host { flex: 1; min-height: 0; padding: calc(6px * var(--page-zoom, 1)) 0 calc(2px * var(--page-zoom, 1)) calc(14px * var(--page-zoom, 1)); background: var(--ui-bg); zoom: calc(1 / var(--page-zoom, 1)); }
 .terminal-host[hidden], .heading-action[hidden] { display: none; }
 .terminal-host .xterm { height: 100%; }
 /* xterm.js paints its viewport black, and it can run a little past the last row. */
@@ -465,7 +468,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .context-group:hover > .context-submenu, .context-group:focus-within > .context-submenu, .context-group.expanded > .context-submenu { display: block; }
 .explorer-context-menu.submenu-left .context-submenu { right: calc(100% - 2px); left: auto; }
 
-.studio-dialog { width: min(440px, calc(100vw - 32px)); padding: 22px; border: 1px solid var(--ui-border-strong); border-radius: 8px; color: var(--ui-fg); background: var(--ui-raised); box-shadow: 0 16px 50px var(--ui-shadow); }
+.studio-dialog { width: min(440px, calc((100vw - 32px) / var(--page-zoom, 1))); padding: 22px; border: 1px solid var(--ui-border-strong); border-radius: 8px; color: var(--ui-fg); background: var(--ui-raised); box-shadow: 0 16px 50px var(--ui-shadow); }
 .studio-dialog::backdrop { background: #0008; }
 .studio-dialog form { display: flex; flex-direction: column; }
 .studio-dialog h2 { margin: 0 0 18px; color: var(--ui-fg-strong); font-size: 18px; font-weight: 500; }
@@ -475,14 +478,15 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .settings-section + .settings-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--ui-border-strong); }
 .theme-settings { padding-right: 0; padding-bottom: 0; padding-left: 0; border: 0; }
 .theme-settings legend { padding: 0; color: var(--ui-fg); font-size: 12px; }
-#settings-dialog { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; }
+/* --page-zoom: the browser build's CSS zoom, under which viewport units do not shrink. */
+#settings-dialog { width: min(640px, calc((100vw - 32px) / var(--page-zoom, 1))); max-height: calc((100vh - 48px) / var(--page-zoom, 1)); overflow-y: auto; }
 .font-settings { padding: 0; border: 0; }
 .font-settings legend { padding: 0; color: var(--ui-fg); font-size: 12px; }
 .font-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 14px; margin-top: 10px; }
 .studio-dialog .font-grid label { margin: 0; }
 .studio-dialog .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; cursor: pointer; }
 .studio-dialog .checkbox-row input { width: auto; height: auto; margin: 0; }
-.theme-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: min(360px, 50vh); margin-top: 10px; overflow-y: auto; padding: 2px; }
+.theme-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; max-height: min(360px, calc(50vh / var(--page-zoom, 1))); margin-top: 10px; overflow-y: auto; padding: 2px; }
 .studio-dialog .theme-card { position: relative; display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 8px; border: 1px solid var(--ui-border-strong); border-radius: 6px; cursor: pointer; }
 .theme-card:hover { background: var(--ui-hover); }
 .theme-card:has(input:checked) { border-color: var(--ui-accent); box-shadow: 0 0 0 1px var(--ui-accent); }
@@ -499,6 +503,17 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .theme-import button { height: 28px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .theme-import button:hover { background: var(--ui-hover-strong); }
 .dialog-hint { margin: 10px 0 0; color: var(--ui-fg-muted); font-size: 11px; }
+.scale-row { display: flex; align-items: center; gap: 8px; }
+.studio-dialog .scale-row input[type="range"] { flex: 1; height: 24px; padding: 0; border: 0; background: transparent; accent-color: var(--ui-accent); cursor: pointer; }
+.scale-step { display: grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; padding: 0; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.scale-step:hover:not(:disabled) { color: var(--ui-fg-strong); background: var(--ui-hover-strong); }
+.scale-step:disabled { cursor: default; opacity: .4; }
+.scale-row output { min-width: 44px; color: var(--ui-fg-strong); font-variant-numeric: tabular-nums; text-align: right; }
+.scale-reset { height: 30px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; white-space: nowrap; }
+.scale-reset:hover:not(:disabled) { background: var(--ui-hover-strong); }
+.scale-reset:disabled { cursor: default; opacity: .4; }
+.zoom-indicator { font-size: 11px; font-variant-numeric: tabular-nums; }
+.zoom-indicator[hidden] { display: none; }
 .dialog-error { min-height: 14px; margin: 10px 0 0; color: var(--ui-danger); font-size: 11px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 .dialog-actions button { height: 30px; min-width: 72px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }

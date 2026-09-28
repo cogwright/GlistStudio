@@ -19,6 +19,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
 - English and Turkish interface languages (English by default)
 - Themes for the whole studio: Glist, Gruvbox, Solarized, Dracula, Nord, One Dark, Monokai and Tokyo Night, plus VS Code color themes imported from their `.json` files, and a choice of code and interface fonts
+- A scale setting for the whole studio, up to 300% for projectors
 
 ## C++ code intelligence
 
@@ -53,6 +54,8 @@ Settings shows every theme as a small preview; picking one recolors the interfac
 ![Settings: the language, the fonts, and a preview card for each theme](docs/images/themes.png)
 
 Under Fonts, the code font, its size and the interface font can be picked from a list or typed in, for any font installed on the computer.
+
+Scale, at the top of Settings, makes the whole studio larger or smaller, from 50% up to 300% for a classroom projector. Ctrl + and Ctrl − (Cmd on macOS) do the same. While the scale is not 100%, the title bar shows it, and clicking it puts it back.
 
 ## Development
 

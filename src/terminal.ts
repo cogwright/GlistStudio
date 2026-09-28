@@ -20,6 +20,8 @@ export class StudioTerminal {
   private opened = false;
   private running = false;
   private starting: Promise<void> | null = null;
+  private fontSize = 12;
+  private scale = 1;
 
   constructor(private readonly host: HTMLElement) {
     this.terminal = new Terminal({ cursorBlink: true, scrollback: 5000 });
@@ -75,7 +77,14 @@ export class StudioTerminal {
 
   setFont(family: string, size: number): void {
     this.terminal.options.fontFamily = family;
-    this.terminal.options.fontSize = size;
+    this.fontSize = size;
+    this.setScale(this.scale);
+  }
+
+  // The browser build's page zoom, which the terminal shows as a larger font.
+  setScale(scale: number): void {
+    this.scale = scale;
+    this.terminal.options.fontSize = Math.round(this.fontSize * scale * 10) / 10;
     this.fitToHost();
   }
 
