@@ -17,6 +17,8 @@ Object.entries(eventChannels).forEach(([method, channel]) => {
 
 contextBridge.exposeInMainWorld('glistAPI', api);
 
+// The main process says where the window buttons are, so the title bar can make room.
+const windowControls = process.argv.find((arg) => arg.startsWith('--window-controls='))?.split('=')[1];
 window.addEventListener('DOMContentLoaded', () => {
-  document.documentElement.dataset.windowControls = process.platform === 'darwin' ? 'left' : 'right';
+  if (windowControls) document.documentElement.dataset.windowControls = windowControls;
 });

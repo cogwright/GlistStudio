@@ -13,6 +13,17 @@ let mainWindow: BrowserWindow | null = null;
 
 if (require('electron-squirrel-startup')) app.quit();
 
+// Tiling compositors such as Hyprland place, size and close windows themselves,
+// so window buttons there only get in the way.
+const tilingDesktop = process.platform === 'linux' && (
+  /hyprland|sway|i3|river|niri|dwl|qtile|bspwm|awesome|xmonad/i.test(
+    `${process.env.XDG_CURRENT_DESKTOP ?? ''}:${process.env.XDG_SESSION_DESKTOP ?? ''}`,
+  ) || Boolean(process.env.HYPRLAND_INSTANCE_SIGNATURE || process.env.SWAYSOCK || process.env.I3SOCK));
+
+// Where the window buttons sit: macOS draws its own on the left, Windows and
+// other Linux desktops get Electron's overlay on the right.
+const windowControls = process.platform === 'darwin' ? 'left' : tilingDesktop ? 'none' : 'right';
+
 initializeStudio({
   send: (channel, payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -37,8 +48,7 @@ const registerIpcHandlers = (): void => {
     const window = BrowserWindow.fromWebContents(event.sender);
     nativeTheme.themeSource = theme;
     window?.setBackgroundColor(theme === 'light' ? '#ffffff' : '#1e1e1e');
-    // macOS draws its own window buttons and has no overlay to recolor.
-    if (process.platform !== 'darwin') window?.setTitleBarOverlay({
+    if (windowControls === 'right') window?.setTitleBarOverlay({
       color: theme === 'light' ? '#f5f5f5' : '#181818',
       symbolColor: theme === 'light' ? '#333333' : '#cccccc',
       height: 35,
@@ -68,18 +78,20 @@ const createWindow = (): void => {
   const createdWindow = new BrowserWindow({
     width: 1440, height: 900, minWidth: 980, minHeight: 640,
     backgroundColor: '#1e1e1e', title: 'Glist Studio', autoHideMenuBar: true,
-    icon: app.isPackaged
-      ? path.join(process.resourcesPath, 'glistengine.ico')
-      : path.join(app.getAppPath(), 'assets', 'glistengine.ico'),
+    icon: path.join(
+      app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'assets'),
+      process.platform === 'win32' ? 'glistengine.ico' : 'glistengine.png',
+    ),
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 12, y: 10 },
-    titleBarOverlay: {
+    titleBarOverlay: windowControls === 'right' && {
       color: '#181818',
       symbolColor: '#cccccc',
       height: 35,
     },
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
+      additionalArguments: [`--window-controls=${windowControls}`],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
