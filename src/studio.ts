@@ -23,6 +23,12 @@ export interface StudioHost {
 export const defaultProjectsDirectory = (): string => (process.platform === 'win32'
   ? 'C:\\dev\\glist\\myglistapps' : path.join(homedir(), 'dev', 'glist', 'myglistapps'));
 
+const currentUsername = (): string => {
+  const environmentUsername = process.env.USERNAME || process.env.USER;
+  if (environmentUsername) return environmentUsername;
+  return userInfo().username;
+};
+
 interface FileEntry {
   name: string;
   path: string;
@@ -249,7 +255,7 @@ const createCppClass = async (directoryPath: string, className: string): Promise
   const change = await cmakeChange({ kind: 'add', paths: [relativeProjectPath(source), relativeProjectPath(header)] });
   if (!change || change.after === change.before) throw new Error(msg('classSource'));
   const { headerContent, sourceContent } = renderCppClass(
-    className, relativeProjectPath(header), userInfo().username, new Date(),
+    className, relativeProjectPath(header), currentUsername(), new Date(),
   );
   await fs.writeFile(header, headerContent, { flag: 'wx' });
   try {

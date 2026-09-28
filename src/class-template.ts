@@ -15,7 +15,7 @@ export const renderCppClass = (
   const safeAuthor = author.replace(/[\r\n]/g, ' ').trim();
   const guard = `${relativeHeaderPath.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}_`;
   const comment = (fileName: string): string =>
-    `/*\n * ${fileName}\n *\n *  Created on: ${date}\n *      Author: ${safeAuthor}\n */\n\n`;
+    ` /*\n * ${fileName}\n *\n *  Created on: ${date}\n *      Author: ${safeAuthor}\n */\n\n`;
 
   return {
     headerContent: `${comment(`${className}.h`)}#ifndef ${guard}\n#define ${guard}\n\nclass ${className} {\npublic:\n\t${className}();\n\tvirtual ~${className}();\n};\n\n#endif /* ${guard} */\n`,

@@ -1,14 +1,20 @@
 import assert from 'node:assert/strict';
+import { userInfo } from 'node:os';
 import { renderCppClass } from '../src/class-template.ts';
 
-const generated = renderCppClass('NewClass', 'src/NewClass.h', 'Archius', new Date(2026, 8, 18));
+const author = process.env.USERNAME || process.env.USER || userInfo().username;
+const createdOn = new Date();
+const formattedCreationDate = new Intl.DateTimeFormat('en-US', {
+  month: 'short', day: 'numeric', year: 'numeric',
+}).format(createdOn);
+const generated = renderCppClass('NewClass', 'src/NewClass.h', author, createdOn);
 
 assert.equal(generated.sourceContent, [
-  '/*',
+  ' /*',
   ' * NewClass.cpp',
   ' *',
-  ' *  Created on: Sep 18, 2026',
-  ' *      Author: Archius',
+  ` *  Created on: ${formattedCreationDate}`,
+  ` *      Author: ${author}`,
   ' */',
   '',
   '#include "NewClass.h"',
@@ -25,11 +31,11 @@ assert.equal(generated.sourceContent, [
 ].join('\n'));
 
 assert.equal(generated.headerContent, [
-  '/*',
+  ' /*',
   ' * NewClass.h',
   ' *',
-  ' *  Created on: Sep 18, 2026',
-  ' *      Author: Archius',
+  ` *  Created on: ${formattedCreationDate}`,
+  ` *      Author: ${author}`,
   ' */',
   '',
   '#ifndef SRC_NEWCLASS_H_',
