@@ -927,8 +927,12 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
 
 const chooseProject = async (): Promise<void> => {
   if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
-  const selected = await window.glistAPI.openProject();
-  if (selected) await openSelectedProject(selected);
+  try {
+    const selected = await window.glistAPI.openProject();
+    if (selected) await openSelectedProject(selected);
+  } catch (error) {
+    appendOutput(`\n${t('projectOpenFailed')}: ${errorText(error)}\n`, 'error');
+  }
 };
 
 const showNewProjectDialog = (): void => {
