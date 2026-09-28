@@ -237,9 +237,9 @@ const setTheme = (theme: GlistTheme): void => {
   void window.glistAPI.setTheme(theme);
 };
 
+// Appends a text node; rewriting textContent made long builds quadratic.
 const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'normal'): void => {
-  if (kind === 'normal') output.textContent += text;
-  else output.textContent += `\n${kind === 'success' ? '✓' : '✕'} ${text}\n`;
+  output.append(kind === 'normal' ? text : `\n${kind === 'success' ? '✓' : '✕'} ${text}\n`);
   output.scrollTop = output.scrollHeight;
 };
 
