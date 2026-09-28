@@ -21,9 +21,17 @@ export interface StudioHost {
   projectsDirectory: string;
 }
 
+// The folder the Glist install scripts set up: the engine, zbin and myglistapps.
+export const glistRoot = (): string => (process.platform === 'win32'
+  ? 'C:\\dev\\glist' : path.join(homedir(), 'dev', 'glist'));
+
 // The myglistapps folder of a default Glist install.
-export const defaultProjectsDirectory = (): string => (process.platform === 'win32'
-  ? 'C:\\dev\\glist\\myglistapps' : path.join(homedir(), 'dev', 'glist', 'myglistapps'));
+export const defaultProjectsDirectory = (): string => path.join(glistRoot(), 'myglistapps');
+
+// Glist Studio's own folder in the Glist one: its settings, and the agents and
+// the Node.js runtime Settings installs. GLIST_STUDIO_HOME moves it, for tests.
+export const studioHome = (): string => (process.env.GLIST_STUDIO_HOME
+  ? path.resolve(process.env.GLIST_STUDIO_HOME) : path.join(glistRoot(), 'GlistStudio'));
 
 const currentUsername = (): string => {
   const environmentUsername = process.env.USERNAME || process.env.USER;

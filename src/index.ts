@@ -1,10 +1,10 @@
-import { existsSync, promises as fs } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { invokeChannels, type Handler, type InvokeMethod } from './api';
 import {
   defaultProjectsDirectory, initializeStudio, msg, openProjectAt, projectsDirectory, stopClangd, stopDebugging, stopProcesses,
-  stopTerminal, studio,
+  stopTerminal, studio, studioHome,
 } from './studio';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
@@ -13,6 +13,24 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 let mainWindow: BrowserWindow | null = null;
 
 if (require('electron-squirrel-startup')) app.quit();
+
+// Settings and everything else the window keeps live in the Glist folder, next
+// to the engine and the projects, instead of the system's app data folder.
+// Settings saved in the old place come along the first time.
+const useGlistFolder = (): void => {
+  const target = path.join(studioHome(), 'data');
+  const previous = app.getPath('userData');
+  if (path.resolve(previous) === path.resolve(target)) return;
+  try {
+    const storage = path.join(previous, 'Local Storage');
+    if (!existsSync(target) && existsSync(storage)) cpSync(storage, path.join(target, 'Local Storage'), { recursive: true });
+    mkdirSync(target, { recursive: true });
+    app.setPath('userData', target);
+  } catch {
+    // The Glist folder cannot be written; the system's app data folder still works.
+  }
+};
+useGlistFolder();
 
 // Tiling compositors such as Hyprland place, size and close windows themselves,
 // so window buttons there only get in the way.
