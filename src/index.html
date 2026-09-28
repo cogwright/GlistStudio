@@ -121,11 +121,13 @@
               <div class="output-tabs">
                 <button class="output-tab active" type="button" data-panel="output" data-i18n="output">OUTPUT</button>
                 <button class="output-tab" type="button" data-panel="terminal" data-i18n="terminal">TERMINAL</button>
+                <button id="agent-tab" class="output-tab" type="button" data-panel="agent" data-i18n="agentTab" hidden>AGENT</button>
               </div>
-              <div class="output-tools"><span id="clangd-status" class="process-status" hidden><i></i><span></span></span><span id="process-status" class="process-status"><i></i><span>Ready</span></span><button id="new-terminal" class="heading-action" type="button" title="New Terminal" data-i18n-title="newTerminal" hidden><i data-icon="add"></i></button><button id="clear-output" class="heading-action" type="button" title="Clear Output" data-i18n-title="clearOutput"><i data-icon="clear-all"></i></button><button id="close-output" class="panel-close" type="button" title="Close Output" data-i18n-title="closeOutput" aria-label="Close Output" data-i18n-aria-label="closeOutput"><i data-icon="close"></i></button></div>
+              <div class="output-tools"><span id="clangd-status" class="process-status" hidden><i></i><span></span></span><span id="process-status" class="process-status"><i></i><span>Ready</span></span><select id="agent-select" class="agent-select" aria-label="Agent" data-i18n-aria-label="agentChoice" hidden></select><button id="new-terminal" class="heading-action" type="button" title="New Terminal" data-i18n-title="newTerminal" hidden><i data-icon="add"></i></button><button id="clear-output" class="heading-action" type="button" title="Clear Output" data-i18n-title="clearOutput"><i data-icon="clear-all"></i></button><button id="close-output" class="panel-close" type="button" title="Close Output" data-i18n-title="closeOutput" aria-label="Close Output" data-i18n-aria-label="closeOutput"><i data-icon="close"></i></button></div>
             </div>
             <pre id="output" class="output">Glist Studio is ready. Open a project to get started.</pre>
             <div id="terminal" class="terminal-host" hidden></div>
+            <div id="agent-terminal" class="terminal-host" hidden></div>
           </section>
         </section>
       </main>
@@ -196,6 +198,12 @@
           </div>
           <p class="dialog-hint" data-i18n="themeHint">Themes color the whole studio. Color themes from VS Code (.json) can be imported.</p>
           <p id="theme-error" class="dialog-error" role="alert"></p>
+        </fieldset>
+        <fieldset class="settings-section agent-settings">
+          <legend data-i18n="agents">Agents</legend>
+          <p class="dialog-hint" data-i18n="agentsHint">Coding assistants that work in the Agent tab, in the open project.</p>
+          <div id="agent-options" class="agent-options"></div>
+          <p id="agent-error" class="dialog-error" role="alert"></p>
         </fieldset>
         <div class="dialog-actions"><button type="button" id="settings-close" class="primary" data-i18n="close">Close</button></div>
       </dialog>

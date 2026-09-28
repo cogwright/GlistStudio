@@ -42,6 +42,18 @@ interface GlistClangdStatus {
 }
 
 type GlistTemplate = 'GlistApp' | 'GlistConsoleApp' | 'GlistGUIApp';
+
+type GlistTerminalSession = 'shell' | 'agent';
+type GlistAgentId = 'claude' | 'codex' | 'gemini' | 'antigravity';
+interface GlistAgentStatus {
+  id: GlistAgentId;
+  name: string;
+  installed: boolean;
+  // studio: installed from Settings; glist: shipped in Glist's zbin; system: on PATH.
+  source?: 'studio' | 'glist' | 'system';
+  location?: string;
+  installable: boolean;
+}
 type GlistLanguage = 'en' | 'tr';
 // The colors the window frame takes from the theme.
 interface GlistWindowColors {
@@ -81,10 +93,12 @@ interface Window {
     startDebugging(): Promise<GlistDebugStart>;
     sendDebug(message: unknown): Promise<void>;
     stopDebugging(): Promise<void>;
-    startTerminal(columns: number, rows: number): Promise<GlistProcessResult>;
-    writeTerminal(data: string): Promise<void>;
-    resizeTerminal(columns: number, rows: number): Promise<void>;
-    stopTerminal(): Promise<void>;
+    startTerminal(session: GlistTerminalSession, columns: number, rows: number, agent?: GlistAgentId): Promise<GlistProcessResult>;
+    writeTerminal(session: GlistTerminalSession, data: string): Promise<void>;
+    resizeTerminal(session: GlistTerminalSession, columns: number, rows: number): Promise<void>;
+    stopTerminal(session: GlistTerminalSession): Promise<void>;
+    listAgents(): Promise<GlistAgentStatus[]>;
+    installAgent(agent: GlistAgentId): Promise<GlistProcessResult>;
     onBuildOutput(callback: (text: string) => void): () => void;
     onBuildStatus(callback: (status: { running: boolean; label: string }) => void): () => void;
     onRunOutput(callback: (text: string) => void): () => void;
@@ -94,7 +108,8 @@ interface Window {
     onSaveAndClose(callback: () => void): () => void;
     onDebugMessage(callback: (message: unknown) => void): () => void;
     onDebugStatus(callback: (status: GlistClangdStatus) => void): () => void;
-    onTerminalData(callback: (data: string) => void): () => void;
-    onTerminalExit(callback: (exitCode: number) => void): () => void;
+    onTerminalData(callback: (event: { session: GlistTerminalSession; data: string }) => void): () => void;
+    onTerminalExit(callback: (event: { session: GlistTerminalSession; exitCode: number }) => void): () => void;
+    onAgentInstall(callback: (text: string) => void): () => void;
   };
 }

@@ -514,6 +514,20 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .scale-reset:disabled { cursor: default; opacity: .4; }
 .zoom-indicator { font-size: 11px; font-variant-numeric: tabular-nums; }
 .zoom-indicator[hidden] { display: none; }
+.agent-settings { padding: 0; border: 0; }
+.agent-settings legend { padding: 0; color: var(--ui-fg); font-size: 12px; }
+.agent-options { display: grid; gap: 6px; margin-top: 12px; }
+.agent-option { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 34px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: var(--ui-bg); }
+.studio-dialog .agent-toggle { display: flex; min-width: 0; align-items: center; gap: 10px; margin: 0; font-size: 13px; cursor: pointer; }
+.studio-dialog .agent-toggle input { width: auto; height: auto; flex: 0 0 auto; margin: 0; padding: 0; accent-color: var(--ui-accent); cursor: pointer; }
+.studio-dialog .agent-toggle input:disabled { cursor: default; opacity: .4; }
+.agent-name { color: var(--ui-fg-strong); }
+.agent-status { overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.agent-install { height: 26px; padding: 0 12px; border: 1px solid var(--ui-accent); border-radius: 4px; color: var(--ui-on-accent); background: var(--ui-accent); cursor: pointer; }
+.agent-install:hover:not(:disabled) { background: var(--ui-accent-hover); }
+.agent-install:disabled { cursor: default; opacity: .5; }
+.agent-select { height: 22px; max-width: 150px; padding: 0 6px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-bg); font: inherit; font-size: 11px; }
+.agent-select[hidden], .output-tab[hidden] { display: none; }
 .dialog-error { min-height: 14px; margin: 10px 0 0; color: var(--ui-danger); font-size: 11px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
 .dialog-actions button { height: 30px; min-width: 72px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }

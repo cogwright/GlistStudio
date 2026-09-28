@@ -7,6 +7,7 @@ import * as monaco from 'monaco-editor/editor/editor.api';
 // eslint-disable-next-line import/no-unresolved
 import 'monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticTokens';
 import appIconUrl from '../assets/glistengine.ico';
+import { AgentSettings } from './agent-settings';
 import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
@@ -116,21 +117,30 @@ const toggleView = (view: SidebarView): void => {
 };
 
 const toggleExplorer = (): void => toggleView('explorer');
-// The panel under the editor has two tabs: the Output of builds and runs, and a terminal.
-type PanelView = 'output' | 'terminal';
+// The panel under the editor has tabs: the Output of builds and runs, a
+// terminal, and, while one is turned on in Settings, a coding agent.
+type PanelView = 'output' | 'terminal' | 'agent';
 let panelView: PanelView = 'output';
 const terminalHost = element<HTMLDivElement>('#terminal');
+const agentHost = element<HTMLDivElement>('#agent-terminal');
+const agentTab = element<HTMLButtonElement>('#agent-tab');
+const agentSelect = element<HTMLSelectElement>('#agent-select');
 const newTerminalButton = element<HTMLButtonElement>('#new-terminal');
 const clearOutputButton = element<HTMLButtonElement>('#clear-output');
-const studioTerminal = new StudioTerminal(terminalHost);
-onThemeChange((theme) => studioTerminal.setTheme(terminalTheme(theme.palette, theme.kind)));
-onFontsChange((fonts) => studioTerminal.setFont(codeFontStack(fonts), panelFontSize(fonts)));
+const studioTerminal = new StudioTerminal(terminalHost, 'shell');
+const agentTerminal = new StudioTerminal(agentHost, 'agent', 'agentExited');
+[studioTerminal, agentTerminal].forEach((panelTerminal) => {
+  onThemeChange((theme) => panelTerminal.setTheme(terminalTheme(theme.palette, theme.kind)));
+  onFontsChange((fonts) => panelTerminal.setFont(codeFontStack(fonts), panelFontSize(fonts)));
+});
+const terminalFor = (view: PanelView): StudioTerminal | null =>
+  (view === 'terminal' ? studioTerminal : view === 'agent' ? agentTerminal : null);
 
 const panelShowing = (view: PanelView): boolean => !appShell.classList.contains('output-hidden') && panelView === view;
 
 const setOutputVisible = (visible: boolean): void => {
   appShell.classList.toggle('output-hidden', !visible);
-  if (visible && panelView === 'terminal') studioTerminal.show();
+  if (visible) terminalFor(panelView)?.show();
 };
 
 const showPanel = (view: PanelView): void => {
@@ -140,12 +150,41 @@ const showPanel = (view: PanelView): void => {
   });
   output.hidden = view !== 'output';
   terminalHost.hidden = view !== 'terminal';
-  newTerminalButton.hidden = view !== 'terminal';
-  const clearKey: TranslationKey = view === 'terminal' ? 'clearTerminal' : 'clearOutput';
-  clearOutputButton.dataset.i18nTitle = clearKey;
-  clearOutputButton.title = t(clearKey);
+  agentHost.hidden = view !== 'agent';
+  agentSelect.hidden = view !== 'agent';
+  newTerminalButton.hidden = view === 'output';
+  const titles: Array<[HTMLButtonElement, TranslationKey]> = [
+    [clearOutputButton, ({ output: 'clearOutput', terminal: 'clearTerminal', agent: 'clearAgent' } as const)[view]],
+    [newTerminalButton, view === 'agent' ? 'restartAgent' : 'newTerminal'],
+  ];
+  titles.forEach(([button, key]) => { button.dataset.i18nTitle = key; button.title = t(key); });
   setOutputVisible(true);
 };
+
+// The agents turned on in Settings. The Agent tab shows while there is one,
+// and runs the one picked in its list.
+const showAgents = (available: GlistAgentStatus[]): void => {
+  const previous = agentSelect.value;
+  agentSelect.replaceChildren(...available.map((agent) => {
+    const option = document.createElement('option');
+    option.value = agent.id;
+    option.textContent = agent.name;
+    return option;
+  }));
+  if (available.some((agent) => agent.id === previous)) agentSelect.value = previous;
+  agentTab.hidden = available.length === 0;
+  if (available.length === 0) {
+    agentTerminal.stop();
+    agentTerminal.setAgent(undefined);
+    if (panelView === 'agent') showPanel('output');
+    return;
+  }
+  agentTerminal.setAgent(agentSelect.value as GlistAgentId);
+};
+agentSelect.addEventListener('change', () => {
+  agentTerminal.setAgent(agentSelect.value as GlistAgentId);
+  if (panelShowing('agent')) agentTerminal.show();
+});
 
 // A tab that is showing hides the panel; otherwise the panel opens on it.
 const togglePanel = (view: PanelView): void => {
@@ -1025,6 +1064,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   projectRootLabel.textContent = selected.name.toUpperCase();
   document.title = `${selected.name} - Glist Studio`;
   studioTerminal.projectChanged();
+  agentTerminal.projectChanged();
   await loadProjectTree(); updateButtons();
   clearOutput(`Glist Studio\n${t('openedProject')}: ${selected.root}\n`);
   if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
@@ -1141,7 +1181,9 @@ const configureResizers = (): void => {
   panelResizer.addEventListener('pointerdown', (downEvent) => {
     const startY = downEvent.clientY;
     const current = parseInt(getComputedStyle(shell).getPropertyValue('--panel-height'), 10);
-    const onMove = (moveEvent: PointerEvent): void => shell.style.setProperty('--panel-height', `${Math.min(430, Math.max(110, current + (startY - moveEvent.clientY) / pageZoom()))}px`);
+    // Agents draw full-screen interfaces, so the panel may take most of the window.
+    const tallest = Math.max(430, (window.innerHeight / pageZoom()) * 0.75);
+    const onMove = (moveEvent: PointerEvent): void => shell.style.setProperty('--panel-height', `${Math.min(tallest, Math.max(110, current + (startY - moveEvent.clientY) / pageZoom()))}px`);
     const onUp = (): void => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
     window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp);
   });
@@ -1197,6 +1239,7 @@ const configureMenus = (): void => {
         item(t(panelShowing('terminal') ? 'hideTerminal' : 'showTerminal'), () => togglePanel('terminal'), {
           shortcut: isMac ? 'Control+`' : 'Ctrl+`',
         }),
+        ...(agentTab.hidden ? [] : [item(t(panelShowing('agent') ? 'hideAgent' : 'showAgent'), () => togglePanel('agent'))]),
         { kind: 'separator' },
         { kind: 'heading', label: t('zoom') },
         item(t('zoomIn'), () => changeZoom(1), {
@@ -1361,12 +1404,14 @@ newFolderButton.addEventListener('click', createFolder);
 deleteEntryButton.addEventListener('click', deleteSelectedEntry);
 refreshButton.addEventListener('click', loadProjectTree);
 clearOutputButton.addEventListener('click', () => {
-  if (panelView === 'terminal') studioTerminal.clear();
+  const panelTerminal = terminalFor(panelView);
+  if (panelTerminal) panelTerminal.clear();
   else clearOutput();
 });
-newTerminalButton.addEventListener('click', () => { void studioTerminal.restart(); });
+newTerminalButton.addEventListener('click', () => { void terminalFor(panelView)?.restart(); });
 document.querySelectorAll<HTMLButtonElement>('.output-tab').forEach((tab) => {
-  tab.addEventListener('click', () => showPanel(tab.dataset.panel === 'terminal' ? 'terminal' : 'output'));
+  const view = tab.dataset.panel === 'terminal' || tab.dataset.panel === 'agent' ? tab.dataset.panel : 'output';
+  tab.addEventListener('click', () => showPanel(view));
 });
 element<HTMLButtonElement>('#close-explorer').addEventListener('click', () => setSidebarVisible(false));
 debugButton.addEventListener('click', debugProject);
@@ -1377,13 +1422,24 @@ debugStepButtons[0].addEventListener('click', () => debug.stepOver());
 debugStepButtons[1].addEventListener('click', () => debug.stepInto());
 debugStepButtons[2].addEventListener('click', () => debug.stepOut());
 element<HTMLButtonElement>('#close-output').addEventListener('click', () => setOutputVisible(false));
-element<HTMLButtonElement>('#open-settings').addEventListener('click', () => settingsDialog.showModal());
+const agentSettings = new AgentSettings(
+  { options: element<HTMLElement>('#agent-options'), error: element<HTMLElement>('#agent-error') },
+  showAgents,
+  (text, kind) => appendOutput(text, kind),
+);
+void agentSettings.refresh();
+element<HTMLButtonElement>('#open-settings').addEventListener('click', () => {
+  settingsDialog.showModal();
+  // An agent may have been installed or removed outside the studio.
+  void agentSettings.refresh();
+});
 element<HTMLButtonElement>('#settings-close').addEventListener('click', () => settingsDialog.close());
 settingsLanguage.value = getLanguage();
 settingsLanguage.addEventListener('change', () => {
   const next = settingsLanguage.value === 'tr' ? 'tr' : 'en';
   applyLanguage(next);
   refreshLanguage();
+  agentSettings.render();
   void window.glistAPI.setLanguage(next);
 });
 setUpFontSettings(editor, {

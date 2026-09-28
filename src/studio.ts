@@ -3,6 +3,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import { availableParallelism, homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { IPty } from 'node-pty';
+import { agentLaunch, findAgents, installAgent, isAgentId, type AgentPlaces, type AgentStatus } from './agents';
 import type { Handlers } from './api';
 import { findDebugAdapter } from './debug-adapters';
 import { MessageProcess } from './message-process';
@@ -92,6 +93,9 @@ const messages = {
     closeWithoutSaving: 'Close Without Saving', cancel: 'Cancel',
     terminalMissing: 'No terminal was found. Set the TERMINAL environment variable to the one you use.',
     terminalFailed: 'The terminal could not be started',
+    agentMissing: 'This agent is not installed. Install it in Settings, under Agents.',
+    agentInstallRunning: 'An agent is already being installed.',
+    agentInstalled: 'Installed.', agentInstallFailed: 'The installation stopped',
   },
   tr: {
     noProject: 'Önce bir Glist projesi açın.', invalidName: 'Geçerli bir dosya veya klasör adı girin.',
@@ -122,6 +126,9 @@ const messages = {
     closeWithoutSaving: 'Kaydetmeden Kapat', cancel: 'İptal',
     terminalMissing: 'Terminal bulunamadı. Kullandığınız terminali TERMINAL ortam değişkeniyle belirtin.',
     terminalFailed: 'Terminal başlatılamadı',
+    agentMissing: 'Bu ajan kurulu değil. Ayarlar’da, Ajanlar altında kurabilirsiniz.',
+    agentInstallRunning: 'Zaten bir ajan kuruluyor.',
+    agentInstalled: 'Kuruldu.', agentInstallFailed: 'Kurulum durdu',
   },
 } as const;
 
@@ -672,9 +679,12 @@ const startDebugging = async (): Promise<GlistDebugStart> => {
 
 export const stopDebugging = (): void => debugAdapter.stop();
 
-// The terminal: a shell in the project folder, with the environment builds use.
-// node-pty is loaded on first use, so a platform without it only loses the terminal.
-let terminal: IPty | null = null;
+// Terminals: a shell in the project folder, and the Agent tab's agent, both
+// with the environment builds use. node-pty is loaded on first use, so a
+// platform without it only loses these.
+type TerminalSession = 'shell' | 'agent';
+const terminalSessions = new Map<TerminalSession, IPty>();
+const sessionName = (value: unknown): TerminalSession | null => (value === 'shell' || value === 'agent' ? value : null);
 
 const terminalShell = (): { file: string; args: string[] } => {
   if (process.platform === 'win32') return { file: 'powershell.exe', args: ['-NoLogo'] };
@@ -686,48 +696,87 @@ const terminalSize = (value: unknown, fallback: number): number => {
   return Number.isFinite(size) ? Math.min(1000, Math.max(2, size)) : fallback;
 };
 
-export const stopTerminal = (): void => {
-  const running = terminal;
-  terminal = null;
-  try { running?.kill(); } catch { /* It has already exited. */ }
+// Ends one session, or all of them.
+export const stopTerminal = (session?: unknown): void => {
+  const names = session === undefined ? [...terminalSessions.keys()] : [sessionName(session)];
+  names.forEach((name) => {
+    const running = name && terminalSessions.get(name);
+    if (!name || !running) return;
+    terminalSessions.delete(name);
+    try { running.kill(); } catch { /* It has already exited. */ }
+  });
 };
 
-const startTerminal = async (columns: number, rows: number): Promise<ProcessResult> => {
-  stopTerminal();
-  const shell = terminalShell();
-  const directory = activeProjectRoot
-    ?? [projectsDirectory(), homedir()].find((candidate) => existsSync(candidate))
-    ?? process.cwd();
-  const toolchain = resolveToolchain(directory);
+const terminalDirectory = (): string => activeProjectRoot
+  ?? [projectsDirectory(), homedir()].find((candidate) => existsSync(candidate))
+  ?? process.cwd();
+
+const agentPlaces = (env: NodeJS.ProcessEnv): AgentPlaces => ({ home: studioHome(), glist: glistRoot(), searchPath: env.PATH ?? '' });
+
+const startTerminal = async (session: unknown, columns: number, rows: number, agent?: unknown): Promise<ProcessResult> => {
+  const name = sessionName(session);
+  if (!name) return { success: false, message: msg('terminalFailed') };
+  stopTerminal(name);
+  const directory = terminalDirectory();
+  const env: NodeJS.ProcessEnv = {
+    ...processEnvironment(resolveToolchain(directory)), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'GlistStudio',
+  };
+  let program = terminalShell();
+  if (name === 'agent') {
+    const launch = isAgentId(agent) ? await agentLaunch(agent, agentPlaces(env)) : null;
+    if (!launch) return { success: false, message: msg('agentMissing') };
+    program = { file: launch.file, args: launch.args };
+    Object.assign(env, launch.env);
+    env.PATH = [...launch.pathPrefix, env.PATH ?? ''].join(path.delimiter);
+  }
   try {
     const { spawn: spawnTerminal } = await import('node-pty');
-    const child = spawnTerminal(shell.file, shell.args, {
-      name: 'xterm-256color',
-      cols: terminalSize(columns, 80),
-      rows: terminalSize(rows, 24),
-      cwd: directory,
-      env: { ...processEnvironment(toolchain), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'GlistStudio' },
+    const child = spawnTerminal(program.file, program.args, {
+      name: 'xterm-256color', cols: terminalSize(columns, 80), rows: terminalSize(rows, 24), cwd: directory, env,
     });
-    terminal = child;
-    // A restarted terminal's old shell may still be finishing; only the current one reports.
-    child.onData((data) => { if (terminal === child) sendToRenderer('terminal:data', data); });
+    terminalSessions.set(name, child);
+    // A restarted session's old process may still be finishing; only the current one reports.
+    child.onData((data) => { if (terminalSessions.get(name) === child) sendToRenderer('terminal:data', { session: name, data }); });
     child.onExit(({ exitCode }) => {
-      if (terminal !== child) return;
-      terminal = null;
-      sendToRenderer('terminal:exit', exitCode);
+      if (terminalSessions.get(name) !== child) return;
+      terminalSessions.delete(name);
+      sendToRenderer('terminal:exit', { session: name, exitCode });
     });
-    return { success: true, message: `${path.basename(shell.file)} - ${directory}` };
+    return { success: true, message: `${path.basename(program.file)} - ${directory}` };
   } catch (error) {
     return { success: false, message: `${msg('terminalFailed')}: ${error instanceof Error ? error.message : String(error)}` };
   }
 };
 
-const writeTerminal = (data: unknown): void => {
-  if (typeof data === 'string') terminal?.write(data);
+const writeTerminal = (session: unknown, data: unknown): void => {
+  const name = sessionName(session);
+  if (name && typeof data === 'string') terminalSessions.get(name)?.write(data);
 };
 
-const resizeTerminal = (columns: unknown, rows: unknown): void => {
-  try { terminal?.resize(terminalSize(columns, 80), terminalSize(rows, 24)); } catch { /* It has just exited. */ }
+const resizeTerminal = (session: unknown, columns: unknown, rows: unknown): void => {
+  const name = sessionName(session);
+  try { if (name) terminalSessions.get(name)?.resize(terminalSize(columns, 80), terminalSize(rows, 24)); } catch { /* It has just exited. */ }
+};
+
+// Agents for the Agent tab, and installing them from Settings.
+const listAgents = (): Promise<AgentStatus[]> =>
+  findAgents(agentPlaces(processEnvironment(resolveToolchain(terminalDirectory()))));
+
+let installingAgent = false;
+
+const installAgentFromSettings = async (agent: unknown): Promise<ProcessResult> => {
+  if (!isAgentId(agent)) return { success: false, message: msg('agentMissing') };
+  if (installingAgent) return { success: false, message: msg('agentInstallRunning') };
+  installingAgent = true;
+  const report = (text: string): void => sendToRenderer('agent:install', text);
+  try {
+    await installAgent(agent, agentPlaces(processEnvironment(resolveToolchain(terminalDirectory()))), report);
+    return { success: true, message: msg('agentInstalled') };
+  } catch (error) {
+    return { success: false, message: `${msg('agentInstallFailed')}: ${error instanceof Error ? error.message : String(error)}` };
+  } finally {
+    installingAgent = false;
+  }
 };
 
 const setLanguage = (nextLanguage: AppLanguage): AppLanguage => {
@@ -764,5 +813,7 @@ export const studio: Handlers = {
   startTerminal,
   writeTerminal,
   resizeTerminal,
-  stopTerminal,
+  stopTerminal: (session: unknown) => stopTerminal(session ?? 'shell'),
+  listAgents,
+  installAgent: installAgentFromSettings,
 };
