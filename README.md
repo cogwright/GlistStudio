@@ -2,6 +2,8 @@
 
 Glist Studio is a lightweight desktop IDE for Glist Engine projects, built with Electron and TypeScript.
 
+![Glist Studio with a small Glist project open: the explorer, C++ code colored by clangd, and a finished build in the Output panel](docs/images/editor.png)
+
 It expects the layout the Glist install scripts create: `C:\dev\glist` on Windows, with the toolchain in `zbin`, and `~/dev/glist` on macOS and Linux.
 
 ## Features
@@ -28,6 +30,8 @@ clangd reads the compile flags from `_build/Release/compile_commands.json`, whic
 
 Click to the left of a line number to put a breakpoint there, then press Debug (F6). The studio builds a Debug configuration into `_build/Debug`, starts the program under a debugger, and stops at the breakpoint with the line highlighted. The Run and Debug view shows the variables and the call stack; hovering a variable in the editor shows its value. Continue (F5), Step Over (F10), Step Into (F11) and Step Out (Shift+F11) sit in the toolbar while debugging, and Stop (Shift+F5) ends it.
 
+![Paused at a breakpoint in update(): the variables of the ball being moved, the call stack, and the current line highlighted](docs/images/debugger.png)
+
 The debugger is an external program that speaks the Debug Adapter Protocol:
 
 - macOS: `lldb-dap` from Xcode or its command line tools, found through `xcrun`.
@@ -38,11 +42,15 @@ The debugger is an external program that speaks the Debug Adapter Protocol:
 
 The Terminal tab beside Output runs a shell in the project folder: PowerShell on Windows, and your shell (`$SHELL`) on macOS and Linux. It has the environment builds have, so on Windows the Glist `clang`, `mingw32-make` and `cmake` from `zbin` work as typed. Ctrl+` shows and hides it, the + button starts a new one, and opening another project moves it there.
 
+![The Terminal tab under the editor, with cmake, clang and ls run in the project folder](docs/images/terminal.png)
+
 Copy and paste work as elsewhere: Cmd+C and Cmd+V on macOS; on Windows and Linux, Ctrl+C copies selected text and otherwise stops the running command, and Ctrl+V pastes. The studio's own shortcuts, such as F5 to run and Ctrl+S to save, keep working while the terminal has focus.
 
 ## Themes
 
 Settings shows every theme as a small preview; picking one recolors the interface and the editor at once. To add a theme made for VS Code, choose Import a Theme File and pick its `.json` (in a VS Code extension it sits under `themes/`). Its interface colors and code colors are translated, and it stays in the list until removed.
+
+![Settings: the language, the fonts, and a preview card for each theme](docs/images/themes.png)
 
 Under Fonts, the code font, its size and the interface font can be picked from a list or typed in, for any font installed on the computer.
 
