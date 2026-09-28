@@ -9,6 +9,7 @@ import 'monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticToke
 import appIconUrl from '../assets/glistengine.ico';
 import { applyTheme, getActiveTheme, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
+import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isMac, primaryKey, shortcutLabel } from './shortcuts';
@@ -37,12 +38,20 @@ const saveButton = element<HTMLButtonElement>('#save-file');
 const buildButton = element<HTMLButtonElement>('#build-project');
 const runButton = element<HTMLButtonElement>('#run-project');
 const stopButton = element<HTMLButtonElement>('#stop-project');
+const debugButton = element<HTMLButtonElement>('#debug-project');
+const debugControls = element<HTMLElement>('#debug-controls');
+const debugContinueButton = element<HTMLButtonElement>('#debug-continue');
+const debugPauseButton = element<HTMLButtonElement>('#debug-pause');
+const debugStepButtons = ['#debug-step-over', '#debug-step-into', '#debug-step-out'].map((id) => element<HTMLButtonElement>(id));
+const debugStartButton = element<HTMLButtonElement>('#debug-start');
 const newFileButton = element<HTMLButtonElement>('#new-file');
 const newFolderButton = element<HTMLButtonElement>('#new-folder');
 const deleteEntryButton = element<HTMLButtonElement>('#delete-entry');
 const refreshButton = element<HTMLButtonElement>('#refresh-tree');
 const appShell = element<HTMLElement>('#app-shell');
-const explorerActivityButton = element<HTMLButtonElement>('[data-view="explorer"]');
+const activityButtons = [...document.querySelectorAll<HTMLButtonElement>('.activity-button[data-view]')];
+const explorerView = element<HTMLElement>('#explorer-view');
+const debugView = element<HTMLElement>('#debug-view');
 const fileTree = element<HTMLDivElement>('#file-tree');
 const tabsHost = element<HTMLDivElement>('#editor-tabs');
 const editorHost = element<HTMLDivElement>('#editor-host');
@@ -74,13 +83,32 @@ const expandedDirectories = new Set<string>();
 let draggedTabPath: string | null = null;
 let suppressTabClick = false;
 
-const setExplorerVisible = (visible: boolean): void => {
+type SidebarView = 'explorer' | 'debug';
+let sidebarView: SidebarView = 'explorer';
+
+const setSidebarVisible = (visible: boolean): void => {
   appShell.classList.toggle('sidebar-hidden', !visible);
-  explorerActivityButton.classList.toggle('active', visible);
-  explorerActivityButton.setAttribute('aria-pressed', String(visible));
+  activityButtons.forEach((button) => {
+    const active = visible && button.dataset.view === sidebarView;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
 };
 
-const toggleExplorer = (): void => setExplorerVisible(appShell.classList.contains('sidebar-hidden'));
+const showView = (view: SidebarView): void => {
+  sidebarView = view;
+  explorerView.hidden = view !== 'explorer';
+  debugView.hidden = view !== 'debug';
+  setSidebarVisible(true);
+};
+
+// The button of the view already showing hides the side bar.
+const toggleView = (view: SidebarView): void => {
+  if (view === sidebarView && !appShell.classList.contains('sidebar-hidden')) setSidebarVisible(false);
+  else showView(view);
+};
+
+const toggleExplorer = (): void => toggleView('explorer');
 const setOutputVisible = (visible: boolean): void => {
   appShell.classList.toggle('output-hidden', !visible);
 };
@@ -174,6 +202,8 @@ const editor = monaco.editor.create(editorHost, {
   fontSize: 14,
   lineHeight: 22,
   minimap: { enabled: true, scale: 1 },
+  // Room for breakpoints.
+  glyphMargin: true,
   smoothScrolling: true,
   cursorSmoothCaretAnimation: 'on',
   padding: { top: 14, bottom: 20 },
@@ -216,7 +246,13 @@ const updateButtons = (): void => {
   saveButton.disabled = !activeFilePath;
   buildButton.disabled = !hasProject || isBuildRunning || isStarting;
   runButton.disabled = !hasProject || isRunRunning || isBuildRunning || isStarting;
-  stopButton.disabled = !isBuildRunning && !isRunRunning;
+  debugButton.disabled = !hasProject || isBuildRunning || isStarting || debug.active;
+  debugStartButton.disabled = debugButton.disabled;
+  stopButton.disabled = !isBuildRunning && !isRunRunning && !debug.active;
+  debugControls.hidden = !debug.active || debug.state === 'starting';
+  debugContinueButton.disabled = debug.state !== 'paused';
+  debugPauseButton.disabled = debug.state !== 'running';
+  debugStepButtons.forEach((button) => { button.disabled = debug.state !== 'paused'; });
   refreshButton.disabled = !hasProject;
   newFileButton.disabled = !hasProject;
   newFolderButton.disabled = !hasProject;
@@ -473,6 +509,19 @@ const clangd = new ClangdClient({
     clangdStatus.classList.toggle('active', busy);
     const label = clangdStatus.querySelector('span');
     if (label) label.textContent = text ?? '';
+  },
+});
+
+const debug = new Debugger({
+  editor,
+  openLocation: (filePath, line) => revealLocation(pathUri(filePath), { lineNumber: line, column: 1 }),
+  log: (text, kind) => appendOutput(text, kind),
+  changed: () => updateButtons(),
+  views: {
+    status: element<HTMLElement>('#debug-status'),
+    variables: element<HTMLElement>('#debug-variables'),
+    stack: element<HTMLElement>('#debug-stack'),
+    breakpoints: element<HTMLElement>('#debug-breakpoints'),
   },
 });
 
@@ -871,6 +920,7 @@ const disposeOpenFiles = (): void => {
 const hasDirtyFiles = (): boolean => [...openFiles.values()].some(isDirty);
 
 const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> => {
+  await debug.stop();
   disposeOpenFiles(); activeProject = selected;
   selectedEntry = null;
   copiedEntryPath = null;
@@ -881,6 +931,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   output.textContent = `Glist Studio\n${t('openedProject')}: ${selected.root}\n`;
   if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
   void clangd.start(selected.root);
+  debug.setProject(selected.root);
 };
 
 const chooseProject = async (): Promise<void> => {
@@ -956,9 +1007,22 @@ const runProject = async (): Promise<void> => {
   });
 };
 
+const debugProject = async (): Promise<void> => {
+  if (!activeProject || debug.active || isBuildRunning || isStarting) return;
+  await whileStarting(async () => {
+    if (!(await saveProjectFiles())) return;
+    showView('debug');
+    appendOutput('\n── DEBUG ────────────────────────────────────────\n');
+    await debug.start();
+  });
+};
+
 const stopProject = async (): Promise<void> => {
+  // A running debug session goes first; while it builds, stopping the build ends it.
+  const debugging = debug.active && debug.state !== 'starting';
+  if (debugging) await debug.stop();
   const result = await window.glistAPI.stopProject();
-  appendOutput(result.message, result.success ? 'normal' : 'error');
+  if (result.success || !debugging) appendOutput(result.message, result.success ? 'normal' : 'error');
 };
 
 const configureResizers = (): void => {
@@ -1025,7 +1089,7 @@ const configureMenus = (): void => {
       ],
       view: [
         { kind: 'heading', label: t('layout') },
-        item(t(shell.classList.contains('sidebar-hidden') ? 'showExplorer' : 'hideExplorer'),
+        item(t(shell.classList.contains('sidebar-hidden') || sidebarView !== 'explorer' ? 'showExplorer' : 'hideExplorer'),
           toggleExplorer, { shortcut: 'Ctrl+B' }),
         item(t(shell.classList.contains('output-hidden') ? 'showOutput' : 'hideOutput'),
           toggleOutput, { shortcut: 'Ctrl+J' }),
@@ -1051,8 +1115,19 @@ const configureMenus = (): void => {
         item(t('run'), runProject, {
           shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning || isStarting,
         }),
+        item(t('debug'), debugProject, {
+          shortcut: 'F6', disabled: !activeProject || isBuildRunning || isStarting || debug.active,
+        }),
         { kind: 'separator' },
-        item(t('stop'), stopProject, { shortcut: 'Shift+F5', disabled: !isRunRunning && !isBuildRunning }),
+        item(t('stop'), stopProject, { shortcut: 'Shift+F5', disabled: !isRunRunning && !isBuildRunning && !debug.active }),
+        { kind: 'separator' },
+        { kind: 'heading', label: t('debug') },
+        item(t('continue'), () => debug.continue(), { shortcut: 'F5', disabled: debug.state !== 'paused' }),
+        item(t('pause'), () => debug.pause(), { disabled: debug.state !== 'running' }),
+        item(t('stepOver'), () => debug.stepOver(), { shortcut: 'F10', disabled: debug.state !== 'paused' }),
+        item(t('stepInto'), () => debug.stepInto(), { shortcut: 'F11', disabled: debug.state !== 'paused' }),
+        item(t('stepOut'), () => debug.stepOut(), { shortcut: 'Shift+F11', disabled: debug.state !== 'paused' }),
+        item(t('toggleBreakpoint'), () => debug.toggleAtCursor(), { shortcut: 'F9', disabled: !activeFilePath }),
       ],
       help: [
         item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
@@ -1167,7 +1242,7 @@ const configureMenus = (): void => {
     activeButton?.focus();
   });
   window.addEventListener('blur', closeMenu);
-  explorerActivityButton.addEventListener('click', toggleExplorer);
+  activityButtons.forEach((button) => button.addEventListener('click', () => toggleView(button.dataset.view as SidebarView)));
 };
 
 openButton.addEventListener('click', chooseProject);
@@ -1182,7 +1257,14 @@ newFolderButton.addEventListener('click', createFolder);
 deleteEntryButton.addEventListener('click', deleteSelectedEntry);
 refreshButton.addEventListener('click', loadProjectTree);
 element<HTMLButtonElement>('#clear-output').addEventListener('click', () => { output.textContent = ''; });
-element<HTMLButtonElement>('#close-explorer').addEventListener('click', () => setExplorerVisible(false));
+element<HTMLButtonElement>('#close-explorer').addEventListener('click', () => setSidebarVisible(false));
+debugButton.addEventListener('click', debugProject);
+debugStartButton.addEventListener('click', debugProject);
+debugContinueButton.addEventListener('click', () => debug.continue());
+debugPauseButton.addEventListener('click', () => debug.pause());
+debugStepButtons[0].addEventListener('click', () => debug.stepOver());
+debugStepButtons[1].addEventListener('click', () => debug.stepInto());
+debugStepButtons[2].addEventListener('click', () => debug.stepOut());
 element<HTMLButtonElement>('#close-output').addEventListener('click', () => setOutputVisible(false));
 element<HTMLButtonElement>('#open-settings').addEventListener('click', () => settingsDialog.showModal());
 element<HTMLButtonElement>('#settings-close').addEventListener('click', () => settingsDialog.close());
@@ -1251,7 +1333,12 @@ window.addEventListener('keydown', (event) => {
   else if (primaryKey(event) && event.key.toLowerCase() === 'b') { event.preventDefault(); toggleExplorer(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 'j') { event.preventDefault(); toggleOutput(); }
   else if (event.shiftKey && event.key === 'F5') { event.preventDefault(); stopProject(); }
-  else if (event.key === 'F5') { event.preventDefault(); runProject(); }
+  else if (event.key === 'F5') { event.preventDefault(); if (debug.state === 'paused') debug.continue(); else runProject(); }
+  else if (event.key === 'F6') { event.preventDefault(); debugProject(); }
+  else if (event.key === 'F9') { event.preventDefault(); debug.toggleAtCursor(); }
+  else if (event.key === 'F10') { event.preventDefault(); debug.stepOver(); }
+  else if (event.shiftKey && event.key === 'F11') { event.preventDefault(); debug.stepOut(); }
+  else if (event.key === 'F11') { event.preventDefault(); debug.stepInto(); }
   else if (event.key === 'F2' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); renameSelectedEntry(); }
   else if ((event.key === 'Delete' || (isMac && event.metaKey && event.key === 'Backspace')) && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntry(); }
 });

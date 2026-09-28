@@ -48,6 +48,17 @@ const en = {
   readOnly: 'Read-only', switchSourceHeader: 'Switch Header/Source', clangdRunning: 'is running',
   renameUnavailable: 'This symbol cannot be renamed.',
   editOutsideProject: 'The change touches files outside the project and was not applied.',
+  debug: 'Debug', debugTitle: 'Debug (F6)', debugView: 'Run and Debug', startDebugging: 'Start Debugging',
+  continue: 'Continue', continueTitle: 'Continue (F5)', pause: 'Pause',
+  stepOver: 'Step Over', stepOverTitle: 'Step Over (F10)', stepInto: 'Step Into', stepIntoTitle: 'Step Into (F11)',
+  stepOut: 'Step Out', stepOutTitle: 'Step Out (Shift+F11)', toggleBreakpoint: 'Toggle Breakpoint',
+  breakpoint: 'Breakpoint', removeBreakpoint: 'Remove breakpoint',
+  runAndDebug: 'RUN AND DEBUG', variables: 'VARIABLES', callStack: 'CALL STACK', breakpoints: 'BREAKPOINTS',
+  noBreakpoints: 'Click to the left of a line number to stop there while debugging.',
+  debugIdle: 'Debug runs your app so you can pause it, look at its variables, and go line by line.',
+  debugStarting: 'Building for debugging and starting the debugger...',
+  debugRunning: 'Running', debugPaused: 'Paused',
+  programExited: 'The program exited with code', debuggerFailed: 'The debugger could not be started',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -97,6 +108,18 @@ const tr: Record<TranslationKey, string> = {
   readOnly: 'Salt okunur', switchSourceHeader: 'Başlık/Kaynak Dosyasına Geç', clangdRunning: 'çalışıyor',
   renameUnavailable: 'Bu sembol yeniden adlandırılamaz.',
   editOutsideProject: 'Değişiklik proje dışındaki dosyalara dokunuyor ve uygulanmadı.',
+  debug: 'Hata Ayıkla', debugTitle: 'Hata Ayıkla (F6)', debugView: 'Çalıştır ve Hata Ayıkla',
+  startDebugging: 'Hata Ayıklamayı Başlat',
+  continue: 'Devam Et', continueTitle: 'Devam Et (F5)', pause: 'Duraklat',
+  stepOver: 'Üzerinden Geç', stepOverTitle: 'Üzerinden Geç (F10)', stepInto: 'İçine Gir', stepIntoTitle: 'İçine Gir (F11)',
+  stepOut: 'Dışına Çık', stepOutTitle: 'Dışına Çık (Shift+F11)', toggleBreakpoint: 'Kesme Noktası Ekle/Kaldır',
+  breakpoint: 'Kesme noktası', removeBreakpoint: 'Kesme noktasını kaldır',
+  runAndDebug: 'ÇALIŞTIR VE HATA AYIKLA', variables: 'DEĞİŞKENLER', callStack: 'ÇAĞRI YIĞINI', breakpoints: 'KESME NOKTALARI',
+  noBreakpoints: 'Hata ayıklarken orada durmak için bir satır numarasının soluna tıklayın.',
+  debugIdle: 'Hata ayıklama uygulamanızı çalıştırır; onu duraklatıp değişkenlerine bakabilir ve satır satır ilerleyebilirsiniz.',
+  debugStarting: 'Hata ayıklama için derleniyor ve hata ayıklayıcı başlatılıyor...',
+  debugRunning: 'Çalışıyor', debugPaused: 'Duraklatıldı',
+  programExited: 'Program şu kodla çıktı:', debuggerFailed: 'Hata ayıklayıcı başlatılamadı',
 };
 
 const dictionaries = { en, tr };
