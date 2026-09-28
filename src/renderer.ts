@@ -910,6 +910,9 @@ const chooseProject = async (): Promise<void> => {
 };
 
 const showNewProjectDialog = (): void => {
+  const location = element<HTMLElement>('#project-location');
+  location.textContent = '';
+  void window.glistAPI.getProjectsDirectory().then((directory) => { location.textContent = directory; });
   element<HTMLInputElement>('#project-name-input').value = '';
   element<HTMLElement>('#project-dialog-error').textContent = '';
   projectDialog.showModal();

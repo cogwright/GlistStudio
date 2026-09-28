@@ -109,7 +109,6 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     // One page drives the backend at a time; a newer one takes over.
     client?.close(4000, 'Glist Studio was opened in another tab.');
     client = socket;
-    send({ channel: 'web:hello', payload: { projectsDirectory: options.projectsDirectory } });
     socket.on('message', async (data) => {
       let request: { id: number; method: string; args: unknown[] };
       try { request = JSON.parse(data.toString()); } catch { return; }

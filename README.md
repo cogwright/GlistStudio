@@ -2,7 +2,7 @@
 
 Glist Studio is a lightweight desktop IDE for Glist Engine projects, built with Electron and TypeScript.
 
-The current Windows setup expects Glist Engine and its toolchain under `C:\dev\glist`.
+It expects the layout the Glist install scripts create: `C:\dev\glist` on Windows, with the toolchain in `zbin`, and `~/dev/glist` on macOS and Linux.
 
 ## Features
 
@@ -12,7 +12,7 @@ The current Windows setup expects Glist Engine and its toolchain under `C:\dev\g
 - Save, build, run, and stop commands with live output
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - C++ class generation with matching header and source files
-- Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates
+- Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
 - English and Turkish interface languages (English by default)
 
 ## C++ code intelligence
@@ -47,7 +47,7 @@ npm run web
 This builds the renderer as a web page, runs the same backend in Node, and prints a link with an access token. The server listens on `127.0.0.1:8787`; reach it from elsewhere through a tunnel or reverse proxy. Anyone with the link can build and run code on the host, so share it accordingly. Open Project asks for a folder path on the host, and showing items in the system explorer is not available. Settings come from environment variables:
 
 - `GLIST_STUDIO_PORT`: port to listen on
-- `GLIST_STUDIO_PROJECTS`: folder for new projects, and the default when opening one
+- `GLIST_STUDIO_PROJECTS`: the `myglistapps` folder to use while no project is open
 - `GLIST_STUDIO_TOKEN`: a fixed access token instead of a new one per run
 
 Build a Windows application folder:

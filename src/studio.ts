@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
-import { userInfo } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { Handlers } from './api';
 import { ClangdProcess } from './clangd-process';
@@ -15,8 +15,13 @@ export interface StudioHost {
   showItemInFolder(entryPath: string): void;
   openPath(entryPath: string): Promise<unknown>;
   templateRoot: string;
+  // Where new projects go when no open project points at a workspace.
   projectsDirectory: string;
 }
+
+// The myglistapps folder of a default Glist install.
+export const defaultProjectsDirectory = (): string => (process.platform === 'win32'
+  ? 'C:\\dev\\glist\\myglistapps' : path.join(homedir(), 'dev', 'glist', 'myglistapps'));
 
 interface FileEntry {
   name: string;
@@ -298,9 +303,10 @@ const createProjectFromTemplate = async (
   if (!templateNames.has(templateName)) throw new Error(msg('invalidTemplate'));
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(projectName)) throw new Error(msg('invalidName'));
   const source = path.join(host.templateRoot, templateName);
-  const target = path.join(host.projectsDirectory, projectName);
+  const directory = projectsDirectory();
+  const target = path.join(directory, projectName);
   if (existsSync(target)) throw new Error(msg('projectExists'));
-  await fs.mkdir(host.projectsDirectory, { recursive: true });
+  await fs.mkdir(directory, { recursive: true });
   await fs.cp(source, target, { recursive: true, force: false, errorOnExist: true });
   const eclipsePath = path.join(target, '.project');
   if (existsSync(eclipsePath)) {
@@ -320,6 +326,13 @@ const findAncestorWith = (projectRoot: string, marker: string): string | null =>
     cursor = parent;
   }
   return null;
+};
+
+// A project builds only from <workspace>/myglistapps, since the template reaches
+// the engine through ../../GlistEngine. Prefer the workspace of the open project.
+export const projectsDirectory = (): string => {
+  const workspaceRoot = activeProjectRoot && findAncestorWith(activeProjectRoot, path.join('GlistEngine', 'engine'));
+  return workspaceRoot ? path.join(workspaceRoot, 'myglistapps') : host.projectsDirectory;
 };
 
 const resolveToolchain = (projectRoot: string): Toolchain => {
@@ -548,6 +561,7 @@ export const studio: Handlers = {
   openCommandPrompt,
   readFile: readProjectFile,
   readWorkspaceFile,
+  getProjectsDirectory: projectsDirectory,
   writeFile: writeProjectFile,
   buildProject: configureAndBuild,
   runProject,
