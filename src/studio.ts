@@ -390,12 +390,22 @@ const runBuildCommand = (
   buildProcess = child;
   child.stdout.on('data', (chunk: Buffer) => sendToRenderer('build:output', chunk.toString()));
   child.stderr.on('data', (chunk: Buffer) => sendToRenderer('build:output', chunk.toString()));
-  child.once('error', (error) => { buildProcess = null; reject(error); });
-  child.once('close', (exitCode) => { buildProcess = null; resolve(exitCode ?? 1); });
+  // A stopped build may end after the next one started; leave that one alone.
+  child.once('error', (error) => { if (buildProcess === child) buildProcess = null; reject(error); });
+  child.once('close', (exitCode) => { if (buildProcess === child) buildProcess = null; resolve(exitCode ?? 1); });
 });
 
+// Stop bumps the generation, so a stopped build notices at its next step and
+// leaves the build that follows it alone.
+let building = false;
+let buildGeneration = 0;
+
 const configureAndBuild = async (): Promise<ProcessResult> => {
-  if (buildProcess) return { success: false, message: msg('buildRunning') };
+  if (building) return { success: false, message: msg('buildRunning') };
+  building = true;
+  buildGeneration += 1;
+  const generation = buildGeneration;
+  const stopped = (): boolean => generation !== buildGeneration;
   const projectRoot = requireProjectRoot();
   const toolchain = resolveToolchain(projectRoot);
   const buildDirectory = buildDirectoryFor(projectRoot);
@@ -412,6 +422,7 @@ const configureAndBuild = async (): Promise<ProcessResult> => {
     const configureCode = await runBuildCommand(
       toolchain.cmake, configureArgs, projectRoot, toolchain,
     );
+    if (stopped()) return { success: false, message: msg('stopped') };
     if (configureCode !== 0) {
       return { success: false, message: `${msg('configureFailed')}: ${configureCode}.` };
     }
@@ -427,7 +438,10 @@ const configureAndBuild = async (): Promise<ProcessResult> => {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, message: `${msg('buildStartFailed')}: ${message}` };
   } finally {
-    sendToRenderer('build:status', { running: false, label: msg('ready') });
+    if (!stopped()) {
+      building = false;
+      sendToRenderer('build:status', { running: false, label: msg('ready') });
+    }
   }
 };
 
@@ -488,8 +502,10 @@ const runProject = async (): Promise<ProcessResult> => {
     child.stderr.on('data', (chunk: Buffer) => sendToRenderer('run:output', chunk.toString()));
     child.once('error', (error) => sendToRenderer('run:output', `${msg('launchFailed')}: ${error.message}\n`));
     child.once('close', (exitCode) => {
+      if (runProcess !== child) return;
       runProcess = null;
-      sendToRenderer('run:status', { running: false, exitCode });
+      // A stopped app has no exit code, only the signal that ended it.
+      sendToRenderer('run:status', { running: false, exitCode: exitCode ?? undefined });
     });
     return { success: true, message: `${path.basename(executable)} ${msg('launched')}.` };
   } catch (error) {
@@ -501,7 +517,13 @@ const runProject = async (): Promise<ProcessResult> => {
 
 export const stopProcesses = (): ProcessResult => {
   let stopped = false;
-  if (buildProcess) { killTree(buildProcess); buildProcess = null; stopped = true; }
+  if (building) {
+    buildGeneration += 1;
+    building = false;
+    if (buildProcess) killTree(buildProcess);
+    buildProcess = null;
+    stopped = true;
+  }
   if (runProcess) { killTree(runProcess); runProcess = null; stopped = true; }
   sendToRenderer('build:status', { running: false, label: msg('ready') });
   sendToRenderer('run:status', { running: false });
