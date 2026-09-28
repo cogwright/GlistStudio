@@ -463,11 +463,14 @@ const findRunnable = async (projectRoot: string): Promise<string | null> => {
   if (existsSync(expected)) return expected;
   try {
     const files = await fs.readdir(buildDirectory, { withFileTypes: true });
-    const fallback = files.find((file) =>
-      file.isFile()
-      && (process.platform !== 'win32' || file.name.endsWith('.exe'))
-      && !file.name.toLowerCase().includes('shadertoheader'));
-    return fallback ? path.join(buildDirectory, fallback.name) : null;
+    for (const file of files) {
+      if (!file.isFile() || file.name.toLowerCase().includes('shadertoheader')) continue;
+      const candidate = path.join(buildDirectory, file.name);
+      if (process.platform === 'win32' ? file.name.endsWith('.exe') : ((await fs.stat(candidate)).mode & 0o111) !== 0) {
+        return candidate;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
