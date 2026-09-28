@@ -15,6 +15,10 @@
   --ui-warning: #cca700;
   --ui-contrast: #ffffff;
   --ui-shadow: #0008;
+  --code-string: #a7d17a;
+  --code-keyword: #c792ea;
+  --code-function: #82aaff;
+  --code-type: #61c7c1;
 
   --ui-fg-strong: color-mix(in srgb, var(--ui-fg) 25%, var(--ui-contrast));
   --ui-fg-faint: color-mix(in srgb, var(--ui-fg) 38%, var(--ui-chrome));
@@ -399,6 +403,19 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .process-status.error { color: var(--ui-danger); }
 .process-status.error i { background: var(--ui-danger); }
 .output { height: calc(100% - 35px); margin: 0; overflow: auto; padding: 10px 14px 24px; color: var(--ui-fg); background: var(--ui-bg); font: 12px/1.55 "Cascadia Code", Consolas, monospace; white-space: pre-wrap; }
+
+/* ANSI colors in the output, in the theme's own colors. */
+.ansi-black { color: var(--ui-fg-muted); }
+.ansi-red { color: var(--ui-danger); }
+.ansi-green { color: var(--code-string); }
+.ansi-yellow { color: var(--ui-warning); }
+.ansi-blue { color: var(--code-function); }
+.ansi-magenta { color: var(--code-keyword); }
+.ansi-cyan { color: var(--code-type); }
+.ansi-white { color: var(--ui-fg-strong); }
+.ansi-bold { font-weight: 700; }
+.output-link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); cursor: pointer; }
+.output-link:hover { color: var(--ui-accent); text-decoration-color: currentColor; }
 
 #app-shell.sidebar-hidden .workspace { grid-template-columns: 48px 0 0 minmax(0,1fr); }
 #app-shell.sidebar-hidden .sidebar, #app-shell.sidebar-hidden .vertical-resizer { visibility: hidden; }

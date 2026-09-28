@@ -10,6 +10,7 @@ import appIconUrl from '../assets/glistengine.ico';
 import { applyTheme, getActiveTheme, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
+import { formatOutput, newOutputStyle } from './output-format';
 import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
@@ -159,7 +160,7 @@ const refreshLanguage = (): void => {
   if (!activeProject) {
     projectRootLabel.textContent = t('projectPlaceholder');
     if (output.textContent === '' || output.textContent.includes('Glist Studio is ready')
-      || output.textContent.includes('Glist Studio hazır')) output.textContent = t('initialOutput');
+      || output.textContent.includes('Glist Studio hazır')) clearOutput(t('initialOutput'));
   }
   if (!isBuildRunning && !isRunRunning) setProcessStatus(t('ready'), false);
 };
@@ -215,8 +216,29 @@ const editor = monaco.editor.create(editorHost, {
 });
 
 // Appends a text node; rewriting textContent made long builds quadratic.
+let outputStyle = newOutputStyle();
+
+const clearOutput = (text = ''): void => {
+  output.textContent = text;
+  outputStyle = newOutputStyle();
+};
+
+// Opens a file named in the output, relative to the project when not absolute.
+const openOutputLocation = (filePath: string, line: number): void => {
+  if (!activeProject) return;
+  const absolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(filePath) ? filePath : joinPath(activeProject.root, filePath);
+  void revealLocation(pathUri(absolute), { lineNumber: line, column: 1 });
+};
+
+// Appends nodes; rewriting textContent made long builds quadratic.
 const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'normal'): void => {
-  output.append(kind === 'normal' ? text : `\n${kind === 'success' ? '✓' : '✕'} ${text}\n`);
+  if (kind === 'normal') output.append(...formatOutput(text, outputStyle, openOutputLocation));
+  else {
+    const message = document.createElement('span');
+    message.className = kind === 'success' ? 'ansi-green' : 'ansi-red';
+    message.append(...formatOutput(`${kind === 'success' ? '✓' : '✕'} ${text}`, newOutputStyle(), openOutputLocation));
+    output.append('\n', message, '\n');
+  }
   output.scrollTop = output.scrollHeight;
 };
 
@@ -931,7 +953,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   projectRootLabel.textContent = selected.name.toUpperCase();
   document.title = `${selected.name} - Glist Studio`;
   await loadProjectTree(); updateButtons();
-  output.textContent = `Glist Studio\n${t('openedProject')}: ${selected.root}\n`;
+  clearOutput(`Glist Studio\n${t('openedProject')}: ${selected.root}\n`);
   if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
   void clangd.start(selected.root);
   debug.setProject(selected.root);
@@ -1260,7 +1282,7 @@ newFileButton.addEventListener('click', createFile);
 newFolderButton.addEventListener('click', createFolder);
 deleteEntryButton.addEventListener('click', deleteSelectedEntry);
 refreshButton.addEventListener('click', loadProjectTree);
-element<HTMLButtonElement>('#clear-output').addEventListener('click', () => { output.textContent = ''; });
+element<HTMLButtonElement>('#clear-output').addEventListener('click', () => clearOutput());
 element<HTMLButtonElement>('#close-explorer').addEventListener('click', () => setSidebarVisible(false));
 debugButton.addEventListener('click', debugProject);
 debugStartButton.addEventListener('click', debugProject);
