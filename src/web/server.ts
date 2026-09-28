@@ -44,7 +44,15 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     send: (channel, payload) => send({ channel, payload }),
     trashItem: async (entryPath) => {
       await fs.mkdir(trashDirectory, { recursive: true });
-      await fs.rename(entryPath, path.join(trashDirectory, `${Date.now()}-${path.basename(entryPath)}`));
+      const target = path.join(trashDirectory, `${Date.now()}-${path.basename(entryPath)}`);
+      try {
+        await fs.rename(entryPath, target);
+      } catch (error) {
+        // The temporary folder is often another file system, a tmpfs on Linux.
+        if ((error as NodeJS.ErrnoException).code !== 'EXDEV') throw error;
+        await fs.cp(entryPath, target, { recursive: true });
+        await fs.rm(entryPath, { recursive: true });
+      }
     },
     showItemInFolder: unavailable,
     openPath: async () => unavailable(),
