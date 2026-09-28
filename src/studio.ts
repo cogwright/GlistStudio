@@ -539,7 +539,11 @@ const readWorkspaceFile = async (filePath: string): Promise<string> => {
 };
 
 const writeProjectFile = async (filePath: string, contents: string): Promise<boolean> => {
-  await fs.writeFile(await assertExistingPathInProject(filePath), contents, 'utf8');
+  // A file deleted behind the editor's back is written again, into a folder that still exists.
+  const target = existsSync(filePath)
+    ? await assertExistingPathInProject(filePath)
+    : path.join(await assertExistingPathInProject(path.dirname(assertPathInProject(filePath))), path.basename(filePath));
+  await fs.writeFile(target, contents, 'utf8');
   return true;
 };
 
