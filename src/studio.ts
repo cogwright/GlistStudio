@@ -174,7 +174,7 @@ const cmakeChange = async (change: CmakeChange): Promise<{
   const cmakePath = path.join(requireProjectRoot(), 'CMakeLists.txt');
   if (!existsSync(cmakePath)) return null;
   const before = await fs.readFile(cmakePath, 'utf8');
-  const after = synchronizeCmake(before, change);
+  const after = synchronizeCmake(before, change, process.platform === 'linux');
   return { path: cmakePath, before, after };
 };
 
