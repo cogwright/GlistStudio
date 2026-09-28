@@ -86,9 +86,10 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     }
     let filePath = '';
     try {
-      // Normalizing a rooted path drops any '..' that would climb out of it.
-      const relative = path.posix.normalize(decodeURIComponent(url.pathname)).replace(/^\/+/, '') || 'index.html';
-      filePath = path.join(options.staticRoot, relative);
+      const relative = decodeURIComponent(url.pathname).replace(/^[\\/]+/, '') || 'index.html';
+      filePath = path.resolve(options.staticRoot, relative);
+      const inside = path.relative(options.staticRoot, filePath);
+      if (inside.startsWith('..') || path.isAbsolute(inside)) throw new Error('outside the bundle');
       if (!(await fs.stat(filePath)).isFile()) throw new Error('not a file');
     } catch {
       response.writeHead(404);
