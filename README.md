@@ -10,6 +10,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 - Tabbed C/C++ editor powered by Monaco
 - C++ code intelligence from clangd: diagnostics, completion, hover, signature help, go to definition, references, rename, quick fixes, formatting, outline, and header/source switching (Alt+O)
 - Save, build, run, and stop commands with live output
+- A debugger: breakpoints, stepping, variables, the call stack, and values on hover, through lldb-dap or GDB
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - C++ class generation with matching header and source files
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
@@ -21,6 +22,16 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 Opening a project starts [clangd](https://clangd.llvm.org/). It is looked up on `PATH`; on Windows the Glist `clang64\bin` folder is searched first. Without clangd the editor still works, with syntax highlighting only.
 
 clangd reads the compile flags from `_build/Release/compile_commands.json`, which the build writes. Until a project has been built once, clangd cannot find the engine headers; it restarts on its own after that first build. Definitions in GlistEngine and its plugins open read-only.
+
+## Debugging
+
+Click to the left of a line number to put a breakpoint there, then press Debug (F6). The studio builds a Debug configuration into `_build/Debug`, starts the program under a debugger, and stops at the breakpoint with the line highlighted. The Run and Debug view shows the variables and the call stack; hovering a variable in the editor shows its value. Continue (F5), Step Over (F10), Step Into (F11) and Step Out (Shift+F11) sit in the toolbar while debugging, and Stop (Shift+F5) ends it.
+
+The debugger is an external program that speaks the Debug Adapter Protocol:
+
+- macOS: `lldb-dap` from Xcode or its command line tools, found through `xcrun`.
+- Linux: `lldb-dap` from the LLVM packages (also under the older name `lldb-vscode`, often with a version suffix), or GDB 14 or newer.
+- Windows: the Glist toolchain does not include a debugger yet. Install LLVM, which comes with `lldb-dap`, or GDB 14 or newer from MSYS2, and put it on `PATH`.
 
 ## Themes
 
@@ -83,6 +94,7 @@ Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which build
 - `src/clangd.ts`: The language client that feeds Monaco from clangd
 - `src/web/` and `scripts/web.ts`: Browser version of the API and the server behind `npm run web`
 - `src/themes.ts` and `src/appearance.ts`: Built-in themes, VS Code theme import, and the theme picker
+- `src/debug-adapters.ts` and `src/debugger.ts`: Finding a debug adapter, and the debugger client and its view
 - `src/renderer.ts`: Editor and interface behavior
 - `src/index.html` and `src/index.css`: Interface structure and styling
 - `src/localization.ts`: English and Turkish interface text
