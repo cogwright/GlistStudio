@@ -68,7 +68,7 @@ const registerIpcHandlers = (): void => {
   });
   ipcMain.handle(invokeChannels.openEngineSite, () => shell.openExternal('https://www.glistengine.com/'));
   ipcMain.handle(invokeChannels.setZoomFactor, (event, factor: number) => {
-    const safeFactor = Number.isFinite(factor) ? Math.min(2, Math.max(0.5, factor)) : 1;
+    const safeFactor = Number.isFinite(factor) ? Math.min(3, Math.max(0.5, factor)) : 1;
     event.sender.setZoomFactor(safeFactor);
     return safeFactor;
   });

@@ -153,7 +153,8 @@ const togglePanel = (view: PanelView): void => {
   else showPanel(view);
 };
 
-const zoomLevels = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200] as const;
+// Up to 300%, for projectors in classrooms.
+const zoomLevels = [50, 67, 80, 90, 100, 110, 125, 150, 175, 200, 250, 300] as const;
 const defaultZoom = 100;
 
 const loadZoom = (): number => {
@@ -166,6 +167,30 @@ const loadZoom = (): number => {
 
 let zoomPercentage = loadZoom();
 
+// The Scale row in Settings, and a chip in the title bar while the scale is
+// not 100%, which says so and puts it back.
+const scaleSlider = element<HTMLInputElement>('#settings-scale');
+const scaleValue = element<HTMLOutputElement>('#scale-value');
+const scaleDown = element<HTMLButtonElement>('#scale-down');
+const scaleUp = element<HTMLButtonElement>('#scale-up');
+const scaleReset = element<HTMLButtonElement>('#scale-reset');
+const zoomIndicator = element<HTMLButtonElement>('#zoom-indicator');
+scaleSlider.max = String(zoomLevels.length - 1);
+
+const showZoom = (): void => {
+  const index = zoomLevels.findIndex((level) => level === zoomPercentage);
+  scaleSlider.value = String(index);
+  scaleSlider.setAttribute('aria-valuetext', `${zoomPercentage}%`);
+  scaleValue.textContent = `${zoomPercentage}%`;
+  scaleDown.disabled = index === 0;
+  scaleUp.disabled = index === zoomLevels.length - 1;
+  scaleReset.disabled = zoomPercentage === defaultZoom;
+  zoomIndicator.hidden = zoomPercentage === defaultZoom;
+  const label = document.createElement('span');
+  label.textContent = `${zoomPercentage}%`;
+  zoomIndicator.replaceChildren(icon(zoomPercentage > defaultZoom ? 'zoom-in' : 'zoom-out'), label);
+};
+
 placeIcons();
 registerCmakeLanguage();
 applyTheme(getActiveTheme());
@@ -177,6 +202,7 @@ const setZoom = (percentage: number): void => {
   zoomPercentage = closest;
   try { window.localStorage.setItem('glist-studio-zoom', String(closest)); } catch { /* Storage may be unavailable. */ }
   void window.glistAPI.setZoomFactor(closest / 100);
+  showZoom();
 };
 
 const changeZoom = (direction: -1 | 1): void => {
@@ -184,6 +210,15 @@ const changeZoom = (direction: -1 | 1): void => {
   const nextIndex = Math.min(zoomLevels.length - 1, Math.max(0, currentIndex + direction));
   setZoom(zoomLevels[nextIndex]);
 };
+
+// A drag applies on release: zooming under the pointer would move the slider away from it.
+const sliderZoom = (): number => zoomLevels[Number(scaleSlider.value)] ?? defaultZoom;
+scaleSlider.addEventListener('input', () => { scaleValue.textContent = `${sliderZoom()}%`; });
+scaleSlider.addEventListener('change', () => setZoom(sliderZoom()));
+scaleDown.addEventListener('click', () => changeZoom(-1));
+scaleUp.addEventListener('click', () => changeZoom(1));
+scaleReset.addEventListener('click', () => setZoom(defaultZoom));
+zoomIndicator.addEventListener('click', () => setZoom(defaultZoom));
 
 applyLanguage(getLanguage());
 void window.glistAPI.setLanguage(getLanguage());

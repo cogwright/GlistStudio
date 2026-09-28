@@ -20,6 +20,7 @@
           </nav>
         </div>
         <div class="toolbar-actions">
+          <button id="zoom-indicator" class="title-action zoom-indicator" type="button" title="Back to 100% (Ctrl+0)" data-i18n-title="resetZoomTitle" hidden></button>
           <button id="open-project" class="title-action" type="button" title="Open Project" data-i18n-title="openProject">
             <i data-icon="folder-opened"></i>
           </button>
@@ -159,6 +160,17 @@
           <label for="settings-language" data-i18n="language">Language</label>
           <select id="settings-language"><option value="en">English</option><option value="tr">Türkçe</option></select>
           <p class="dialog-hint" data-i18n="languageHint">The interface language changes immediately.</p>
+        </div>
+        <div class="settings-section scale-settings">
+          <label for="settings-scale" data-i18n="scale">Scale</label>
+          <div class="scale-row">
+            <button id="scale-down" class="scale-step" type="button" title="Zoom Out (Ctrl+-)" data-i18n-title="zoomOutTitle"><i data-icon="zoom-out"></i></button>
+            <input id="settings-scale" type="range" min="0" step="1" />
+            <button id="scale-up" class="scale-step" type="button" title="Zoom In (Ctrl++)" data-i18n-title="zoomInTitle"><i data-icon="zoom-in"></i></button>
+            <output id="scale-value" for="settings-scale">100%</output>
+            <button id="scale-reset" class="scale-reset" type="button" data-i18n="scaleReset">Back to 100%</button>
+          </div>
+          <p class="dialog-hint" data-i18n="scaleHint">Makes everything in the studio larger or smaller, for example on a classroom projector.</p>
         </div>
         <fieldset class="settings-section font-settings">
           <legend data-i18n="fonts">Fonts</legend>
