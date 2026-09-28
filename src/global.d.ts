@@ -20,6 +20,14 @@ interface GlistProcessResult {
   message: string;
 }
 
+interface GlistDebugStart {
+  success: boolean;
+  message: string;
+  program?: string;
+  cwd?: string;
+  flavor?: 'lldb' | 'gdb';
+}
+
 interface GlistClangdStatus {
   running: boolean;
   message: string;
@@ -64,6 +72,9 @@ interface Window {
     openEngineSite(): Promise<void>;
     startClangd(): Promise<GlistClangdStatus>;
     sendClangd(message: unknown): Promise<void>;
+    startDebugging(): Promise<GlistDebugStart>;
+    sendDebug(message: unknown): Promise<void>;
+    stopDebugging(): Promise<void>;
     onBuildOutput(callback: (text: string) => void): () => void;
     onBuildStatus(callback: (status: { running: boolean; label: string }) => void): () => void;
     onRunOutput(callback: (text: string) => void): () => void;
@@ -71,5 +82,7 @@ interface Window {
     onClangdMessage(callback: (message: unknown) => void): () => void;
     onClangdStatus(callback: (status: GlistClangdStatus) => void): () => void;
     onSaveAndClose(callback: () => void): () => void;
+    onDebugMessage(callback: (message: unknown) => void): () => void;
+    onDebugStatus(callback: (status: GlistClangdStatus) => void): () => void;
   };
 }

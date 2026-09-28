@@ -35,6 +35,9 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   openEngineSite: 'app:open-engine-site',
   startClangd: 'clangd:start',
   sendClangd: 'clangd:send',
+  startDebugging: 'debug:start',
+  sendDebug: 'debug:send',
+  stopDebugging: 'debug:stop',
 };
 
 export const eventChannels: Record<EventMethod, string> = {
@@ -45,4 +48,6 @@ export const eventChannels: Record<EventMethod, string> = {
   onClangdMessage: 'clangd:message',
   onClangdStatus: 'clangd:status',
   onSaveAndClose: 'app:save-and-close',
+  onDebugMessage: 'debug:message',
+  onDebugStatus: 'debug:status',
 };

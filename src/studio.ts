@@ -3,6 +3,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import { availableParallelism, homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { Handlers } from './api';
+import { findDebugAdapter } from './debug-adapters';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { synchronizeCmake, type CmakeChange } from './cmake';
@@ -69,6 +70,9 @@ const messages = {
     buildSucceeded: 'Build completed successfully.', buildStartFailed: 'Could not start build',
     appRunning: 'The application is already running.', runCancelled: 'Run cancelled',
     executableMissing: 'Build completed, but no executable was found.', launched: 'launched',
+    debugCancelled: 'Debugging cancelled',
+    debuggerMissing: 'No debugger was found. Install LLVM (for lldb-dap) or GDB 14 or newer, and make sure it is on PATH.',
+    debuggerFailed: 'The debugger could not be started',
     launchFailed: 'Could not launch application', stopped: 'Running process stopped.',
     nothingToStop: 'No running process to stop.', fileRequired: 'The selected path is not a file.',
     fileTooLarge: 'Files larger than 5 MB cannot be opened in this version.',
@@ -95,6 +99,9 @@ const messages = {
     buildSucceeded: 'Derleme başarıyla tamamlandı.', buildStartFailed: 'Derleme başlatılamadı',
     appRunning: 'Uygulama zaten çalışıyor.', runCancelled: 'Çalıştırma iptal edildi',
     executableMissing: 'Derleme tamamlandı ancak çalıştırılabilir dosya bulunamadı.', launched: 'başlatıldı',
+    debugCancelled: 'Hata ayıklama iptal edildi',
+    debuggerMissing: 'Hata ayıklayıcı bulunamadı. LLVM (lldb-dap için) veya GDB 14 ya da daha yenisini kurun ve PATH üzerinde olduğundan emin olun.',
+    debuggerFailed: 'Hata ayıklayıcı başlatılamadı',
     launchFailed: 'Uygulama başlatılamadı', stopped: 'Çalışan işlem durduruldu.',
     nothingToStop: 'Durdurulacak işlem yok.', fileRequired: 'Seçilen yol bir dosya değil.',
     fileTooLarge: '5 MB üzerindeki dosyalar bu sürümde açılamıyor.',
@@ -381,7 +388,11 @@ const processEnvironment = (toolchain: Toolchain): NodeJS.ProcessEnv => ({
     : process.env.PATH,
 });
 
-const buildDirectoryFor = (projectRoot: string): string => path.join(projectRoot, '_build', 'Release');
+// Release for Build and Run; Debug, with symbols and no optimization, for the debugger.
+type BuildType = 'Release' | 'Debug';
+
+const buildDirectoryFor = (projectRoot: string, buildType: BuildType = 'Release'): string =>
+  path.join(projectRoot, '_build', buildType);
 
 // Builds and runs get a process group of their own on POSIX, so Stop can end
 // what they started too: make, the compilers, and whatever the app spawns.
@@ -423,7 +434,7 @@ const runBuildCommand = (
 let building = false;
 let buildGeneration = 0;
 
-const configureAndBuild = async (): Promise<ProcessResult> => {
+const configureAndBuild = async (buildType: BuildType = 'Release'): Promise<ProcessResult> => {
   if (building) return { success: false, message: msg('buildRunning') };
   building = true;
   buildGeneration += 1;
@@ -431,10 +442,10 @@ const configureAndBuild = async (): Promise<ProcessResult> => {
   const stopped = (): boolean => generation !== buildGeneration;
   const projectRoot = requireProjectRoot();
   const toolchain = resolveToolchain(projectRoot);
-  const buildDirectory = buildDirectoryFor(projectRoot);
+  const buildDirectory = buildDirectoryFor(projectRoot, buildType);
   const configureArgs = [
     '-S', projectRoot, '-B', buildDirectory,
-    '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
+    `-DCMAKE_BUILD_TYPE=${buildType}`, '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
   ];
   if (!existsSync(path.join(buildDirectory, 'CMakeCache.txt')) && toolchain.generator) {
     configureArgs.push('-G', toolchain.generator);
@@ -479,8 +490,8 @@ const readAppName = async (projectRoot: string): Promise<string> => {
   }
 };
 
-const findRunnable = async (projectRoot: string): Promise<string | null> => {
-  const buildDirectory = buildDirectoryFor(projectRoot);
+const findRunnable = async (projectRoot: string, buildType: BuildType = 'Release'): Promise<string | null> => {
+  const buildDirectory = buildDirectoryFor(projectRoot, buildType);
   const appName = await readAppName(projectRoot);
   const expected = path.join(buildDirectory, process.platform === 'win32' ? `${appName}.exe` : appName);
   if (existsSync(expected)) return expected;
@@ -615,6 +626,29 @@ const startClangd = async (): Promise<GlistClangdStatus> => {
 
 export const stopClangd = (): void => clangd.stop();
 
+const debugAdapter = new MessageProcess(
+  (message) => sendToRenderer('debug:message', message),
+  (status) => sendToRenderer('debug:status', status),
+);
+
+// Builds the Debug configuration and starts a debug adapter for it. The
+// renderer then launches the program through the adapter.
+const startDebugging = async (): Promise<GlistDebugStart> => {
+  const projectRoot = requireProjectRoot();
+  const build = await configureAndBuild('Debug');
+  if (!build.success) return { success: false, message: `${msg('debugCancelled')}: ${build.message}` };
+  const program = await findRunnable(projectRoot, 'Debug');
+  if (!program) return { success: false, message: msg('executableMissing') };
+  const env = processEnvironment(resolveToolchain(projectRoot));
+  const adapter = await findDebugAdapter(env);
+  if (!adapter) return { success: false, message: msg('debuggerMissing') };
+  const status = await debugAdapter.start({ command: adapter.command, args: adapter.args, cwd: projectRoot, env });
+  if (!status.running) return { success: false, message: `${msg('debuggerFailed')}: ${status.message}` };
+  return { success: true, message: '', program, cwd: projectRoot, flavor: adapter.flavor };
+};
+
+export const stopDebugging = (): void => debugAdapter.stop();
+
 const setLanguage = (nextLanguage: AppLanguage): AppLanguage => {
   language = nextLanguage === 'tr' ? 'tr' : 'en';
   return language;
@@ -637,10 +671,13 @@ export const studio: Handlers = {
   getProjectsDirectory: projectsDirectory,
   getPlatform: () => process.platform,
   writeFile: writeProjectFile,
-  buildProject: configureAndBuild,
+  buildProject: () => configureAndBuild('Release'),
   runProject,
   stopProject: stopProcesses,
   setLanguage,
   startClangd,
   sendClangd: (message: unknown) => clangd.send(message),
+  startDebugging,
+  sendDebug: (message: unknown) => debugAdapter.send(message),
+  stopDebugging,
 };
