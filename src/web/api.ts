@@ -73,6 +73,10 @@ Object.assign(api, {
     return project;
   },
   openEngineSite: async () => { window.open('https://www.glistengine.com/', '_blank', 'noopener'); },
+  setZoomFactor: async (factor: number) => {
+    document.documentElement.style.zoom = String(factor);
+    return factor;
+  },
 });
 
 window.glistAPI = api as unknown as Window['glistAPI'];

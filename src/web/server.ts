@@ -65,7 +65,6 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     openProject: (projectRoot: string) => openProjectAt(projectRoot),
     openCommandPrompt: unavailable,
     setTheme: (theme: string) => theme,
-    setZoomFactor: (factor: number) => factor,
   };
 
   const server = http.createServer(async (request, response) => {
