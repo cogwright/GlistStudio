@@ -123,7 +123,7 @@ const terminalHost = element<HTMLDivElement>('#terminal');
 const newTerminalButton = element<HTMLButtonElement>('#new-terminal');
 const clearOutputButton = element<HTMLButtonElement>('#clear-output');
 const studioTerminal = new StudioTerminal(terminalHost);
-onThemeChange((theme) => studioTerminal.setTheme(terminalTheme(theme.palette)));
+onThemeChange((theme) => studioTerminal.setTheme(terminalTheme(theme.palette, theme.kind)));
 onFontsChange((fonts) => studioTerminal.setFont(codeFontStack(fonts), panelFontSize(fonts)));
 
 const panelShowing = (view: PanelView): boolean => !appShell.classList.contains('output-hidden') && panelView === view;
@@ -239,6 +239,8 @@ const editor = monaco.editor.create(editorHost, {
   automaticLayout: true,
   // Colors from clangd for functions, types, members and the like.
   'semanticHighlighting.enabled': true,
+  // Matching brackets share a color, by how deep they are nested.
+  bracketPairColorization: { enabled: true },
   minimap: { enabled: true, scale: 1 },
   // Room for breakpoints.
   glyphMargin: true,
