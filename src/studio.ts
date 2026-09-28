@@ -356,6 +356,20 @@ const processEnvironment = (toolchain: Toolchain): NodeJS.ProcessEnv => ({
 
 const buildDirectoryFor = (projectRoot: string): string => path.join(projectRoot, '_build', 'Release');
 
+// Builds and runs get a process group of their own on POSIX, so Stop can end
+// what they started too: make, the compilers, and whatever the app spawns.
+const ownProcessGroup = process.platform !== 'win32';
+
+const killTree = (child: ChildProcessWithoutNullStreams): void => {
+  if (child.pid === undefined) return;
+  if (process.platform === 'win32') {
+    spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+      .once('error', () => child.kill());
+    return;
+  }
+  try { process.kill(-child.pid, 'SIGTERM'); } catch { child.kill(); }
+};
+
 const runBuildCommand = (
   executable: string,
   args: string[],
@@ -367,6 +381,7 @@ const runBuildCommand = (
     cwd: workingDirectory,
     env: processEnvironment(toolchain),
     windowsHide: true,
+    detached: ownProcessGroup,
   });
   buildProcess = child;
   child.stdout.on('data', (chunk: Buffer) => sendToRenderer('build:output', chunk.toString()));
@@ -460,6 +475,7 @@ const runProject = async (): Promise<ProcessResult> => {
       cwd: projectRoot,
       env: processEnvironment(toolchain),
       windowsHide: false,
+      detached: ownProcessGroup,
     });
     runProcess = child;
     sendToRenderer('run:status', { running: true });
@@ -480,8 +496,8 @@ const runProject = async (): Promise<ProcessResult> => {
 
 export const stopProcesses = (): ProcessResult => {
   let stopped = false;
-  if (buildProcess) { buildProcess.kill(); buildProcess = null; stopped = true; }
-  if (runProcess) { runProcess.kill(); runProcess = null; stopped = true; }
+  if (buildProcess) { killTree(buildProcess); buildProcess = null; stopped = true; }
+  if (runProcess) { killTree(runProcess); runProcess = null; stopped = true; }
   sendToRenderer('build:status', { running: false, label: msg('ready') });
   sendToRenderer('run:status', { running: false });
   return { success: stopped, message: msg(stopped ? 'stopped' : 'nothingToStop') };
