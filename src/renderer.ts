@@ -499,7 +499,20 @@ const clangd = new ClangdClient({
     try {
       const filePath = uriPath(uri);
       const contents = await readContents(filePath);
-      return monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
+      const loaded = monaco.editor.getModel(uri);
+      if (loaded) return loaded;
+      const model = monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
+      // A peek view can edit this model; give it a tab then, so the change can be saved.
+      const cleanVersion = model.getAlternativeVersionId();
+      const watcher = model.onDidChangeContent((event) => {
+        // Opening the file for real resets the text, which is not an edit.
+        if (event.isFlush) return;
+        watcher.dispose();
+        if (findOpenFile(uri) || !isProjectPath(filePath)) return;
+        addTab(filePath, model, false).savedVersion = cleanVersion;
+        renderTabs();
+      });
+      return model;
     } catch {
       return null;
     }
