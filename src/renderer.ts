@@ -12,7 +12,8 @@ interface OpenFile {
   path: string;
   name: string;
   model: monaco.editor.ITextModel;
-  savedValue: string;
+  // The model's alternative version id when it matched the file on disk.
+  savedVersion: number;
   readOnly: boolean;
 }
 
@@ -60,6 +61,8 @@ let selectedEntry: GlistFileEntry | null = null;
 let copiedEntryPath: string | null = null;
 let isBuildRunning = false;
 let isRunRunning = false;
+// Build or Run was pressed and the backend has not taken it over yet.
+let isStarting = false;
 const openFiles = new Map<string, OpenFile>();
 const expandedDirectories = new Set<string>();
 let draggedTabPath: string | null = null;
@@ -256,13 +259,13 @@ const languageForFile = (filePath: string): { id: string; label: string } => {
   return languages[extension] ?? { id: 'plaintext', label: 'Plain Text' };
 };
 
-const isDirty = (file: OpenFile): boolean => file.model.getValue() !== file.savedValue;
+const isDirty = (file: OpenFile): boolean => file.model.getAlternativeVersionId() !== file.savedVersion;
 
 const updateButtons = (): void => {
   const hasProject = Boolean(activeProject);
   saveButton.disabled = !activeFilePath;
-  buildButton.disabled = !hasProject || isBuildRunning;
-  runButton.disabled = !hasProject || isRunRunning || isBuildRunning;
+  buildButton.disabled = !hasProject || isBuildRunning || isStarting;
+  runButton.disabled = !hasProject || isRunRunning || isBuildRunning || isStarting;
   stopButton.disabled = !isBuildRunning && !isRunRunning;
   refreshButton.disabled = !hasProject;
   newFileButton.disabled = !hasProject;
@@ -335,6 +338,7 @@ const renderTabs = (): void => {
     tab.type = 'button';
     tab.draggable = true;
     tab.className = 'editor-tab';
+    tab.dataset.path = file.path;
     tab.classList.toggle('active', file.path === activeFilePath);
     tab.classList.toggle('read-only', file.readOnly);
     tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
@@ -420,7 +424,7 @@ const findOpenFile = (uri: monaco.Uri): OpenFile | undefined =>
   [...openFiles.values()].find((file) => file.model.uri.toString() === uri.toString());
 
 // Gives a file a tab without switching to it. Files outside the project open read-only.
-const loadFile = async (filePath: string, name: string): Promise<OpenFile> => {
+const loadFile = async (filePath: string): Promise<OpenFile> => {
   const uri = pathUri(filePath);
   let file = findOpenFile(uri);
   if (file) return file;
@@ -430,16 +434,38 @@ const loadFile = async (filePath: string, name: string): Promise<OpenFile> => {
   // clangd may already hold a model of this file for a preview.
   const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
   if (model.getValue() !== contents) model.setValue(contents);
-  file = { path: filePath, name, model, savedValue: contents, readOnly: !isProjectPath(filePath) };
+  const added = addTab(filePath, model, !isProjectPath(filePath));
+  renderTabs();
+  return added;
+};
+
+const refreshDirtyMark = (file: OpenFile): void => {
+  const tab = [...tabsHost.children].find((child) => (child as HTMLElement).dataset.path === file.path);
+  const mark = tab?.querySelector('.dirty-dot');
+  if (mark) mark.textContent = isDirty(file) ? '●' : '';
+};
+
+// Opens a tab on a model that matches the file on disk, without switching to it.
+const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
+  const file: OpenFile = { path: filePath, name: baseName(filePath), model, savedVersion: model.getAlternativeVersionId(), readOnly };
   openFiles.set(filePath, file);
-  model.onDidChangeContent(() => renderTabs());
+  model.onDidChangeContent(() => refreshDirtyMark(file));
   clangd.track(model);
   return file;
 };
 
+// The text is taken once, so anything typed while it is written stays unsaved.
+const saveFile = async (file: OpenFile): Promise<void> => {
+  const version = file.model.getAlternativeVersionId();
+  await window.glistAPI.writeFile(file.path, file.model.getValue());
+  file.savedVersion = version;
+  clangd.saved(file.model);
+  refreshDirtyMark(file);
+};
+
 const openFile = async (filePath: string, name: string): Promise<boolean> => {
   try {
-    activateFile((await loadFile(filePath, name)).path);
+    activateFile((await loadFile(filePath)).path);
     return true;
   } catch (error) {
     appendOutput(`\n${t('fileOpenFailed')}: ${name}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
@@ -476,7 +502,7 @@ const clangd = new ClangdClient({
   openForEdit: async (uri) => {
     const filePath = uriPath(uri);
     if (!isProjectPath(filePath)) return null;
-    try { return (await loadFile(filePath, baseName(filePath))).model; } catch { return null; }
+    try { return (await loadFile(filePath)).model; } catch { return null; }
   },
   log: (text) => appendOutput(`\n${text}\n`),
   status: (text, busy) => {
@@ -680,10 +706,7 @@ const openCmakeFile = (): OpenFile | undefined =>
 
 const saveOpenCmake = async (): Promise<void> => {
   const file = openCmakeFile();
-  if (!file || !isDirty(file)) return;
-  await window.glistAPI.writeFile(file.path, file.model.getValue());
-  file.savedValue = file.model.getValue();
-  renderTabs();
+  if (file && isDirty(file)) await saveFile(file);
 };
 
 const reloadOpenCmake = async (): Promise<void> => {
@@ -691,8 +714,8 @@ const reloadOpenCmake = async (): Promise<void> => {
   if (!file) return;
   const contents = await window.glistAPI.readFile(file.path);
   if (file.model.getValue() !== contents) file.model.setValue(contents);
-  file.savedValue = contents;
-  renderTabs();
+  file.savedVersion = file.model.getAlternativeVersionId();
+  refreshDirtyMark(file);
 };
 
 const createFile = async (): Promise<void> => {
@@ -760,12 +783,8 @@ const pasteCopiedEntry = async (): Promise<void> => {
   }
   try {
     for (const file of openFiles.values()) {
-      if (isWithin(file.path, copiedEntryPath) && isDirty(file)) {
-        await window.glistAPI.writeFile(file.path, file.model.getValue());
-        file.savedValue = file.model.getValue();
-      }
+      if (isWithin(file.path, copiedEntryPath) && isDirty(file)) await saveFile(file);
     }
-    renderTabs();
     const copiedPath = await window.glistAPI.copyEntry(copiedEntryPath, directory);
     if (activeProject && directory !== activeProject.root) expandedDirectories.add(directory);
     await loadProjectTree();
@@ -811,22 +830,20 @@ const closeFilesUnderEntry = (entryPath: string): void => {
   updateButtons();
 };
 
+// Follows a rename on disk. Renamed tabs keep their place in the tab strip.
 const relocateOpenFiles = (oldPath: string, newPath: string): void => {
-  const relocated: OpenFile[] = [];
-  openFiles.forEach((file, filePath) => {
-    if (!isWithin(filePath, oldPath)) return;
-    const suffix = filePath.slice(oldPath.length);
-    const nextPath = `${newPath}${suffix}`;
-    const nextModel = monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, pathUri(nextPath));
+  const tabs = [...openFiles.entries()];
+  openFiles.clear();
+  tabs.forEach(([filePath, file]) => {
+    if (!isWithin(filePath, oldPath)) { openFiles.set(filePath, file); return; }
+    const nextPath = `${newPath}${filePath.slice(oldPath.length)}`;
+    const nextUri = pathUri(nextPath);
+    // Only a clangd preview of a file that used to be at the new path can be there.
+    monaco.editor.getModel(nextUri)?.dispose();
+    addTab(nextPath, monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, nextUri), false);
     file.model.dispose();
-    openFiles.delete(filePath);
-    const renamedFile: OpenFile = { path: nextPath, name: nextPath.split(/[\\/]/).pop() ?? file.name, model: nextModel, savedValue: nextModel.getValue(), readOnly: false };
-    nextModel.onDidChangeContent(() => renderTabs());
-    clangd.track(nextModel);
-    relocated.push(renamedFile);
     if (activeFilePath === filePath) activeFilePath = nextPath;
   });
-  relocated.forEach((file) => openFiles.set(file.path, file));
   if (activeFilePath) editor.setModel(openFiles.get(activeFilePath)?.model ?? null);
   renderTabs();
 };
@@ -839,10 +856,7 @@ const renameSelectedEntry = async (): Promise<void> => {
   try {
     await saveOpenCmake();
     for (const file of openFiles.values()) {
-      if (isWithin(file.path, entry.path) && isDirty(file)) {
-        await window.glistAPI.writeFile(file.path, file.model.getValue());
-        file.savedValue = file.model.getValue();
-      }
+      if (isWithin(file.path, entry.path) && isDirty(file)) await saveFile(file);
     }
     const nextPath = await window.glistAPI.renameEntry(entry.path, newName);
     relocateOpenFiles(entry.path, nextPath);
@@ -917,32 +931,56 @@ const showNewProjectDialog = (): void => {
 };
 
 const saveActiveFile = async (): Promise<void> => {
-  if (!activeFilePath) return;
-  const file = openFiles.get(activeFilePath);
-  if (!file || file.readOnly) return;
+  const file = activeFilePath ? openFiles.get(activeFilePath) : undefined;
+  if (!file || file.readOnly || !isDirty(file)) return;
   try {
-    await window.glistAPI.writeFile(file.path, file.model.getValue());
-    file.savedValue = file.model.getValue(); clangd.saved(file.model); renderTabs(); setProcessStatus(`${file.name} ${t('saved')}`, false);
+    await saveFile(file);
+    setProcessStatus(`${file.name} ${t('saved')}`, false);
   } catch (error) {
-    appendOutput(`\n${t('saveFailed')}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
+    appendOutput(`\n${t('saveFailed')}: ${errorText(error)}\n`, 'error');
   }
 };
 
+// Build and Run compile what is on screen, so every changed tab is saved first.
+const saveProjectFiles = async (): Promise<boolean> => {
+  try {
+    for (const file of openFiles.values()) {
+      if (!file.readOnly && isDirty(file)) await saveFile(file);
+    }
+    return true;
+  } catch (error) {
+    appendOutput(`\n${t('saveFailed')}: ${errorText(error)}\n`, 'error');
+    return false;
+  }
+};
+
+// Keeps a second click from reaching the backend while the first is on its way.
+const whileStarting = async (task: () => Promise<void>): Promise<void> => {
+  isStarting = true;
+  updateButtons();
+  try { await task(); } finally { isStarting = false; updateButtons(); }
+};
+
 const buildProject = async (): Promise<void> => {
-  if (!activeProject || isBuildRunning) return;
-  if (activeFilePath) await saveActiveFile();
-  appendOutput('\n── BUILD ────────────────────────────────────────\n');
-  const result = await window.glistAPI.buildProject();
-  clangd.buildFinished();
-  appendOutput(result.message, result.success ? 'success' : 'error');
-  setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
+  if (!activeProject || isBuildRunning || isStarting) return;
+  await whileStarting(async () => {
+    if (!(await saveProjectFiles())) return;
+    appendOutput('\n── BUILD ────────────────────────────────────────\n');
+    const result = await window.glistAPI.buildProject();
+    clangd.buildFinished();
+    appendOutput(result.message, result.success ? 'success' : 'error');
+    setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
+  });
 };
 
 const runProject = async (): Promise<void> => {
-  if (!activeProject || isRunRunning) return;
-  const result = await window.glistAPI.runProject();
-  clangd.buildFinished();
-  appendOutput(result.message, result.success ? 'success' : 'error');
+  if (!activeProject || isRunRunning || isBuildRunning || isStarting) return;
+  await whileStarting(async () => {
+    if (!(await saveProjectFiles())) return;
+    const result = await window.glistAPI.runProject();
+    clangd.buildFinished();
+    appendOutput(result.message, result.success ? 'success' : 'error');
+  });
 };
 
 const stopProject = async (): Promise<void> => {
@@ -1035,10 +1073,10 @@ const configureMenus = (): void => {
       ],
       run: [
         item(t('build'), buildProject, {
-          shortcut: 'Ctrl+Shift+B', disabled: !activeProject || isBuildRunning,
+          shortcut: 'Ctrl+Shift+B', disabled: !activeProject || isBuildRunning || isStarting,
         }),
         item(t('run'), runProject, {
-          shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning,
+          shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning || isStarting,
         }),
         { kind: 'separator' },
         item(t('stop'), stopProject, { shortcut: 'Shift+F5', disabled: !isRunRunning && !isBuildRunning }),
