@@ -1,0 +1,102 @@
+name: Release builds
+
+# Builds the installers for every platform on a version tag, or by hand from
+# the Actions tab. A tag also drafts a GitHub release carrying them, which a
+# maintainer checks and publishes.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS universal
+            os: macos-latest
+            platform: darwin
+            arch: universal
+            maker: '@electron-forge/maker-dmg'
+            label: macos-universal
+          - name: Windows x64
+            os: windows-latest
+            platform: win32
+            arch: x64
+            maker: '@electron-forge/maker-squirrel'
+            label: windows-x64
+          # Built on x64: the app has no native modules, and the Squirrel
+          # installer runs under emulation on Windows on ARM.
+          - name: Windows arm64
+            os: windows-latest
+            platform: win32
+            arch: arm64
+            maker: '@electron-forge/maker-squirrel'
+            label: windows-arm64
+          - name: Linux x86_64
+            os: ubuntu-latest
+            platform: linux
+            arch: x64
+            maker: '@reforged/maker-appimage'
+            label: linux-x86_64
+          - name: Linux aarch64
+            os: ubuntu-latest
+            platform: linux
+            arch: arm64
+            maker: '@reforged/maker-appimage'
+            label: linux-aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install mksquashfs
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y squashfs-tools
+      - run: npm ci
+      - name: Take the version from the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+      - name: Make
+        run: npx electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} --targets=${{ matrix.maker }}
+      - name: Name the installer
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          mkdir dist
+          case "${{ matrix.platform }}" in
+            darwin) find out/make -name '*.dmg' -exec cp {} "dist/Glist-Studio-$version-${{ matrix.label }}.dmg" \; ;;
+            win32) find out/make -name '*Setup.exe' -exec cp {} "dist/Glist-Studio-$version-${{ matrix.label }}-setup.exe" \; ;;
+            linux) find out/make -name '*.AppImage' -exec cp {} "dist/Glist-Studio-$version-${{ matrix.label }}.AppImage" \; ;;
+          esac
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: glist-studio-${{ matrix.label }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    # The only job that can write: it creates the draft release.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Glist Studio ${GITHUB_REF_NAME#v}"

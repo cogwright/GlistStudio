@@ -1,6 +1,7 @@
 {
   "name": "gliststudio",
   "productName": "Glist Studio",
+  "desktopName": "gliststudio.desktop",
   "version": "0.1.0",
   "description": "A focused desktop IDE for Glist Engine projects",
   "main": ".webpack/main",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "@electron-forge/cli": "^7.11.2",
     "@electron-forge/maker-deb": "^7.11.2",
+    "@electron-forge/maker-dmg": "^7.11.2",
     "@electron-forge/maker-rpm": "^7.11.2",
     "@electron-forge/maker-squirrel": "^7.11.2",
     "@electron-forge/maker-zip": "^7.11.2",
@@ -34,6 +36,7 @@
     "@electron-forge/plugin-fuses": "^7.11.2",
     "@electron-forge/plugin-webpack": "^7.11.2",
     "@electron/fuses": "^1.8.0",
+    "@reforged/maker-appimage": "^5.3.1",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
