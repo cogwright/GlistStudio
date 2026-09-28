@@ -217,12 +217,18 @@ const deleteProjectEntry = async (entryPath: string): Promise<boolean> => {
   return true;
 };
 
+const sameFile = async (left: string, right: string): Promise<boolean> => {
+  const [leftStats, rightStats] = await Promise.all([fs.stat(left), fs.stat(right)]);
+  return leftStats.dev === rightStats.dev && leftStats.ino === rightStats.ino;
+};
+
 const renameProjectEntry = async (entryPath: string, newName: string): Promise<string> => {
   const oldPath = await assertExistingPathInProject(entryPath);
   if (oldPath === path.resolve(requireProjectRoot())) throw new Error(msg('rootDelete'));
   const nextPath = assertPathInProject(path.join(path.dirname(oldPath), validateEntryName(newName)));
   if (oldPath === nextPath) return oldPath;
-  if (existsSync(nextPath)) throw new Error(msg('alreadyExists'));
+  // On file systems that ignore case, renaming foo.h to Foo.h finds itself.
+  if (existsSync(nextPath) && !(await sameFile(oldPath, nextPath))) throw new Error(msg('alreadyExists'));
   const change = oldPath === path.join(requireProjectRoot(), 'CMakeLists.txt')
     ? null : await cmakeChange({ kind: 'rename', from: relativeProjectPath(oldPath), to: relativeProjectPath(nextPath) });
   await fs.rename(oldPath, nextPath);
