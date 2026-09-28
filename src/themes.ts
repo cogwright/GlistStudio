@@ -177,6 +177,7 @@ const paletteRules = (palette: ThemePalette): monaco.editor.ITokenThemeRule[] =>
     rule('parameter', palette.parameter),
     rule('property', palette.property),
     rule('enumMember', palette.constant),
+    rule('constant', palette.constant),
     rule('macro', palette.macro),
   ];
 };

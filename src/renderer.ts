@@ -9,6 +9,7 @@ import 'monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticToke
 import appIconUrl from '../assets/glistengine.ico';
 import { applyTheme, getActiveTheme, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
+import { registerCmakeLanguage } from './cmake-language';
 import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
@@ -127,6 +128,7 @@ const loadZoom = (): number => {
 
 let zoomPercentage = loadZoom();
 
+registerCmakeLanguage();
 applyTheme(getActiveTheme());
 
 const setZoom = (percentage: number): void => {
@@ -226,7 +228,7 @@ const setProcessStatus = (label: string, active: boolean, error = false): void =
 };
 
 const languageForFile = (filePath: string): { id: string; label: string } => {
-  if (filePath.endsWith('CMakeLists.txt')) return { id: 'plaintext', label: 'CMake' };
+  if (filePath.endsWith('CMakeLists.txt')) return { id: 'cmake', label: 'CMake' };
   const extension = filePath.split('.').pop()?.toLowerCase() ?? '';
   const languages: Record<string, { id: string; label: string }> = {
     c: { id: 'cpp', label: 'C' }, cc: { id: 'cpp', label: 'C++' },
@@ -235,6 +237,7 @@ const languageForFile = (filePath: string): { id: string; label: string } => {
     hpp: { id: 'cpp', label: 'C++ Header' }, json: { id: 'json', label: 'JSON' },
     md: { id: 'markdown', label: 'Markdown' }, xml: { id: 'xml', label: 'XML' },
     yml: { id: 'yaml', label: 'YAML' }, yaml: { id: 'yaml', label: 'YAML' },
+    cmake: { id: 'cmake', label: 'CMake' },
   };
   return languages[extension] ?? { id: 'plaintext', label: 'Plain Text' };
 };
