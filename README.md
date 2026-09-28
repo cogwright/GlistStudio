@@ -8,7 +8,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 
 ## Features
 
-- Project explorer with file and folder operations, context menus, and copy/paste
+- Project explorer with file and folder operations, context menus, and copy/paste, and the engine and plugins the project uses listed below it, to browse and read
 - Tabbed C/C++ editor powered by Monaco, which also highlights CMake files
 - C++ code intelligence from clangd: diagnostics, completion, hover, signature help, go to definition, references, rename, quick fixes, formatting, outline, and header/source switching (Alt+O)
 - Save, build, run, and stop commands with live output, colored as the compiler colors it, where file locations open the file at that line
