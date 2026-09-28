@@ -1014,6 +1014,7 @@ const debugProject = async (): Promise<void> => {
     showView('debug');
     appendOutput('\n── DEBUG ────────────────────────────────────────\n');
     await debug.start();
+    clangd.buildFinished();
   });
 };
 

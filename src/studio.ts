@@ -614,8 +614,11 @@ const clangd = new MessageProcess(
 const startClangd = async (): Promise<GlistClangdStatus> => {
   const projectRoot = requireProjectRoot();
   const toolchain = resolveToolchain(projectRoot);
-  const buildDirectory = buildDirectoryFor(projectRoot);
-  const compileCommands = existsSync(path.join(buildDirectory, 'compile_commands.json'));
+  // A project may so far only have been built for debugging.
+  const database = (['Release', 'Debug'] as const).map((type) => buildDirectoryFor(projectRoot, type))
+    .find((directory) => existsSync(path.join(directory, 'compile_commands.json')));
+  const buildDirectory = database ?? buildDirectoryFor(projectRoot);
+  const compileCommands = Boolean(database);
   const args = [`--compile-commands-dir=${buildDirectory}`, '--background-index', '--log=error'];
   // Lets clangd ask the Glist clang for its system headers and target.
   if (toolchain.toolBin) args.push(`--query-driver=${path.join(toolchain.toolBin, '*').replace(/\\/g, '/')}`);
