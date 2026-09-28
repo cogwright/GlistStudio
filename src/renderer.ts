@@ -896,7 +896,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   copiedEntryPath = null;
   expandedDirectories.clear();
   projectRootLabel.textContent = selected.name.toUpperCase();
-  document.title = `${selected.name} — Glist Studio`;
+  document.title = `${selected.name} - Glist Studio`;
   await loadProjectTree(); updateButtons();
   output.textContent = `Glist Studio\n${t('openedProject')}: ${selected.root}\n`;
   if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
