@@ -10,6 +10,7 @@ import appIconUrl from '../assets/glistengine.ico';
 import { applyTheme, getActiveTheme, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
+import { setUpFontSettings } from './fonts';
 import { formatOutput, newOutputStyle } from './output-format';
 import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
@@ -201,9 +202,6 @@ const editor = monaco.editor.create(editorHost, {
   automaticLayout: true,
   // Colors from clangd for functions, types, members and the like.
   'semanticHighlighting.enabled': true,
-  fontFamily: "'Cascadia Code', Consolas, monospace",
-  fontSize: 14,
-  lineHeight: 22,
   minimap: { enabled: true, scale: 1 },
   // Room for breakpoints.
   glyphMargin: true,
@@ -1300,6 +1298,14 @@ settingsLanguage.addEventListener('change', () => {
   applyLanguage(next);
   refreshLanguage();
   void window.glistAPI.setLanguage(next);
+});
+setUpFontSettings(editor, {
+  code: element<HTMLInputElement>('#font-code'),
+  codeSize: element<HTMLInputElement>('#font-code-size'),
+  ligatures: element<HTMLInputElement>('#font-ligatures'),
+  interface: element<HTMLInputElement>('#font-interface'),
+  codeList: element<HTMLDataListElement>('#font-code-list'),
+  interfaceList: element<HTMLDataListElement>('#font-interface-list'),
 });
 setUpThemePicker({
   options: element<HTMLElement>('#theme-options'),

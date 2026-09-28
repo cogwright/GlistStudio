@@ -158,6 +158,21 @@
           <select id="settings-language"><option value="en">English</option><option value="tr">Türkçe</option></select>
           <p class="dialog-hint" data-i18n="languageHint">The interface language changes immediately.</p>
         </div>
+        <fieldset class="settings-section font-settings">
+          <legend data-i18n="fonts">Fonts</legend>
+          <div class="font-grid">
+            <label for="font-code" data-i18n="codeFont">Code font</label>
+            <input id="font-code" type="text" list="font-code-list" autocomplete="off" placeholder="Cascadia Code" />
+            <label for="font-code-size" data-i18n="codeFontSize">Code size</label>
+            <input id="font-code-size" type="number" min="8" max="32" step="1" />
+            <label for="font-interface" data-i18n="interfaceFont">Interface font</label>
+            <input id="font-interface" type="text" list="font-interface-list" autocomplete="off" placeholder="System" data-i18n-placeholder="systemFont" />
+          </div>
+          <label class="checkbox-row"><input id="font-ligatures" type="checkbox" /><span data-i18n="ligatures">Join characters such as =&gt; where the font supports it</span></label>
+          <datalist id="font-code-list"></datalist>
+          <datalist id="font-interface-list"></datalist>
+          <p class="dialog-hint" data-i18n="fontsHint">Pick a font from the list or type the name of one installed on this computer.</p>
+        </fieldset>
         <fieldset class="settings-section theme-settings">
           <legend data-i18n="appearance">Appearance</legend>
           <div id="theme-options" class="theme-options"></div>
