@@ -8,11 +8,18 @@ The current Windows setup expects Glist Engine and its toolchain under `C:\dev\g
 
 - Project explorer with file and folder operations, context menus, and copy/paste
 - Tabbed C/C++ editor powered by Monaco
+- C++ code intelligence from clangd: diagnostics, completion, hover, signature help, go to definition, references, rename, quick fixes, formatting, outline, and header/source switching (Alt+O)
 - Save, build, run, and stop commands with live output
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - C++ class generation with matching header and source files
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates
 - English and Turkish interface languages (English by default)
+
+## C++ code intelligence
+
+Opening a project starts [clangd](https://clangd.llvm.org/). It is looked up on `PATH`; on Windows the Glist `clang64\bin` folder is searched first. Without clangd the editor still works, with syntax highlighting only.
+
+clangd reads the compile flags from `_build/Release/compile_commands.json`, which the build writes. Until a project has been built once, clangd cannot find the engine headers; it restarts on its own after that first build. Definitions in GlistEngine and its plugins open read-only.
 
 ## Development
 
@@ -43,6 +50,7 @@ npm run package
 - `src/studio.ts`: Filesystem access and build commands, independent of Electron
 - `src/api.ts`: The renderer API and the IPC channel for each call
 - `src/preload.ts`: Restricted bridge between the renderer and main process
+- `src/clangd-process.ts` and `src/clangd.ts`: clangd process and the language client that feeds Monaco
 - `src/renderer.ts`: Editor and interface behavior
 - `src/index.html` and `src/index.css`: Interface structure and styling
 - `src/localization.ts`: English and Turkish interface text

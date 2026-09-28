@@ -22,6 +22,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   showInExplorer: 'project:show-in-explorer',
   openCommandPrompt: 'project:open-command-prompt',
   readFile: 'project:read-file',
+  readWorkspaceFile: 'project:read-workspace-file',
   writeFile: 'project:write-file',
   buildProject: 'project:build',
   runProject: 'project:run',
@@ -30,6 +31,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   setTheme: 'settings:set-theme',
   setZoomFactor: 'view:set-zoom-factor',
   openEngineSite: 'app:open-engine-site',
+  startClangd: 'clangd:start',
+  sendClangd: 'clangd:send',
 };
 
 export const eventChannels: Record<EventMethod, string> = {
@@ -37,4 +40,6 @@ export const eventChannels: Record<EventMethod, string> = {
   onBuildStatus: 'build:status',
   onRunOutput: 'run:output',
   onRunStatus: 'run:status',
+  onClangdMessage: 'clangd:message',
+  onClangdStatus: 'clangd:status',
 };

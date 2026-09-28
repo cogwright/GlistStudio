@@ -2,7 +2,9 @@ import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
 import { invokeChannels, type Handler, type InvokeMethod } from './api';
-import { initializeStudio, msg, openProjectAt, projectsDirectory, stopProcesses, studio } from './studio';
+import {
+  initializeStudio, msg, openProjectAt, projectsDirectory, stopClangd, stopProcesses, studio,
+} from './studio';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -114,7 +116,7 @@ const createWindow = (): void => {
       app.quit();
     }, 1000);
   });
-  createdWindow.on('closed', () => { stopProcesses(); mainWindow = null; });
+  createdWindow.on('closed', () => { stopProcesses(); stopClangd(); mainWindow = null; });
 };
 
 app.whenReady().then(() => { registerIpcHandlers(); createWindow(); });

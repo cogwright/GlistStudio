@@ -3,6 +3,7 @@
 // eslint-disable-next-line import/no-unresolved
 import * as monaco from 'monaco-editor/editor/editor.api';
 import appIconUrl from '../assets/glistengine.ico';
+import { ClangdClient } from './clangd';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
 import './index.css';
 
@@ -11,6 +12,7 @@ interface OpenFile {
   name: string;
   model: monaco.editor.ITextModel;
   savedValue: string;
+  readOnly: boolean;
 }
 
 const element = <T extends HTMLElement>(selector: string): T => {
@@ -39,6 +41,7 @@ const welcome = element<HTMLDivElement>('#welcome');
 const output = element<HTMLPreElement>('#output');
 const projectRootLabel = element<HTMLDivElement>('#project-root-label');
 const processStatus = element<HTMLSpanElement>('#process-status');
+const clangdStatus = element<HTMLSpanElement>('#clangd-status');
 const contextMenu = element<HTMLDivElement>('#explorer-context-menu');
 const inputDialog = element<HTMLDialogElement>('#input-dialog');
 const inputForm = element<HTMLFormElement>('#input-form');
@@ -270,6 +273,7 @@ const activateFile = (filePath: string): void => {
   if (!file) return;
   activeFilePath = filePath;
   editor.setModel(file.model);
+  editor.updateOptions({ readOnly: file.readOnly });
   welcome.hidden = true;
   editorHost.classList.add('visible');
   renderTabs();
@@ -330,7 +334,8 @@ const renderTabs = (): void => {
     tab.draggable = true;
     tab.className = 'editor-tab';
     tab.classList.toggle('active', file.path === activeFilePath);
-    tab.title = file.path;
+    tab.classList.toggle('read-only', file.readOnly);
+    tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
     const label = document.createElement('span');
     label.className = 'tab-label';
     label.textContent = file.name;
@@ -402,19 +407,99 @@ tabsHost.addEventListener('drop', (event) => {
   clearTabDropIndicators();
 });
 
-const openFile = async (filePath: string, name: string): Promise<void> => {
-  if (openFiles.has(filePath)) { activateFile(filePath); return; }
+const isProjectPath = (filePath: string): boolean =>
+  Boolean(activeProject && pathBelongsToEntry(filePath, activeProject.root));
+
+const readContents = (filePath: string): Promise<string> => (isProjectPath(filePath)
+  ? window.glistAPI.readFile(filePath) : window.glistAPI.readWorkspaceFile(filePath));
+
+const fileName = (filePath: string): string => filePath.split(/[\\/]/).pop() ?? filePath;
+
+// clangd and the explorer may spell one path differently, the URI does not.
+const findOpenFile = (uri: monaco.Uri): OpenFile | undefined =>
+  [...openFiles.values()].find((file) => file.model.uri.toString() === uri.toString());
+
+// Gives a file a tab without switching to it. Files outside the project open read-only.
+const loadFile = async (filePath: string, name: string): Promise<OpenFile> => {
+  const uri = monaco.Uri.file(filePath);
+  let file = findOpenFile(uri);
+  if (file) return file;
+  const contents = await readContents(filePath);
+  file = findOpenFile(uri);
+  if (file) return file;
+  // clangd may already hold a model of this file for a preview.
+  const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
+  if (model.getValue() !== contents) model.setValue(contents);
+  file = { path: filePath, name, model, savedValue: contents, readOnly: !isProjectPath(filePath) };
+  openFiles.set(filePath, file);
+  model.onDidChangeContent(() => renderTabs());
+  clangd.track(model);
+  return file;
+};
+
+const openFile = async (filePath: string, name: string): Promise<boolean> => {
   try {
-    const contents = await window.glistAPI.readFile(filePath);
-    const model = monaco.editor.createModel(contents, languageForFile(filePath).id, monaco.Uri.file(filePath));
-    const file: OpenFile = { path: filePath, name, model, savedValue: contents };
-    openFiles.set(filePath, file);
-    model.onDidChangeContent(() => renderTabs());
-    activateFile(filePath);
+    activateFile((await loadFile(filePath, name)).path);
+    return true;
   } catch (error) {
     appendOutput(`\n${t('fileOpenFailed')}: ${name}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
+    return false;
   }
 };
+
+const revealLocation = async (uri: monaco.Uri, selection?: monaco.IRange | monaco.IPosition): Promise<boolean> => {
+  if (!(await openFile(uri.fsPath, fileName(uri.fsPath)))) return false;
+  if (!selection) return true;
+  if ('startLineNumber' in selection) {
+    editor.setSelection(selection);
+    editor.revealRangeInCenterIfOutsideViewport(selection);
+  } else {
+    editor.setPosition(selection);
+    editor.revealPositionInCenterIfOutsideViewport(selection);
+  }
+  return true;
+};
+
+const clangd = new ClangdClient({
+  loadModel: async (uri) => {
+    const existing = monaco.editor.getModel(uri);
+    if (existing) return existing;
+    try {
+      const contents = await readContents(uri.fsPath);
+      return monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(uri.fsPath).id, uri);
+    } catch {
+      return null;
+    }
+  },
+  openForEdit: async (uri) => {
+    if (!isProjectPath(uri.fsPath)) return null;
+    try { return (await loadFile(uri.fsPath, fileName(uri.fsPath))).model; } catch { return null; }
+  },
+  log: (text) => appendOutput(`\n${text}\n`),
+  status: (text, busy) => {
+    clangdStatus.hidden = !text;
+    clangdStatus.classList.toggle('active', busy);
+    const label = clangdStatus.querySelector('span');
+    if (label) label.textContent = text ?? '';
+  },
+});
+
+monaco.editor.registerEditorOpener({
+  openCodeEditor: (_source, resource, selectionOrPosition) => revealLocation(resource, selectionOrPosition),
+});
+
+editor.addAction({
+  id: 'glist.switchSourceHeader',
+  label: t('switchSourceHeader'),
+  keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.KeyO],
+  precondition: 'editorLangId == cpp',
+  contextMenuGroupId: 'navigation',
+  run: async () => {
+    const model = editor.getModel();
+    const target = model && await clangd.switchSourceHeader(model);
+    if (target) await revealLocation(target);
+  },
+});
 
 const selectTreeEntry = (entry: GlistFileEntry, row: HTMLButtonElement): void => {
   fileTree.querySelectorAll('.tree-row.selected').forEach((selectedRow) => {
@@ -738,8 +823,9 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
     const nextModel = monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, monaco.Uri.file(nextPath));
     file.model.dispose();
     openFiles.delete(filePath);
-    const renamedFile: OpenFile = { path: nextPath, name: nextPath.split(/[\\/]/).pop() ?? file.name, model: nextModel, savedValue: nextModel.getValue() };
+    const renamedFile: OpenFile = { path: nextPath, name: nextPath.split(/[\\/]/).pop() ?? file.name, model: nextModel, savedValue: nextModel.getValue(), readOnly: false };
     nextModel.onDidChangeContent(() => renderTabs());
+    clangd.track(nextModel);
     relocated.push(renamedFile);
     if (activeFilePath === filePath) activeFilePath = nextPath;
   });
@@ -798,6 +884,7 @@ const deleteSelectedEntry = async (): Promise<void> => {
 const disposeOpenFiles = (): void => {
   openFiles.forEach((file) => file.model.dispose());
   openFiles.clear(); activeFilePath = null; editor.setModel(null); renderTabs();
+  monaco.editor.getModels().forEach((model) => model.dispose());
   editorHost.classList.remove('visible'); welcome.hidden = false;
 };
 
@@ -813,6 +900,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   await loadProjectTree(); updateButtons();
   output.textContent = `Glist Studio\n${t('openedProject')}: ${selected.root}\n`;
   if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
+  void clangd.start(selected.root);
 };
 
 const chooseProject = async (): Promise<void> => {
@@ -831,10 +919,10 @@ const showNewProjectDialog = (): void => {
 const saveActiveFile = async (): Promise<void> => {
   if (!activeFilePath) return;
   const file = openFiles.get(activeFilePath);
-  if (!file) return;
+  if (!file || file.readOnly) return;
   try {
     await window.glistAPI.writeFile(file.path, file.model.getValue());
-    file.savedValue = file.model.getValue(); renderTabs(); setProcessStatus(`${file.name} ${t('saved')}`, false);
+    file.savedValue = file.model.getValue(); clangd.saved(file.model); renderTabs(); setProcessStatus(`${file.name} ${t('saved')}`, false);
   } catch (error) {
     appendOutput(`\n${t('saveFailed')}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
   }
@@ -845,6 +933,7 @@ const buildProject = async (): Promise<void> => {
   if (activeFilePath) await saveActiveFile();
   appendOutput('\n── BUILD ────────────────────────────────────────\n');
   const result = await window.glistAPI.buildProject();
+  clangd.buildFinished();
   appendOutput(result.message, result.success ? 'success' : 'error');
   setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
 };
@@ -852,6 +941,7 @@ const buildProject = async (): Promise<void> => {
 const runProject = async (): Promise<void> => {
   if (!activeProject || isRunRunning) return;
   const result = await window.glistAPI.runProject();
+  clangd.buildFinished();
   appendOutput(result.message, result.success ? 'success' : 'error');
 };
 

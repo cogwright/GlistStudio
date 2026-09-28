@@ -3,6 +3,7 @@ import { existsSync, promises as fs } from 'node:fs';
 import { userInfo } from 'node:os';
 import path from 'node:path';
 import type { Handlers } from './api';
+import { ClangdProcess } from './clangd-process';
 import { renderCppClass } from './class-template';
 import { synchronizeCmake, type CmakeChange } from './cmake';
 
@@ -61,6 +62,8 @@ const messages = {
     nothingToStop: 'No running process to stop.', fileRequired: 'The selected path is not a file.',
     fileTooLarge: 'Files larger than 5 MB cannot be opened in this version.',
     copyIntoSelf: 'A folder cannot be copied into itself or one of its subfolders.',
+    clangdMissing: 'clangd could not be started, so C++ code intelligence is off',
+    clangdNoDatabase: 'clangd: build once so it can find the engine headers.',
   },
   tr: {
     noProject: 'Önce bir Glist projesi açın.', invalidName: 'Geçerli bir dosya veya klasör adı girin.',
@@ -82,6 +85,8 @@ const messages = {
     nothingToStop: 'Durdurulacak işlem yok.', fileRequired: 'Seçilen yol bir dosya değil.',
     fileTooLarge: '5 MB üzerindeki dosyalar bu sürümde açılamıyor.',
     copyIntoSelf: 'Bir klasör kendi içine veya alt klasörlerinden birine kopyalanamaz.',
+    clangdMissing: 'clangd başlatılamadı, C++ kod zekâsı kapalı',
+    clangdNoDatabase: 'clangd: motor başlıklarını bulabilmesi için projeyi bir kez derleyin.',
   },
 } as const;
 
@@ -105,11 +110,14 @@ const requireProjectRoot = (): string => {
   return activeProjectRoot;
 };
 
+const isInside = (root: string, candidate: string): boolean => {
+  const relative = path.relative(root, candidate);
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+};
+
 const assertPathInProject = (candidatePath: string): string => {
-  const resolvedRoot = path.resolve(requireProjectRoot());
   const resolvedCandidate = path.resolve(candidatePath);
-  const relative = path.relative(resolvedRoot, resolvedCandidate);
-  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+  if (!isInside(path.resolve(requireProjectRoot()), resolvedCandidate)) {
     throw new Error(msg('outsideProject'));
   }
   return resolvedCandidate;
@@ -118,9 +126,7 @@ const assertPathInProject = (candidatePath: string): string => {
 const assertExistingPathInProject = async (candidatePath: string): Promise<string> => {
   const safePath = assertPathInProject(candidatePath);
   const realRoot = await fs.realpath(requireProjectRoot());
-  const realCandidate = await fs.realpath(safePath);
-  const relative = path.relative(realRoot, realCandidate);
-  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error(msg('outsideProject'));
+  if (!isInside(realRoot, await fs.realpath(safePath))) throw new Error(msg('outsideProject'));
   return safePath;
 };
 
@@ -305,12 +311,10 @@ const createProjectFromTemplate = async (
   return { root: target, name: projectName, hasCMakeProject: true };
 };
 
-const findWorkspaceRoot = (projectRoot: string): string | null => {
+const findAncestorWith = (projectRoot: string, marker: string): string | null => {
   let cursor = path.resolve(projectRoot);
   for (let depth = 0; depth < 8; depth += 1) {
-    if (existsSync(path.join(cursor, 'zbin', 'glistzbin-win64', 'CMake', 'bin', 'cmake.exe'))) {
-      return cursor;
-    }
+    if (existsSync(path.join(cursor, marker))) return cursor;
     const parent = path.dirname(cursor);
     if (parent === cursor) break;
     cursor = parent;
@@ -320,7 +324,7 @@ const findWorkspaceRoot = (projectRoot: string): string | null => {
 
 const resolveToolchain = (projectRoot: string): Toolchain => {
   if (process.platform !== 'win32') return { cmake: 'cmake' };
-  const workspaceRoot = findWorkspaceRoot(projectRoot);
+  const workspaceRoot = findAncestorWith(projectRoot, path.join('zbin', 'glistzbin-win64', 'CMake', 'bin', 'cmake.exe'));
   if (!workspaceRoot) return { cmake: 'cmake', generator: 'MinGW Makefiles' };
   const distributionRoot = path.join(workspaceRoot, 'zbin', 'glistzbin-win64');
   return {
@@ -336,6 +340,8 @@ const processEnvironment = (toolchain: Toolchain): NodeJS.ProcessEnv => ({
     ? `${toolchain.toolBin}${path.delimiter}${process.env.PATH ?? ''}`
     : process.env.PATH,
 });
+
+const buildDirectoryFor = (projectRoot: string): string => path.join(projectRoot, '_build', 'Release');
 
 const runBuildCommand = (
   executable: string,
@@ -360,7 +366,7 @@ const configureAndBuild = async (): Promise<ProcessResult> => {
   if (buildProcess) return { success: false, message: msg('buildRunning') };
   const projectRoot = requireProjectRoot();
   const toolchain = resolveToolchain(projectRoot);
-  const buildDirectory = path.join(projectRoot, '_build', 'Release');
+  const buildDirectory = buildDirectoryFor(projectRoot);
   const configureArgs = [
     '-S', projectRoot, '-B', buildDirectory,
     '-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
@@ -404,7 +410,7 @@ const readAppName = async (projectRoot: string): Promise<string> => {
 };
 
 const findRunnable = async (projectRoot: string): Promise<string | null> => {
-  const buildDirectory = path.join(projectRoot, '_build', 'Release');
+  const buildDirectory = buildDirectoryFor(projectRoot);
   const appName = await readAppName(projectRoot);
   const expected = path.join(buildDirectory, process.platform === 'win32' ? `${appName}.exe` : appName);
   if (existsSync(expected)) return expected;
@@ -479,18 +485,49 @@ export const openProjectAt = async (projectRoot: string): Promise<GlistProjectIn
   };
 };
 
-const readProjectFile = async (filePath: string): Promise<string> => {
-  const safePath = await assertExistingPathInProject(filePath);
-  const stats = await fs.stat(safePath);
+const readTextFile = async (filePath: string): Promise<string> => {
+  const stats = await fs.stat(filePath);
   if (!stats.isFile()) throw new Error(msg('fileRequired'));
   if (stats.size > 5 * 1024 * 1024) throw new Error(msg('fileTooLarge'));
-  return fs.readFile(safePath, 'utf8');
+  return fs.readFile(filePath, 'utf8');
+};
+
+const readProjectFile = async (filePath: string): Promise<string> =>
+  readTextFile(await assertExistingPathInProject(filePath));
+
+// Go to definition lands in engine and plugin headers, so files anywhere in
+// the Glist workspace (the folder holding GlistEngine) may be read, never written.
+const readWorkspaceFile = async (filePath: string): Promise<string> => {
+  const workspaceRoot = findAncestorWith(requireProjectRoot(), path.join('GlistEngine', 'engine'));
+  const realFile = await fs.realpath(path.resolve(filePath));
+  if (!workspaceRoot || !isInside(await fs.realpath(workspaceRoot), realFile)) throw new Error(msg('outsideProject'));
+  return readTextFile(realFile);
 };
 
 const writeProjectFile = async (filePath: string, contents: string): Promise<boolean> => {
   await fs.writeFile(await assertExistingPathInProject(filePath), contents, 'utf8');
   return true;
 };
+
+const clangd = new ClangdProcess(
+  (message) => sendToRenderer('clangd:message', message),
+  (status) => sendToRenderer('clangd:status', status),
+);
+
+const startClangd = async (): Promise<GlistClangdStatus> => {
+  const projectRoot = requireProjectRoot();
+  const toolchain = resolveToolchain(projectRoot);
+  const buildDirectory = buildDirectoryFor(projectRoot);
+  const compileCommands = existsSync(path.join(buildDirectory, 'compile_commands.json'));
+  const args = [`--compile-commands-dir=${buildDirectory}`, '--background-index', '--log=error'];
+  // Lets clangd ask the Glist clang for its system headers and target.
+  if (toolchain.toolBin) args.push(`--query-driver=${path.join(toolchain.toolBin, '*').replace(/\\/g, '/')}`);
+  const status = await clangd.start({ cwd: projectRoot, args, env: processEnvironment(toolchain) });
+  if (!status.running) return { running: false, message: `${msg('clangdMissing')}: ${status.message}` };
+  return { running: true, message: compileCommands ? '' : msg('clangdNoDatabase'), compileCommands };
+};
+
+export const stopClangd = (): void => clangd.stop();
 
 const setLanguage = (nextLanguage: AppLanguage): AppLanguage => {
   language = nextLanguage === 'tr' ? 'tr' : 'en';
@@ -510,9 +547,12 @@ export const studio: Handlers = {
   showInExplorer: showInSystemExplorer,
   openCommandPrompt,
   readFile: readProjectFile,
+  readWorkspaceFile,
   writeFile: writeProjectFile,
   buildProject: configureAndBuild,
   runProject,
   stopProject: stopProcesses,
   setLanguage,
+  startClangd,
+  sendClangd: (message: unknown) => clangd.send(message),
 };

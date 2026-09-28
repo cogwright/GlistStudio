@@ -41,6 +41,9 @@ const en = {
   confirmDirtyDelete: 'Unsaved changes in this item will be lost. Continue?',
   classLocation: 'Select a folder for the C++ class.',
   open: 'Open',
+  readOnly: 'Read-only', switchSourceHeader: 'Switch Header/Source', clangdRunning: 'is running',
+  renameUnavailable: 'This symbol cannot be renamed.',
+  editOutsideProject: 'The change touches files outside the project and was not applied.',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -86,6 +89,9 @@ const tr: Record<TranslationKey, string> = {
   confirmDirtyDelete: 'Bu öğedeki kaydedilmemiş değişiklikler kaybolacak. Devam edilsin mi?',
   classLocation: 'C++ sınıfı için bir klasör seçin.',
   open: 'Aç',
+  readOnly: 'Salt okunur', switchSourceHeader: 'Başlık/Kaynak Dosyasına Geç', clangdRunning: 'çalışıyor',
+  renameUnavailable: 'Bu sembol yeniden adlandırılamaz.',
+  editOutsideProject: 'Değişiklik proje dışındaki dosyalara dokunuyor ve uygulanmadı.',
 };
 
 const dictionaries = { en, tr };

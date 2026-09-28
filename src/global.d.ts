@@ -20,6 +20,13 @@ interface GlistProcessResult {
   message: string;
 }
 
+interface GlistClangdStatus {
+  running: boolean;
+  message: string;
+  // Whether the build directory had compile_commands.json when clangd started.
+  compileCommands?: boolean;
+}
+
 type GlistTemplate = 'GlistApp' | 'GlistConsoleApp' | 'GlistGUIApp';
 type GlistLanguage = 'en' | 'tr';
 type GlistTheme = 'dark' | 'light';
@@ -38,6 +45,7 @@ interface Window {
     showInExplorer(entryPath: string): Promise<void>;
     openCommandPrompt(entryPath: string): Promise<void>;
     readFile(filePath: string): Promise<string>;
+    readWorkspaceFile(filePath: string): Promise<string>;
     writeFile(filePath: string, contents: string): Promise<boolean>;
     buildProject(): Promise<GlistProcessResult>;
     runProject(): Promise<GlistProcessResult>;
@@ -46,9 +54,13 @@ interface Window {
     setTheme(theme: GlistTheme): Promise<GlistTheme>;
     setZoomFactor(factor: number): Promise<number>;
     openEngineSite(): Promise<void>;
+    startClangd(): Promise<GlistClangdStatus>;
+    sendClangd(message: unknown): Promise<void>;
     onBuildOutput(callback: (text: string) => void): () => void;
     onBuildStatus(callback: (status: { running: boolean; label: string }) => void): () => void;
     onRunOutput(callback: (text: string) => void): () => void;
     onRunStatus(callback: (status: { running: boolean; exitCode?: number }) => void): () => void;
+    onClangdMessage(callback: (message: unknown) => void): () => void;
+    onClangdStatus(callback: (status: GlistClangdStatus) => void): () => void;
   };
 }
