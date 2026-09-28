@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { existsSync, promises as fs } from 'node:fs';
-import { homedir, userInfo } from 'node:os';
+import { availableParallelism, homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { Handlers } from './api';
 import { ClangdProcess } from './clangd-process';
@@ -413,7 +413,8 @@ const configureAndBuild = async (): Promise<ProcessResult> => {
     }
     sendToRenderer('build:status', { running: true, label: msg('building') });
     const buildCode = await runBuildCommand(
-      toolchain.cmake, ['--build', buildDirectory, '--parallel'], projectRoot, toolchain,
+      // A bare --parallel lets make start every job at once.
+      toolchain.cmake, ['--build', buildDirectory, '--parallel', String(availableParallelism())], projectRoot, toolchain,
     );
     return buildCode === 0
       ? { success: true, message: msg('buildSucceeded') }
