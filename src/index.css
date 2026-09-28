@@ -423,9 +423,12 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 /* xterm.js maps the mouse wrongly under the browser build's CSS zoom, so the
    terminal is zoomed back to 1 there and gets a larger font instead
    (StudioTerminal.setScale). --page-zoom is unset in Electron, which zooms natively. */
-.terminal-host { flex: 1; min-height: 0; padding: calc(6px * var(--page-zoom, 1)) 0 calc(2px * var(--page-zoom, 1)) calc(14px * var(--page-zoom, 1)); background: var(--ui-bg); zoom: calc(1 / var(--page-zoom, 1)); }
+.terminal-host { flex: 1; min-height: 0; background: var(--ui-bg); zoom: calc(1 / var(--page-zoom, 1)); }
 .terminal-host[hidden], .heading-action[hidden] { display: none; }
-.terminal-host .xterm { height: 100%; }
+/* The padding goes on xterm.js's own element: its fit addon subtracts that
+   padding, but measures the host with its own, so padding there made rows
+   run past the bottom of the panel. */
+.terminal-host .xterm { height: 100%; padding: calc(6px * var(--page-zoom, 1)) 0 calc(4px * var(--page-zoom, 1)) calc(14px * var(--page-zoom, 1)); }
 /* xterm.js paints its viewport black, and it can run a little past the last row. */
 .terminal-host .xterm .xterm-viewport { background-color: transparent; }
 .ansi-black { color: var(--ui-fg-muted); }
