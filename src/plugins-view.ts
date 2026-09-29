@@ -16,11 +16,12 @@ export interface PluginsHooks {
 const checkEvery = 6 * 60 * 60 * 1000;
 
 // Updates one plugin; with work of the user's own, asks before putting it aside.
-export const updatePlugin = async (name: string): Promise<boolean> => {
+export const updatePlugin = async ({ name, source = 'GlistPlugins' }: GlistPlugin): Promise<boolean> => {
+  const from = (text: string): string => text.replace(/\{source\}/g, source);
   let result = await window.glistAPI.updatePlugin(name).catch((error: Error): GlistPluginResult => ({ success: false, message: error.message }));
   if (result.confirm) {
     const { changed, ahead } = result.confirm;
-    const count = (one: TranslationKey, many: TranslationKey, value: number): string => (value === 1 ? t(one) : t(many).replace('{count}', String(value)));
+    const count = (one: TranslationKey, many: TranslationKey, value: number): string => from(value === 1 ? t(one) : t(many).replace('{count}', String(value)));
     const work = [
       ...(changed > 0 ? [count('pluginKeepFile', 'pluginKeepFiles', changed)] : []),
       ...(ahead > 0 ? [count('pluginKeepCommit', 'pluginKeepCommits', ahead)] : []),
@@ -28,7 +29,7 @@ export const updatePlugin = async (name: string): Promise<boolean> => {
     const how = [...(changed > 0 ? [t('pluginKeepStash')] : []), ...(ahead > 0 ? [t('pluginKeepBranch')] : [])].join(t('pluginKeepAnd'));
     const answer = await formDialog({
       title: t('pluginKeepTitle').replace('{name}', name),
-      hint: t('pluginKeepHint').replace(/\{name\}/g, name).replace('{work}', work).replace('{how}', how),
+      hint: from(t('pluginKeepHint')).replace(/\{name\}/g, name).replace('{work}', work).replace('{how}', how),
       fields: [],
       submit: t('pluginKeepButton'),
     });
@@ -40,7 +41,7 @@ export const updatePlugin = async (name: string): Promise<boolean> => {
       ...(result.kept?.stash ? [t('pluginKeptStash').replace('{stash}', result.kept.stash)] : []),
       ...(result.kept?.branch ? [t('pluginKeptBranch').replace('{branch}', result.kept.branch)] : []),
     ].join(' ');
-    notify({ text: t('pluginUpdated').replace('{name}', name), kind: 'success', ...(kept ? { detail: kept } : {}) });
+    notify({ text: from(t('pluginUpdated')).replace('{name}', name), kind: 'success', ...(kept ? { detail: kept } : {}) });
   } else {
     notify({ text: t('pluginUpdateFailed').replace('{name}', name), detail: result.message, kind: 'error' });
   }
@@ -78,15 +79,15 @@ export class PluginsView {
       this.told = names.join();
       notify({
         text: t('pluginUpdatesNotice').replace('{names}', names.join(', ')),
-        actions: [{ label: t('updatePlugins'), run: () => { void this.updateAll(names); } }],
+        actions: [{ label: t('updatePlugins'), run: () => { void this.updateAll(outdated); } }],
       });
     };
     window.setTimeout(() => { void check(); }, 20000);
     window.setInterval(() => { void check(); }, checkEvery);
   }
 
-  private async updateAll(names: string[]): Promise<void> {
-    for (const name of names) await this.run(name, () => updatePlugin(name));
+  private async updateAll(plugins: GlistPlugin[]): Promise<void> {
+    for (const plugin of plugins) await this.run(plugin.name, () => updatePlugin(plugin));
     this.told = '';
   }
 
@@ -177,7 +178,7 @@ export class PluginsView {
     } else if (!plugin.installed && gitFound && plugin.url) {
       header.append(button(t('installPlugin'), 'plugin-action', () => { void this.install(plugin); }));
     } else if (updatable) {
-      header.append(button(t('updatePlugin'), 'plugin-action primary', () => { void this.run(plugin.name, () => updatePlugin(plugin.name)); }));
+      header.append(button(t('updatePlugin'), 'plugin-action primary', () => { void this.run(plugin.name, () => updatePlugin(plugin)); }));
     }
     row.append(header);
     if (plugin.description) {
@@ -204,14 +205,15 @@ export class PluginsView {
     return row;
   }
 
-  // One line on where an installed plugin stands.
+  // One line on where an installed plugin stands, or where one listed from elsewhere comes from.
   private state(plugin: GlistPlugin): string {
-    if (!plugin.installed) return '';
+    const source = plugin.source ?? 'GlistPlugins';
+    if (!plugin.installed) return source.includes('/') ? t('pluginFrom').replace('{source}', source) : '';
     const parts: string[] = [];
     if (plugin.used) parts.push(t('pluginInProject'));
-    if (!plugin.official) parts.push(t('pluginNotOfficial'));
+    if (!plugin.official) parts.push(t('pluginNotOfficial').replace('{source}', source));
     else if (plugin.branch !== plugin.defaultBranch) parts.push(t('pluginOtherBranch').replace('{branch}', plugin.branch ?? 'HEAD'));
-    else if ((plugin.behind ?? 0) > 0) parts.push(t('pluginBehind').replace('{count}', String(plugin.behind)));
+    else if ((plugin.behind ?? 0) > 0) parts.push(t('pluginBehind').replace('{count}', String(plugin.behind)).replace('{source}', source));
     if ((plugin.changed ?? 0) > 0 || (plugin.ahead ?? 0) > 0) parts.push(t('pluginChanged'));
     return parts.join(' · ');
   }
