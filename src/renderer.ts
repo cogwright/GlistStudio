@@ -11,7 +11,7 @@ import { AgentSettings } from './agent-settings';
 import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
-import { codeFontStack, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
+import { codeFontStack, loadFonts, onFontsChange, panelFontSize, setUpFontSettings, type FontSettings } from './fonts';
 import { formatOutput, newOutputStyle } from './output-format';
 import { fileIconElement } from './file-icons';
 import { icon, placeIcons, type IconName } from './icons';
@@ -20,6 +20,12 @@ import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isMac, primaryKey, shortcutLabel } from './shortcuts';
 import { setUpGlistInstaller } from './glist-installer';
+import { GitClient } from './git-client';
+import { branchName, CommitView } from './git-commit-view';
+import { cloneDialog, formDialog, identityDialog, pushDialog } from './git-dialogs';
+import { GitEditor } from './git-editor';
+import { GitPanel, type GitPanelView } from './git-panel';
+import { notify } from './notifications';
 import { setUpProjectPicker } from './project-picker';
 import { StudioTerminal } from './terminal';
 import { terminalTheme } from './themes';
@@ -27,6 +33,7 @@ import { applyLanguage, getLanguage, t, type TranslationKey } from './localizati
 import './index.css';
 
 interface OpenFile {
+  kind: 'file';
   path: string;
   name: string;
   model: monaco.editor.ITextModel;
@@ -34,6 +41,29 @@ interface OpenFile {
   savedVersion: number;
   readOnly: boolean;
 }
+
+// A file compared between two versions, in a tab of its own: the last commit
+// against the file as it is now, or a commit against the one before it.
+interface DiffTab {
+  kind: 'diff';
+  // The tab's key.
+  path: string;
+  file: string;
+  // Where a renamed file was before.
+  from?: string;
+  name: string;
+  // Revisions; no base means the file did not exist yet, no target means as it is now.
+  base: string | null;
+  target: string | null;
+  original: monaco.editor.ITextModel;
+  modified: monaco.editor.ITextModel;
+  leftLabel: string;
+  rightLabel: string;
+  // Why there are no lines to compare, such as a binary file.
+  message: string;
+}
+
+type EditorTab = OpenFile | DiffTab;
 
 const element = <T extends HTMLElement>(selector: string): T => {
   const found = document.querySelector<T>(selector);
@@ -66,6 +96,17 @@ const fileTree = element<HTMLDivElement>('#file-tree');
 const tabsHost = element<HTMLDivElement>('#editor-tabs');
 const editorHost = element<HTMLDivElement>('#editor-host');
 const welcome = element<HTMLDivElement>('#welcome');
+const diffView = element<HTMLElement>('#diff-view');
+const diffHost = element<HTMLElement>('#diff-host');
+const diffMessage = element<HTMLElement>('#diff-message');
+const diffRollbackButton = element<HTMLButtonElement>('#diff-rollback');
+const diffOpenButton = element<HTMLButtonElement>('#diff-open');
+const commitViewElement = element<HTMLElement>('#commit-view');
+const commitActivity = element<HTMLButtonElement>('#commit-activity');
+const gitTab = element<HTMLButtonElement>('#git-tab');
+const gitPanelElement = element<HTMLElement>('#git-panel');
+const gitMenuButton = element<HTMLButtonElement>('#git-menu-button');
+const branchChip = element<HTMLButtonElement>('#git-branch-chip');
 const output = element<HTMLPreElement>('#output');
 const projectRootLabel = element<HTMLDivElement>('#project-root-label');
 const processStatus = element<HTMLSpanElement>('#process-status');
@@ -88,12 +129,18 @@ let isBuildRunning = false;
 let isRunRunning = false;
 // Build or Run was pressed and the backend has not taken it over yet.
 let isStarting = false;
-const openFiles = new Map<string, OpenFile>();
+const openFiles = new Map<string, EditorTab>();
+const fileTabs = (): OpenFile[] => [...openFiles.values()].filter((tab): tab is OpenFile => tab.kind === 'file');
+// The file tab in front, if the tab in front is one.
+const activeFile = (): OpenFile | undefined => {
+  const tab = activeFilePath ? openFiles.get(activeFilePath) : undefined;
+  return tab?.kind === 'file' ? tab : undefined;
+};
 const expandedDirectories = new Set<string>();
 let draggedTabPath: string | null = null;
 let suppressTabClick = false;
 
-type SidebarView = 'explorer' | 'debug';
+type SidebarView = 'explorer' | 'debug' | 'commit';
 let sidebarView: SidebarView = 'explorer';
 
 const setSidebarVisible = (visible: boolean): void => {
@@ -109,7 +156,9 @@ const showView = (view: SidebarView): void => {
   sidebarView = view;
   explorerView.hidden = view !== 'explorer';
   debugView.hidden = view !== 'debug';
+  commitViewElement.hidden = view !== 'commit';
   setSidebarVisible(true);
+  if (view === 'commit') void git.refresh();
 };
 
 // The button of the view already showing hides the side bar.
@@ -120,8 +169,8 @@ const toggleView = (view: SidebarView): void => {
 
 const toggleExplorer = (): void => toggleView('explorer');
 // The panel under the editor has tabs: the Output of builds and runs, a
-// terminal, and, while one is turned on in Settings, a coding agent.
-type PanelView = 'output' | 'terminal' | 'agent';
+// terminal, and, while they are turned on in Settings, a coding agent and Git.
+type PanelView = 'output' | 'terminal' | 'agent' | 'git';
 let panelView: PanelView = 'output';
 const terminalHost = element<HTMLDivElement>('#terminal');
 const agentHost = element<HTMLDivElement>('#agent-terminal');
@@ -145,6 +194,7 @@ const panelShowing = (view: PanelView): boolean => !appShell.classList.contains(
 const setOutputVisible = (visible: boolean): void => {
   appShell.classList.toggle('output-hidden', !visible);
   if (visible) terminalFor(panelView)?.show();
+  gitPanel.setVisible(visible && panelView === 'git');
 };
 
 const showPanel = (view: PanelView): void => {
@@ -155,10 +205,17 @@ const showPanel = (view: PanelView): void => {
   output.hidden = view !== 'output';
   terminalHost.hidden = view !== 'terminal';
   agentHost.hidden = view !== 'agent';
+  gitPanelElement.hidden = view !== 'git';
   agentSelect.hidden = view !== 'agent';
-  newTerminalButton.hidden = view === 'output';
+  newTerminalButton.hidden = view === 'output' || view === 'git';
+  // The Git tab's views have tools of their own.
+  clearOutputButton.hidden = view === 'git';
+  // The log wants more room than a build's output.
+  if (view === 'git' && parseInt(getComputedStyle(appShell).getPropertyValue('--panel-height'), 10) < 300) {
+    appShell.style.setProperty('--panel-height', '300px');
+  }
   const titles: Array<[HTMLButtonElement, TranslationKey]> = [
-    [clearOutputButton, ({ output: 'clearOutput', terminal: 'clearTerminal', agent: 'clearAgent' } as const)[view]],
+    [clearOutputButton, ({ output: 'clearOutput', terminal: 'clearTerminal', agent: 'clearAgent', git: 'clearOutput' } as const)[view]],
     [newTerminalButton, view === 'agent' ? 'restartAgent' : 'newTerminal'],
   ];
   titles.forEach(([button, key]) => { button.dataset.i18nTitle = key; button.title = t(key); });
@@ -383,11 +440,11 @@ const languageForFile = (filePath: string): { id: string; label: string } => {
   return languages[extension] ?? { id: 'plaintext', label: 'Plain Text' };
 };
 
-const isDirty = (file: OpenFile): boolean => file.model.getAlternativeVersionId() !== file.savedVersion;
+const isDirty = (tab: EditorTab): boolean => tab.kind === 'file' && tab.model.getAlternativeVersionId() !== tab.savedVersion;
 
 const updateButtons = (): void => {
   const hasProject = Boolean(activeProject);
-  saveButton.disabled = !activeFilePath;
+  saveButton.disabled = !activeFile();
   buildButton.disabled = !hasProject || isBuildRunning || isStarting;
   runButton.disabled = !hasProject || isRunRunning || isBuildRunning || isStarting;
   debugButton.disabled = !hasProject || isBuildRunning || isStarting || debug.active;
@@ -404,16 +461,40 @@ const updateButtons = (): void => {
 };
 
 const activateFile = (filePath: string): void => {
-  const file = openFiles.get(filePath);
-  if (!file) return;
+  const tab = openFiles.get(filePath);
+  if (!tab) return;
   activeFilePath = filePath;
-  editor.setModel(file.model);
-  editor.updateOptions({ readOnly: file.readOnly });
   welcome.hidden = true;
-  editorHost.classList.add('visible');
+  if (tab.kind === 'diff') {
+    editorHost.classList.remove('visible');
+    showDiffTab(tab);
+  } else {
+    diffView.hidden = true;
+    editor.setModel(tab.model);
+    editor.updateOptions({ readOnly: tab.readOnly });
+    editorHost.classList.add('visible');
+    // Measured now, not on the next frame, so a line can be revealed right away.
+    editor.layout();
+  }
   renderTabs();
   updateButtons();
-  editor.focus();
+  if (tab.kind === 'file') editor.focus();
+};
+
+// The welcome screen, once no tab is left.
+const showNoTab = (): void => {
+  editor.setModel(null);
+  diffEditor?.setModel(null);
+  editorHost.classList.remove('visible');
+  diffView.hidden = true;
+  welcome.hidden = false;
+};
+
+const disposeTab = (tab: EditorTab): void => {
+  if (tab.kind === 'file') { tab.model.dispose(); return; }
+  if (diffEditor?.getModel()?.modified === tab.modified) diffEditor.setModel(null);
+  tab.original.dispose();
+  tab.modified.dispose();
 };
 
 const closeFile = (filePath: string): void => {
@@ -423,17 +504,13 @@ const closeFile = (filePath: string): void => {
   const paths = [...openFiles.keys()];
   const closingIndex = paths.indexOf(filePath);
   openFiles.delete(filePath);
-  file.model.dispose();
+  disposeTab(file);
   if (activeFilePath === filePath) {
     const remaining = [...openFiles.keys()];
     const next = remaining[Math.min(closingIndex, remaining.length - 1)];
     activeFilePath = null;
     if (next) activateFile(next);
-    else {
-      editor.setModel(null);
-      editorHost.classList.remove('visible');
-      welcome.hidden = false;
-    }
+    else showNoTab();
   }
   renderTabs();
   updateButtons();
@@ -470,8 +547,10 @@ const renderTabs = (): void => {
     tab.className = 'editor-tab';
     tab.dataset.path = file.path;
     tab.classList.toggle('active', file.path === activeFilePath);
-    tab.classList.toggle('read-only', file.readOnly);
-    tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
+    tab.classList.toggle('read-only', file.kind === 'file' && file.readOnly);
+    tab.classList.toggle('diff', file.kind === 'diff');
+    if (file.kind === 'diff') tab.title = `${file.file}\n${file.leftLabel} / ${file.rightLabel}`;
+    else tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
     const label = document.createElement('span');
     label.className = 'tab-label';
     label.textContent = file.name;
@@ -484,7 +563,13 @@ const renderTabs = (): void => {
     close.draggable = false;
     close.append(icon('close'));
     close.addEventListener('click', (event) => { event.stopPropagation(); closeFile(file.path); });
-    tab.append(fileIconElement(file.name), label, dirty, close);
+    let kind = fileIconElement(file.name);
+    if (file.kind === 'diff') {
+      kind = document.createElement('span');
+      kind.className = 'file-icon diff';
+      kind.append(icon('diff'));
+    }
+    tab.append(kind, label, dirty, close);
     tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path); });
     tab.addEventListener('dragstart', (event) => {
       draggedTabPath = file.path;
@@ -546,7 +631,7 @@ const readContents = (filePath: string): Promise<string> => (isProjectPath(fileP
 
 // clangd and the explorer may spell one path differently, the URI does not.
 const findOpenFile = (uri: monaco.Uri): OpenFile | undefined =>
-  [...openFiles.values()].find((file) => file.model.uri.toString() === uri.toString());
+  fileTabs().find((file) => file.model.uri.toString() === uri.toString());
 
 // Gives a file a tab without switching to it. Files outside the project open read-only.
 const loadFile = async (filePath: string): Promise<OpenFile> => {
@@ -572,7 +657,7 @@ const refreshDirtyMark = (file: OpenFile): void => {
 
 // Opens a tab on a model that matches the file on disk, without switching to it.
 const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
-  const file: OpenFile = { path: filePath, name: baseName(filePath), model, savedVersion: model.getAlternativeVersionId(), readOnly };
+  const file: OpenFile = { kind: 'file', path: filePath, name: baseName(filePath), model, savedVersion: model.getAlternativeVersionId(), readOnly };
   openFiles.set(filePath, file);
   model.onDidChangeContent(() => refreshDirtyMark(file));
   clangd.track(model);
@@ -587,11 +672,21 @@ const saveFile = async (file: OpenFile): Promise<void> => {
   clangd.saved(file.model);
   refreshDirtyMark(file);
   if (baseName(file.path) === 'CMakeLists.txt' && isProjectPath(file.path)) void refreshDependencies();
+  void git.refresh();
 };
 
+// Opening a tab takes a moment; the last one asked for comes to the front,
+// not whichever finished loading last.
+let navigation = 0;
+
 const openFile = async (filePath: string, name: string): Promise<boolean> => {
+  navigation += 1;
+  const ticket = navigation;
   try {
-    activateFile((await loadFile(filePath)).path);
+    const file = await loadFile(filePath);
+    // Another tab was asked for meanwhile, so nothing is placed in this one.
+    if (ticket !== navigation) return false;
+    activateFile(file.path);
     return true;
   } catch (error) {
     appendOutput(`\n${t('fileOpenFailed')}: ${name}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
@@ -664,6 +759,367 @@ const debug = new Debugger({
     breakpoints: element<HTMLElement>('#debug-breakpoints'),
   },
 });
+
+// Diff tabs share one diff editor, made the first time one opens.
+let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null;
+let diffInline = ((): boolean => { try { return window.localStorage.getItem('glist-studio-diff-inline') === 'on'; } catch { return false; } })();
+
+const diffFonts = (fonts: FontSettings): monaco.editor.IDiffEditorOptions => ({
+  fontFamily: codeFontStack(fonts),
+  fontSize: fonts.codeSize,
+  lineHeight: Math.round(fonts.codeSize * 1.57),
+  fontLigatures: fonts.ligatures,
+});
+
+const ensureDiffEditor = (): monaco.editor.IStandaloneDiffEditor => {
+  if (diffEditor) return diffEditor;
+  diffEditor = monaco.editor.createDiffEditor(diffHost, {
+    automaticLayout: true,
+    readOnly: true,
+    originalEditable: false,
+    renderSideBySide: !diffInline,
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    ...diffFonts(loadFonts()),
+  });
+  onFontsChange((fonts) => diffEditor?.updateOptions(diffFonts(fonts)));
+  return diffEditor;
+};
+
+const activeDiff = (): DiffTab | undefined => {
+  const tab = activeFilePath ? openFiles.get(activeFilePath) : undefined;
+  return tab?.kind === 'diff' ? tab : undefined;
+};
+
+const showDiffTab = (tab: DiffTab): void => {
+  diffView.hidden = false;
+  const viewer = ensureDiffEditor();
+  element<HTMLElement>('#diff-left').textContent = tab.leftLabel;
+  element<HTMLElement>('#diff-right').textContent = tab.rightLabel;
+  diffMessage.hidden = !tab.message;
+  diffMessage.textContent = tab.message;
+  const change = git.changeOf(tab.file);
+  diffRollbackButton.hidden = tab.target !== null || !change || change.state === 'untracked' || change.state === 'conflict';
+  diffOpenButton.disabled = tab.target === null && change?.state === 'deleted';
+  if (viewer.getModel()?.modified === tab.modified) return;
+  viewer.setModel({ original: tab.original, modified: tab.modified });
+  // A diff opens at its first change, once it is known.
+  const shown = viewer.onDidUpdateDiff(() => {
+    shown.dispose();
+    if (viewer.getModel()?.modified === tab.modified) viewer.revealFirstDiff();
+  });
+};
+
+const readVersion = async (revision: string | null, filePath: string): Promise<GlistGitFileVersion> => {
+  if (!revision) return { text: null };
+  try { return await window.glistAPI.gitFileAt(revision, filePath); } catch { return { text: null }; }
+};
+
+// The file as it is now: as the editor has it, typing included, or as saved.
+const workingVersion = async (filePath: string): Promise<GlistGitFileVersion> => {
+  const open = findOpenFile(pathUri(filePath));
+  if (open) return { text: open.model.getValue() };
+  try { return { text: await window.glistAPI.readFile(filePath) }; } catch { return { text: null }; }
+};
+
+const versionLabel = (revision: string | null, version: GlistGitFileVersion): string => {
+  const name = revision === null ? t('diffWorking')
+    : revision === 'HEAD' ? t('diffHead').replace('{hash}', git.repository?.head?.slice(0, 7) ?? '')
+      : t('diffCommit').replace('{hash}', revision.startsWith('stash@') ? revision : revision.slice(0, 7));
+  return version.text === null ? `${name}: ${t('diffMissing')}` : name;
+};
+
+const fillDiff = async (tab: DiffTab): Promise<void> => {
+  const [left, right] = await Promise.all([
+    readVersion(tab.base, tab.from ?? tab.file),
+    tab.target ? readVersion(tab.target, tab.file) : workingVersion(tab.file),
+  ]);
+  if (tab.original.isDisposed()) return;
+  if (tab.original.getValue() !== (left.text ?? '')) tab.original.setValue(left.text ?? '');
+  if (tab.modified.getValue() !== (right.text ?? '')) tab.modified.setValue(right.text ?? '');
+  tab.leftLabel = tab.base ? versionLabel(tab.base, left) : t('diffMissing');
+  tab.rightLabel = versionLabel(tab.target, right);
+  tab.message = [left, right].some((version) => version.binary) ? t('diffBinary')
+    : [left, right].some((version) => version.tooLarge) ? t('diffTooLarge') : '';
+  if (activeFilePath === tab.path) showDiffTab(tab);
+};
+
+interface DiffRequest {
+  file: string;
+  from?: string;
+  base: string | null;
+  target: string | null;
+}
+
+const openGitDiff = async (request: DiffRequest): Promise<void> => {
+  navigation += 1;
+  const ticket = navigation;
+  const key = `diff:${request.base ?? ''}:${request.target ?? ''}:${request.file}`;
+  const existing = openFiles.get(key);
+  if (existing?.kind === 'diff') {
+    await fillDiff(existing);
+    if (ticket === navigation) activateFile(key);
+    return;
+  }
+  const language = languageForFile(request.file).id;
+  const tab: DiffTab = {
+    kind: 'diff',
+    path: key,
+    file: request.file,
+    from: request.from,
+    name: baseName(request.file),
+    base: request.base,
+    target: request.target,
+    original: monaco.editor.createModel('', language),
+    modified: monaco.editor.createModel('', language),
+    leftLabel: '',
+    rightLabel: '',
+    message: '',
+  };
+  openFiles.set(key, tab);
+  await fillDiff(tab);
+  if (ticket === navigation) activateFile(key);
+  else renderTabs();
+};
+
+// A file against its last commit.
+const openWorkingDiff = (filePath: string): Promise<void> => {
+  const change = git.changeOf(filePath);
+  return openGitDiff({ file: filePath, from: change?.from, base: git.repository?.head ? 'HEAD' : null, target: null });
+};
+
+element<HTMLButtonElement>('#diff-previous').addEventListener('click', () => diffEditor?.goToDiff('previous'));
+element<HTMLButtonElement>('#diff-next').addEventListener('click', () => diffEditor?.goToDiff('next'));
+element<HTMLButtonElement>('#diff-layout').addEventListener('click', () => {
+  diffInline = !diffInline;
+  try { window.localStorage.setItem('glist-studio-diff-inline', diffInline ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
+  diffEditor?.updateOptions({ renderSideBySide: !diffInline });
+});
+diffOpenButton.addEventListener('click', () => {
+  const tab = activeDiff();
+  if (!tab) return;
+  const line = diffEditor?.getModifiedEditor().getPosition()?.lineNumber
+    ?? diffEditor?.getModifiedEditor().getVisibleRanges()[0]?.startLineNumber ?? 1;
+  void revealLocation(pathUri(tab.file), { lineNumber: line, column: 1 });
+});
+diffRollbackButton.addEventListener('click', () => {
+  const tab = activeDiff();
+  if (!tab || !window.confirm(t('confirmRollbackOne').replace('{name}', tab.name))) return;
+  void git.run({ kind: 'rollback', paths: [tab.file] });
+});
+
+// Git: all of it hidden and silent until it is turned on in Settings.
+const git = new GitClient({
+  saveAll: () => saveProjectFiles(),
+  reloadFiles: () => reloadFromDisk(),
+  busy: (label) => {
+    if (label) setProcessStatus(label, true);
+    else if (!isBuildRunning && !isRunRunning) setProcessStatus(t('ready'), false);
+  },
+  showConsole: () => showGitPanel('console'),
+  showConflicts: () => showView('commit'),
+});
+
+const showGitPanel = (view: GitPanelView): void => {
+  showPanel('git');
+  gitPanel.show(view);
+};
+
+const showGitHistory = (filePath: string): void => {
+  showPanel('git');
+  gitPanel.showHistory(filePath);
+};
+
+const showCommitView = (): void => {
+  if (!git.enabled) return;
+  showView('commit');
+  commitPane.focusMessage();
+};
+
+// Files git changed on disk are read again, unless they have unsaved changes.
+const reloadFromDisk = async (): Promise<void> => {
+  for (const file of fileTabs()) {
+    if (file.readOnly || !isProjectPath(file.path) || isDirty(file)) continue;
+    let contents: string;
+    try {
+      contents = await window.glistAPI.readFile(file.path);
+    } catch {
+      // Gone, such as a file the branch checked out does not have.
+      closeFile(file.path);
+      continue;
+    }
+    if (file.model.getValue() !== contents) {
+      // As an edit, so Undo can bring back what was there.
+      file.model.pushStackElement();
+      file.model.pushEditOperations([], [{ range: file.model.getFullModelRange(), text: contents }], () => null);
+      file.model.pushStackElement();
+    }
+    file.savedVersion = file.model.getAlternativeVersionId();
+    refreshDirtyMark(file);
+  }
+  await loadProjectTree();
+  const diff = activeDiff();
+  if (diff) await fillDiff(diff);
+};
+
+const ensureIdentity = async (): Promise<boolean> => {
+  const identity = await window.glistAPI.gitIdentity().catch((): GlistGitIdentity => ({ name: '', email: '' }));
+  if (identity.name && identity.email) return true;
+  const entered = await identityDialog(identity);
+  if (!entered) return false;
+  const result = await window.glistAPI.gitRun({ kind: 'identity', ...entered });
+  if (!result.success) notify({ text: t('gitFailed'), detail: result.message, kind: 'error' });
+  return result.success;
+};
+
+const pushChanges = async (): Promise<void> => {
+  const repository = git.repository;
+  if (!repository) return;
+  let outgoing: Awaited<ReturnType<typeof window.glistAPI.gitOutgoing>>;
+  try { outgoing = await window.glistAPI.gitOutgoing(); } catch (error) {
+    notify({ text: t('gitFailed'), detail: errorText(error), kind: 'error' });
+    return;
+  }
+  if (!outgoing.remote) {
+    notify({ text: t('noRemotes'), kind: 'error', actions: [{ label: t('addRemote'), run: () => { showGitPanel('remotes'); void gitPanel.addRemote(); } }] });
+    return;
+  }
+  if (!outgoing.branch) {
+    notify({ text: t('detached').replace('{hash}', repository.head?.slice(0, 7) ?? ''), kind: 'error' });
+    return;
+  }
+  const choice = await pushDialog(outgoing, repository.upstream);
+  if (!choice) return;
+  await git.run({
+    kind: 'push',
+    remote: choice.remote === outgoing.remote && repository.upstream ? undefined : choice.remote,
+    tags: choice.tags,
+    force: choice.force,
+  }, {
+    busy: 'pushing',
+    success: t('pushedTo').replace('{target}', `${choice.remote}/${outgoing.branch}`),
+    failureActions: (result) => (result.rejected ? [{ label: t('updateProject'), run: () => { void updateProject(); } }] : []),
+  });
+};
+
+const updateProject = async (): Promise<void> => {
+  const repository = git.repository;
+  if (!repository) return;
+  await git.run({ kind: 'pull', rebase: git.updateByRebase }, {
+    busy: 'updating',
+    success: t('updatedFrom').replace('{upstream}', repository.upstream ?? ''),
+    failureActions: (result) => (repository.upstream || result.conflicts ? [] : [{ label: t('pushMenu'), run: () => { void pushChanges(); } }]),
+  });
+};
+
+const fetchAll = (): Promise<GlistGitResult> => git.run({ kind: 'fetch' }, { busy: 'fetching', success: t('fetched') });
+
+const checkoutRef = async (ref: string): Promise<void> => {
+  const success = t('checkedOut').replace('{name}', ref);
+  const result = await git.run({ kind: 'checkout', ref }, { success, quiet: (outcome) => Boolean(outcome.localChanges) });
+  if (result.localChanges) {
+    notify({
+      text: result.message,
+      kind: 'error',
+      actions: [{ label: t('smartCheckout'), run: () => { void git.run({ kind: 'checkout', ref, smart: true }, { success }); } }],
+    });
+  }
+};
+
+const newBranch = async (start?: string, label?: string): Promise<void> => {
+  const from = label ?? git.repository?.branch ?? 'HEAD';
+  const values = await formDialog({
+    title: t('newBranchFrom').replace('{start}', from),
+    submit: t('create'),
+    fields: [
+      { kind: 'text', key: 'name', label: t('branchName'), required: true },
+      { kind: 'checkbox', key: 'checkout', label: t('checkout'), value: true },
+    ],
+  });
+  if (!values) return;
+  await git.run({ kind: 'create-branch', name: String(values.name), start, checkout: Boolean(values.checkout) });
+};
+
+const cloneProject = async (): Promise<void> => {
+  if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
+  const location = await window.glistAPI.getProjectsDirectory();
+  const root = await cloneDialog(location, (update) => window.glistAPI.onGitConsole((entry) => {
+    const line = entry.kind === 'output' ? entry.text.split(/[\r\n]/).map((part) => part.trim()).filter(Boolean).pop() : null;
+    if (line) update(line);
+  }));
+  if (root) await openProjectWith(() => window.glistAPI.openProjectPath(root));
+};
+
+const deleteProjectFile = async (filePath: string): Promise<void> => {
+  try {
+    if (activeProject && !isWithin(filePath, joinPath(activeProject.root, 'CMakeLists.txt'))) await saveOpenCmake();
+    await window.glistAPI.deleteEntry(filePath);
+    closeFilesUnderEntry(filePath);
+    await reloadOpenCmake();
+    await loadProjectTree();
+    appendOutput(`\n✓ ${t('movedToTrash')}: ${filePath}\n`);
+  } catch (error) {
+    appendOutput(`\n${t('deleteFailed')}: ${errorText(error)}\n`, 'error');
+  }
+};
+
+const commitPane = new CommitView({
+  branch: element<HTMLElement>('#commit-branch'),
+  banner: element<HTMLElement>('#commit-banner'),
+  changes: element<HTMLElement>('#commit-changes'),
+  box: element<HTMLElement>('#commit-box'),
+  message: element<HTMLTextAreaElement>('#commit-message'),
+  amend: element<HTMLInputElement>('#commit-amend'),
+  commit: element<HTMLButtonElement>('#commit-button'),
+  commitAndPush: element<HTMLButtonElement>('#commit-push-button'),
+  refresh: element<HTMLButtonElement>('#commit-refresh'),
+  rollback: element<HTMLButtonElement>('#commit-rollback'),
+  update: element<HTMLButtonElement>('#commit-update'),
+  push: element<HTMLButtonElement>('#commit-push'),
+}, git, {
+  projectRoot: () => activeProject?.root ?? null,
+  openDiff: (change) => { void openGitDiff({ file: change.path, from: change.from, base: git.repository?.head ? 'HEAD' : null, target: null }); },
+  openFile: (filePath) => { void openFile(filePath, baseName(filePath)); },
+  openConflict: (filePath) => {
+    void openFile(filePath, baseName(filePath)).then((opened) => {
+      const line = opened ? (editor.getModel()?.getLinesContent().findIndex((text) => text.startsWith('<<<<<<<')) ?? -1) : -1;
+      if (line < 0) return;
+      editor.revealLineInCenter(line + 1);
+      editor.setPosition({ lineNumber: line + 1, column: 1 });
+    });
+  },
+  deleteFile: deleteProjectFile,
+  showHistory: showGitHistory,
+  push: () => { void pushChanges(); },
+  update: () => { void updateProject(); },
+  branchMenu: (anchor) => showMenuAt(anchor, 'branches'),
+  ensureIdentity,
+});
+
+const gitPanel = new GitPanel(gitPanelElement, git, {
+  projectRoot: () => activeProject?.root ?? null,
+  openCommitDiff: (file, base, commit) => { void openGitDiff({ file: file.path, from: file.from, base: file.state === 'added' ? null : base, target: commit }); },
+  push: () => { void pushChanges(); },
+  update: () => { void updateProject(); },
+  newBranch: (start, label) => { void newBranch(start, label); },
+  checkout: (ref) => { void checkoutRef(ref); },
+});
+
+const gitEditor = new GitEditor(editor, git, {
+  pathOf: (model) => {
+    const file = findOpenFile(model.uri);
+    return file && !file.readOnly ? file.path : null;
+  },
+  openDiff: (filePath) => { void openWorkingDiff(filePath); },
+  showCommit: (hash) => { showPanel('git'); void gitPanel.showCommit(hash); },
+  markResolved: (filePath) => {
+    const file = findOpenFile(pathUri(filePath));
+    void (file && isDirty(file) ? saveFile(file) : Promise.resolve()).then(() => git.run({ kind: 'mark-resolved', paths: [filePath] }));
+  },
+});
+
+// Opens a menu of the title bar at another button; set up with the menus.
+let showMenuAt: (anchor: HTMLElement, menu: string) => void = () => undefined;
 
 monaco.editor.registerEditorOpener({
   openCodeEditor: (_source, resource, selectionOrPosition) => revealLocation(resource, selectionOrPosition),
@@ -761,6 +1217,26 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
     { key: 'systemExplorer', action: showInExplorer },
     { key: 'commandPrompt', action: openCommandPrompt },
   ]);
+  if (git.repository && entry) {
+    const change = git.changeOf(entry.path);
+    const items: Array<{ key: TranslationKey; action: () => void }> = [];
+    if (!entry.isDirectory && change?.state !== 'untracked') {
+      items.push({ key: 'showDiff', action: () => { void openWorkingDiff(entry.path); } });
+      items.push({ key: 'showHistory', action: () => showGitHistory(entry.path) });
+    }
+    if (change && change.state !== 'untracked' && change.state !== 'conflict') {
+      items.push({
+        key: 'rollback',
+        action: () => {
+          if (window.confirm(t('confirmRollbackOne').replace('{name}', entry.name))) void git.run({ kind: 'rollback', paths: [entry.path] });
+        },
+      });
+    }
+    if (change?.state === 'untracked' || (entry.isDirectory && !git.isIgnored(entry.path))) {
+      items.push({ key: 'addToGitignore', action: () => { void git.run({ kind: 'ignore', paths: [entry.path] }); } });
+    }
+    if (items.length > 0) addSubmenu('menuGit', items);
+  }
   contextMenu.hidden = false;
   const zoom = pageZoom();
   const width = contextMenu.offsetWidth * zoom;
@@ -797,6 +1273,11 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
   const label = document.createElement('span'); label.className = 'tree-label'; label.textContent = entry.name;
   row.append(arrow, kind, label);
   container.append(row);
+  if (!options.readOnly) {
+    row.dataset.path = entry.path;
+    if (entry.isDirectory) row.dataset.directory = 'true';
+    decorateTreeRow(row);
+  }
   const select = (): void => {
     if (!options.readOnly) { selectTreeEntry(entry, row); return; }
     // Selecting one would aim New File and Delete at the engine.
@@ -841,6 +1322,19 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
     });
   }
   return container;
+};
+
+// Explorer rows in Git's colors: changed, new, conflicting or ignored files,
+// and folders holding changes.
+const decorateTreeRow = (row: HTMLElement): void => {
+  const entryPath = row.dataset.path;
+  const change = entryPath && git.repository ? git.changeOf(entryPath) : undefined;
+  let state: string | undefined = change?.state;
+  if (!state && entryPath && git.repository) {
+    if (git.isIgnored(entryPath)) state = 'ignored';
+    else if (row.dataset.directory) state = git.folderState(entryPath) ?? undefined;
+  }
+  if (state) row.dataset.git = state; else delete row.dataset.git;
 };
 
 // Below the project, like CLion's External Libraries: the engine and the
@@ -1016,7 +1510,7 @@ const pasteCopiedEntry = async (): Promise<void> => {
     directory = copiedEntryPath.replace(/[\\/][^\\/]+$/, '') || activeProject?.root || directory;
   }
   try {
-    for (const file of openFiles.values()) {
+    for (const file of fileTabs()) {
       if (isWithin(file.path, copiedEntryPath) && isDirty(file)) await saveFile(file);
     }
     const copiedPath = await window.glistAPI.copyEntry(copiedEntryPath, directory);
@@ -1045,7 +1539,7 @@ const openCommandPrompt = async (): Promise<void> => {
 const closeFilesUnderEntry = (entryPath: string): void => {
   let activeWasDeleted = false;
   openFiles.forEach((file, filePath) => {
-    if (!isWithin(filePath, entryPath)) return;
+    if (file.kind !== 'file' || !isWithin(filePath, entryPath)) return;
     if (activeFilePath === filePath) activeWasDeleted = true;
     file.model.dispose();
     openFiles.delete(filePath);
@@ -1054,11 +1548,7 @@ const closeFilesUnderEntry = (entryPath: string): void => {
     activeFilePath = null;
     const next = [...openFiles.keys()].at(-1);
     if (next) activateFile(next);
-    else {
-      editor.setModel(null);
-      editorHost.classList.remove('visible');
-      welcome.hidden = false;
-    }
+    else showNoTab();
   }
   renderTabs();
   updateButtons();
@@ -1069,7 +1559,7 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
   const tabs = [...openFiles.entries()];
   openFiles.clear();
   tabs.forEach(([filePath, file]) => {
-    if (!isWithin(filePath, oldPath)) { openFiles.set(filePath, file); return; }
+    if (file.kind !== 'file' || !isWithin(filePath, oldPath)) { openFiles.set(filePath, file); return; }
     const nextPath = `${newPath}${filePath.slice(oldPath.length)}`;
     const nextUri = pathUri(nextPath);
     // Only a clangd preview of a file that used to be at the new path can be there.
@@ -1078,7 +1568,8 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
     file.model.dispose();
     if (activeFilePath === filePath) activeFilePath = nextPath;
   });
-  if (activeFilePath) editor.setModel(openFiles.get(activeFilePath)?.model ?? null);
+  const active = activeFile();
+  if (active) editor.setModel(active.model);
   renderTabs();
 };
 
@@ -1089,7 +1580,7 @@ const renameSelectedEntry = async (): Promise<void> => {
   if (!newName || newName === entry.name) return;
   try {
     await saveOpenCmake();
-    for (const file of openFiles.values()) {
+    for (const file of fileTabs()) {
       if (isWithin(file.path, entry.path) && isDirty(file)) await saveFile(file);
     }
     const nextPath = await window.glistAPI.renameEntry(entry.path, newName);
@@ -1127,10 +1618,10 @@ const deleteSelectedEntry = async (): Promise<void> => {
 };
 
 const disposeOpenFiles = (): void => {
-  openFiles.forEach((file) => file.model.dispose());
-  openFiles.clear(); activeFilePath = null; editor.setModel(null); renderTabs();
+  showNoTab();
+  openFiles.forEach(disposeTab);
+  openFiles.clear(); activeFilePath = null; renderTabs();
   monaco.editor.getModels().forEach((model) => model.dispose());
-  editorHost.classList.remove('visible'); welcome.hidden = false;
 };
 
 const hasDirtyFiles = (): boolean => [...openFiles.values()].some(isDirty);
@@ -1145,6 +1636,8 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   document.title = `${selected.name} - Glist Studio`;
   studioTerminal.projectChanged();
   agentTerminal.projectChanged();
+  gitPanel.reload();
+  void git.projectChanged().then(() => commitPane.restoreMessage());
   await loadProjectTree(); updateButtons();
   clearOutput(`Glist Studio\n${t('openedProject')}: ${selected.root}\n`);
   if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
@@ -1197,6 +1690,11 @@ const showGlistInstaller = setUpGlistInstaller({
   glistMissing.hidden = true;
 }, (root) => { void openProjectWith(() => window.glistAPI.openProjectPath(joinPath(joinPath(root, 'myglistapps'), 'GlistApp'))); });
 element<HTMLButtonElement>('#install-glist').addEventListener('click', () => { void showGlistInstaller(); });
+const pickerClone = element<HTMLButtonElement>('#project-picker-clone');
+pickerClone.addEventListener('click', () => {
+  element<HTMLDialogElement>('#open-project-dialog').close();
+  void cloneProject();
+});
 void window.glistAPI.glistStatus().then((status) => {
   glistInstalled = status.installed;
   glistMissing.hidden = status.installed;
@@ -1218,7 +1716,7 @@ const showNewProjectDialog = (): void => {
 };
 
 const saveActiveFile = async (): Promise<void> => {
-  const file = activeFilePath ? openFiles.get(activeFilePath) : undefined;
+  const file = activeFile();
   if (!file || file.readOnly || !isDirty(file)) return;
   try {
     await saveFile(file);
@@ -1231,7 +1729,7 @@ const saveActiveFile = async (): Promise<void> => {
 // Build and Run compile what is on screen, so every changed tab is saved first.
 const saveProjectFiles = async (): Promise<boolean> => {
   try {
-    for (const file of openFiles.values()) {
+    for (const file of fileTabs()) {
       if (!file.readOnly && isDirty(file)) await saveFile(file);
     }
     return true;
@@ -1317,7 +1815,10 @@ const configureResizers = (): void => {
 const configureMenus = (): void => {
   const shell = element<HTMLElement>('#app-shell');
   const popover = element<HTMLDivElement>('#menu-popover');
-  const menuButtons = [...document.querySelectorAll<HTMLButtonElement>('.menu-button')];
+  const menuButtons = [...document.querySelectorAll<HTMLButtonElement>('.menu-button, .git-branch-chip')];
+  // The branches, read when the branch menu opens.
+  let branches: GlistGitBranch[] = [];
+  let anchor: HTMLElement | null = null;
 
   interface MenuAction {
     kind: 'item';
@@ -1348,13 +1849,14 @@ const configureMenus = (): void => {
         item(t('newCppClass'), createClass, { disabled: !activeProject }),
         { kind: 'separator' },
         item(t('openProject'), chooseProject, { shortcut: 'Ctrl+O' }),
-        item(t('save'), saveActiveFile, { shortcut: 'Ctrl+S', disabled: !activeFilePath }),
+        ...(git.enabled ? [item(t('cloneMenu'), () => { void cloneProject(); })] : []),
+        item(t('save'), saveActiveFile, { shortcut: 'Ctrl+S', disabled: !activeFile() }),
       ],
       edit: [
-        item(t('undo'), () => editor.trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFilePath }),
-        item(t('redo'), () => editor.trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFilePath }),
+        item(t('undo'), () => editor.trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFile() }),
+        item(t('redo'), () => editor.trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFile() }),
         { kind: 'separator' },
-        item(t('find'), () => editor.getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFilePath }),
+        item(t('find'), () => editor.getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFile() }),
       ],
       view: [
         { kind: 'heading', label: t('layout') },
@@ -1378,7 +1880,7 @@ const configureMenus = (): void => {
         }),
         { kind: 'separator' },
         { kind: 'heading', label: t('preferences') },
-        item(t('settings'), () => settingsDialog.showModal()),
+        item(t('settings'), () => { settingsDialog.showModal(); void showGitSettings(); }),
       ],
       run: [
         item(t('build'), buildProject, {
@@ -1399,8 +1901,10 @@ const configureMenus = (): void => {
         item(t('stepOver'), () => debug.stepOver(), { shortcut: 'F10', disabled: debug.state !== 'paused' }),
         item(t('stepInto'), () => debug.stepInto(), { shortcut: 'F11', disabled: debug.state !== 'paused' }),
         item(t('stepOut'), () => debug.stepOut(), { shortcut: 'Shift+F11', disabled: debug.state !== 'paused' }),
-        item(t('toggleBreakpoint'), () => debug.toggleAtCursor(), { shortcut: 'F9', disabled: !activeFilePath }),
+        item(t('toggleBreakpoint'), () => debug.toggleAtCursor(), { shortcut: 'F9', disabled: !activeFile() }),
       ],
+      git: gitMenu(),
+      branches: branchMenu(),
       help: [
         ...(glistInstalled ? [] : [item(t('installGlistMenu'), () => { void showGlistInstaller(); })]),
         item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
@@ -1409,16 +1913,75 @@ const configureMenus = (): void => {
     return menus[menu] ?? [];
   };
 
+  // Git's menu, like JetBrains' Git menu; before there is a repository, how to get one.
+  const gitMenu = (): MenuEntry[] => {
+    const repository = git.repository;
+    if (!repository) {
+      return [
+        item(t('createRepository'), () => { void git.run({ kind: 'init' }); }, { disabled: !activeProject }),
+        item(t('cloneMenu'), () => { void cloneProject(); }),
+      ];
+    }
+    const file = activeFile();
+    const change = file ? git.changeOf(file.path) : undefined;
+    const tracked = Boolean(file && !file.readOnly && change?.state !== 'untracked' && !git.isIgnored(file.path));
+    return [
+      item(t('commitMenu'), showCommitView, { shortcut: 'Ctrl+K' }),
+      item(t('pushMenu'), () => { void pushChanges(); }, { shortcut: 'Ctrl+Shift+K', disabled: !repository.branch }),
+      item(t('updateProject'), () => { void updateProject(); }, { shortcut: 'Ctrl+T', disabled: !repository.upstream }),
+      item(t('fetch'), () => { void fetchAll(); }),
+      { kind: 'separator' },
+      item(t('newBranch'), () => { void newBranch(); }),
+      item(t('branchesMenu'), () => showGitPanel('branches')),
+      item(t('stashChanges'), () => { showGitPanel('stashes'); void gitPanel.stash(); }),
+      item(t('gitLogMenu'), () => showGitPanel('log')),
+      item(t('remotesMenu'), () => showGitPanel('remotes')),
+      { kind: 'separator' },
+      { kind: 'heading', label: t('currentFile') },
+      item(t('showDiff'), () => { if (file) void openWorkingDiff(file.path); }, { disabled: !tracked }),
+      item(t('showHistory'), () => { if (file) showGitHistory(file.path); }, { disabled: !tracked }),
+      item(t(gitEditor.isBlaming() ? 'hideAnnotate' : 'annotate'), () => { void gitEditor.toggleBlame(); }, { disabled: !tracked }),
+      item(`${t('rollback')}...`, () => {
+        if (file && window.confirm(t('confirmRollbackOne').replace('{name}', file.name))) void git.run({ kind: 'rollback', paths: [file.path] });
+      }, { disabled: !change || change.state === 'untracked' || change.state === 'conflict' }),
+    ];
+  };
+
+  // The title bar's branch: what to do with the repository, and the branches to switch to.
+  const branchMenu = (): MenuEntry[] => {
+    const repository = git.repository;
+    if (!repository) return [];
+    const branchItem = (branch: GlistGitBranch): MenuAction => item(branch.name, () => { if (!branch.current) void checkoutRef(branch.name); }, {
+      hint: branch.current ? t('currentBranch') : [branch.ahead ? `↑${branch.ahead}` : '', branch.behind ? `↓${branch.behind}` : ''].join(' ').trim(),
+    });
+    const local = branches.filter((branch) => !branch.remote).sort((left, right) => Number(right.current) - Number(left.current));
+    const remote = branches.filter((branch) => branch.remote).slice(0, 12);
+    return [
+      item(t('updateProject'), () => { void updateProject(); }, { shortcut: 'Ctrl+T', disabled: !repository.upstream }),
+      item(t('commitMenu'), showCommitView, { shortcut: 'Ctrl+K' }),
+      item(t('pushMenu'), () => { void pushChanges(); }, { shortcut: 'Ctrl+Shift+K', disabled: !repository.branch }),
+      { kind: 'separator' },
+      item(t('newBranch'), () => { void newBranch(); }),
+      ...(local.length > 0 ? [{ kind: 'heading' as const, label: t('localBranches') }, ...local.map(branchItem)] : []),
+      ...(remote.length > 0 ? [{ kind: 'heading' as const, label: t('remoteBranches') }, ...remote.map(branchItem)] : []),
+      { kind: 'separator' },
+      item(t('manageBranches'), () => showGitPanel('branches')),
+    ];
+  };
+
   const closeMenu = (): void => {
     popover.hidden = true;
+    anchor?.classList.remove('active');
+    anchor = null;
     menuButtons.forEach((button) => {
       button.classList.remove('active');
       button.setAttribute('aria-expanded', 'false');
     });
   };
 
-  const openMenu = (button: HTMLButtonElement): void => {
-    const menu = button.dataset.menu ?? '';
+  const openMenu = async (button: HTMLElement, menu = button.dataset.menu ?? ''): Promise<void> => {
+    if (menu === 'branches') branches = await window.glistAPI.gitBranches().catch((): GlistGitBranch[] => []);
+    anchor = button;
     popover.replaceChildren();
     menuItems(menu).forEach((entry) => {
       if (entry.kind === 'separator') {
@@ -1459,11 +2022,15 @@ const configureMenus = (): void => {
     });
 
     const bounds = button.getBoundingClientRect();
-    popover.style.left = `${bounds.left / pageZoom()}px`;
+    const zoom = pageZoom();
     popover.hidden = false;
+    // Menus of buttons on the right open leftward, to stay in the window.
+    popover.style.left = `${Math.max(0, Math.min(bounds.left, window.innerWidth - popover.offsetWidth * zoom - 8)) / zoom}px`;
+    popover.style.top = button.closest('.topbar') ? '' : `${(bounds.bottom + 2) / zoom}px`;
     button.classList.add('active');
     button.setAttribute('aria-expanded', 'true');
   };
+  showMenuAt = (target, menu) => { closeMenu(); void openMenu(target, menu); };
 
   menuButtons.forEach((button) => {
     button.setAttribute('aria-haspopup', 'menu');
@@ -1473,12 +2040,12 @@ const configureMenus = (): void => {
       const wasOpen = button.classList.contains('active') && !popover.hidden;
       closeMenu();
       if (wasOpen) return;
-      openMenu(button);
+      void openMenu(button);
     });
     button.addEventListener('pointerenter', () => {
       if (!popover.hidden && !button.classList.contains('active')) {
         closeMenu();
-        openMenu(button);
+        void openMenu(button);
       }
     });
     button.addEventListener('keydown', (event) => {
@@ -1486,7 +2053,8 @@ const configureMenus = (): void => {
       event.preventDefault();
       if (popover.hidden || !button.classList.contains('active')) {
         closeMenu();
-        openMenu(button);
+        void openMenu(button).then(() => popover.querySelector<HTMLButtonElement>('.menu-item:not(:disabled)')?.focus());
+        return;
       }
       popover.querySelector<HTMLButtonElement>('.menu-item:not(:disabled)')?.focus();
     });
@@ -1536,7 +2104,7 @@ clearOutputButton.addEventListener('click', () => {
 });
 newTerminalButton.addEventListener('click', () => { void terminalFor(panelView)?.restart(); });
 document.querySelectorAll<HTMLButtonElement>('.output-tab').forEach((tab) => {
-  const view = tab.dataset.panel === 'terminal' || tab.dataset.panel === 'agent' ? tab.dataset.panel : 'output';
+  const view = tab.dataset.panel === 'terminal' || tab.dataset.panel === 'agent' || tab.dataset.panel === 'git' ? tab.dataset.panel : 'output';
   tab.addEventListener('click', () => showPanel(view));
 });
 element<HTMLButtonElement>('#close-explorer').addEventListener('click', () => setSidebarVisible(false));
@@ -1558,6 +2126,7 @@ element<HTMLButtonElement>('#open-settings').addEventListener('click', () => {
   settingsDialog.showModal();
   // An agent may have been installed or removed outside the studio.
   void agentSettings.refresh();
+  void showGitSettings();
 });
 element<HTMLButtonElement>('#settings-close').addEventListener('click', () => settingsDialog.close());
 settingsLanguage.value = getLanguage();
@@ -1566,6 +2135,9 @@ settingsLanguage.addEventListener('change', () => {
   applyLanguage(next);
   refreshLanguage();
   agentSettings.render();
+  commitPane.render();
+  gitPanel.reload();
+  setGitActions(git.enabled);
   void window.glistAPI.setLanguage(next);
 });
 setUpFontSettings(editor, {
@@ -1674,6 +2246,112 @@ window.glistAPI.onRunStatus((status) => {
   setProcessStatus(status.running ? t('running') : `${t('ready')}${suffix}`, status.running);
   updateButtons();
 });
+
+// Git's pieces of the studio show while it is turned on in Settings.
+let gitActions: monaco.IDisposable[] = [];
+const setGitActions = (enabled: boolean): void => {
+  gitActions.forEach((action) => action.dispose());
+  gitActions = [];
+  if (!enabled) return;
+  const action = (id: string, label: TranslationKey, run: (file: OpenFile) => void): monaco.IDisposable => editor.addAction({
+    id: `glist.git.${id}`,
+    label: `Git: ${t(label)}`,
+    contextMenuGroupId: '9_git',
+    run: () => { const file = activeFile(); if (file && git.repository) run(file); },
+  });
+  gitActions = [
+    action('diff', 'showDiff', (file) => { void openWorkingDiff(file.path); }),
+    action('history', 'showHistory', (file) => showGitHistory(file.path)),
+    action('annotate', 'annotate', () => { void gitEditor.toggleBlame(); }),
+  ];
+};
+
+const renderBranchChip = (repository: GlistGitRepository | null): void => {
+  branchChip.hidden = !repository;
+  if (!repository) return;
+  const name = document.createElement('span');
+  name.className = 'git-branch-name';
+  name.textContent = branchName(repository);
+  branchChip.replaceChildren(icon('git-branch'), name);
+  if (repository.ahead) branchChip.append(icon('arrow-up'), String(repository.ahead));
+  if (repository.behind) branchChip.append(icon('arrow-down'), String(repository.behind));
+  branchChip.classList.toggle('busy', Boolean(repository.operation));
+  branchChip.title = `${t('branchChipTitle').replace('{branch}', name.textContent)}\n${t('aheadBehind')
+    .replace('{ahead}', String(repository.ahead)).replace('{behind}', String(repository.behind))}`;
+};
+
+const applyGitEnabled = (enabled: boolean): void => {
+  commitActivity.hidden = !enabled;
+  gitTab.hidden = !enabled;
+  gitMenuButton.hidden = !enabled;
+  pickerClone.hidden = !enabled;
+  if (!enabled) {
+    if (sidebarView === 'commit') showView('explorer');
+    if (panelView === 'git') showPanel('output');
+  }
+  setGitActions(enabled);
+};
+
+git.onEnabled(applyGitEnabled);
+git.onStatus((status) => {
+  renderBranchChip(status?.repository ?? null);
+  fileTree.querySelectorAll<HTMLElement>('.tree-row[data-path]').forEach(decorateTreeRow);
+  const diff = activeDiff();
+  if (diff && diff.target === null) void fillDiff(diff);
+});
+applyGitEnabled(git.enabled);
+if (git.enabled) {
+  void window.glistAPI.gitWatch(true);
+  void git.refresh();
+}
+
+// JetBrains' keys: Ctrl+K commits, Ctrl+Shift+K pushes, Ctrl+T updates. Taken
+// before the editor sees them, but not from a terminal, where they edit the line.
+window.addEventListener('keydown', (event) => {
+  if (!git.enabled || !primaryKey(event) || event.altKey || document.querySelector('dialog[open]')) return;
+  if (document.activeElement?.closest('.terminal-host')) return;
+  const key = event.key.toLowerCase();
+  const run = (task: () => void): void => { event.preventDefault(); event.stopPropagation(); task(); };
+  if (key === 'k' && !event.shiftKey) run(showCommitView);
+  else if (key === 'k' && event.shiftKey && git.repository) run(() => { void pushChanges(); });
+  else if (key === 't' && !event.shiftKey && git.repository) run(() => { void updateProject(); });
+}, { capture: true });
+
+// Settings > Git: turning it on, and the name and email commits are signed with.
+const gitEnabledInput = element<HTMLInputElement>('#git-enabled');
+const gitOptions = element<HTMLElement>('#git-options');
+const gitVersion = element<HTMLElement>('#git-version');
+const gitName = element<HTMLInputElement>('#git-name');
+const gitEmail = element<HTMLInputElement>('#git-email');
+const gitSettingsError = element<HTMLElement>('#git-settings-error');
+const gitUpdateMerge = element<HTMLInputElement>('#git-update-merge');
+const gitUpdateRebase = element<HTMLInputElement>('#git-update-rebase');
+const showGitSettings = async (): Promise<void> => {
+  gitEnabledInput.checked = git.enabled;
+  gitOptions.hidden = !git.enabled;
+  gitVersion.hidden = !git.enabled;
+  gitUpdateMerge.checked = !git.updateByRebase;
+  gitUpdateRebase.checked = git.updateByRebase;
+  gitSettingsError.textContent = '';
+  // Off, it runs nothing, not even to see whether git is there.
+  if (!git.enabled) return;
+  const status = await window.glistAPI.gitStatus().catch((): null => null);
+  gitVersion.textContent = status?.version ? t('gitFound').replace('{version}', status.version) : t('gitNotFound');
+  gitVersion.classList.toggle('missing', !status?.version);
+  const identity = await window.glistAPI.gitIdentity().catch((): GlistGitIdentity => ({ name: '', email: '' }));
+  gitName.value = identity.name;
+  gitName.placeholder = identity.suggestedName ?? '';
+  gitEmail.value = identity.email;
+};
+gitEnabledInput.addEventListener('change', () => {
+  git.setEnabled(gitEnabledInput.checked);
+  void showGitSettings();
+});
+[gitName, gitEmail].forEach((input) => input.addEventListener('change', async () => {
+  const result = await window.glistAPI.gitRun({ kind: 'identity', name: gitName.value, email: gitEmail.value });
+  gitSettingsError.textContent = result.success ? '' : result.message;
+}));
+[gitUpdateMerge, gitUpdateRebase].forEach((input) => input.addEventListener('change', () => { git.updateByRebase = gitUpdateRebase.checked; }));
 
 configureResizers();
 configureMenus();
