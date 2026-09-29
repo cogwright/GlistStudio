@@ -1,3 +1,5 @@
+// Before Monaco, which reads its words in the chosen language while it loads.
+import { editorLanguage } from './editor-language';
 // Monaco's package root selects its AMD build in Electron's CommonJS context.
 // The explicit ESM entry prevents a runtime `define is not defined` failure.
 // eslint-disable-next-line import/no-unresolved
@@ -1236,18 +1238,24 @@ monaco.editor.registerEditorOpener({
   openCodeEditor: (_source, resource, selectionOrPosition) => revealLocation(resource, selectionOrPosition),
 });
 
-editor.addAction({
-  id: 'glist.switchSourceHeader',
-  label: t('switchSourceHeader'),
-  keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.KeyO],
-  precondition: 'editorLangId == cpp',
-  contextMenuGroupId: 'navigation',
-  run: async () => {
-    const model = editor.getModel();
-    const target = model && await clangd.switchSourceHeader(model);
-    if (target) await revealLocation(target);
-  },
-});
+// Added again when the language changes, for its name in the right-click menu.
+let switchSourceHeaderAction: monaco.IDisposable | null = null;
+const addSwitchSourceHeader = (): void => {
+  switchSourceHeaderAction?.dispose();
+  switchSourceHeaderAction = editor.addAction({
+    id: 'glist.switchSourceHeader',
+    label: t('switchSourceHeader'),
+    keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.KeyO],
+    precondition: 'editorLangId == cpp',
+    contextMenuGroupId: 'navigation',
+    run: async () => {
+      const model = editor.getModel();
+      const target = model && await clangd.switchSourceHeader(model);
+      if (target) await revealLocation(target);
+    },
+  });
+};
+addSwitchSourceHeader();
 
 const selectTreeEntry = (entry: GlistFileEntry, row: HTMLButtonElement): void => {
   fileTree.querySelectorAll('.tree-row.selected').forEach((selectedRow) => {
@@ -2292,6 +2300,9 @@ settingsLanguage.addEventListener('change', () => {
   const next = settingsLanguage.value === 'tr' ? 'tr' : 'en';
   applyLanguage(next);
   refreshLanguage();
+  addSwitchSourceHeader();
+  // Monaco's own words follow at the next start; saying so once is enough.
+  if (next !== editorLanguage) notify({ text: t('editorLanguageRestart') });
   agentSettings.render();
   commitPane.render();
   gitPanel.reload();
