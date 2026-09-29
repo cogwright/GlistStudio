@@ -14,6 +14,7 @@ Glist Studio is a lightweight desktop IDE for Glist Engine projects, built with 
 - A terminal in the project folder, with the same tools on `PATH` as builds
 - Git, off until turned on, laid out as in JetBrains IDEs: a Commit view, diffs in the editor, the log and its graph, branches, remotes, stashes, blame and conflict resolution, also for the engine's and plugins' own repositories, with pushed commits and protected branches kept from being rewritten
 - Coding agents (Claude Code, Codex, Gemini CLI, Antigravity) in an Agent tab, off until turned on
+- A Plugins view listing GlistPlugins' plugins: one click installs one into `glistplugins`, another adds it to the project, and updates from GlistPlugins are offered as they come, keeping any work of your own on a stash or a branch
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - CMake configures again on its own when a CMake file changes, so code intelligence follows new files and plugins without a build
 - C++ class generation with matching header and source files
