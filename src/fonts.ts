@@ -56,21 +56,23 @@ export const onFontsChange = (listener: (fonts: FontSettings) => void): void => 
   listener(loadFonts());
 };
 
-export const applyFonts = (editor: monaco.editor.IStandaloneCodeEditor, fonts: FontSettings): void => {
+// The code font as Monaco's editors take it; each editor follows onFontsChange.
+export const editorFonts = (fonts: FontSettings): monaco.editor.IEditorOptions => ({
+  fontFamily: codeFontStack(fonts),
+  fontSize: fonts.codeSize,
+  lineHeight: Math.round(fonts.codeSize * 1.57),
+  fontLigatures: fonts.ligatures,
+});
+
+const applyFonts = (fonts: FontSettings): void => {
   try { window.localStorage.setItem(storageKey, JSON.stringify(fonts)); } catch { /* Storage may be unavailable. */ }
   const root = document.documentElement.style;
   root.setProperty('--font-code', codeFontStack(fonts));
   root.setProperty('--font-code-size', `${panelFontSize(fonts)}px`);
   root.setProperty('--font-ui', stack(fonts.interface, interfaceFallback));
-  editor.updateOptions({
-    fontFamily: codeFontStack(fonts),
-    fontSize: fonts.codeSize,
-    lineHeight: Math.round(fonts.codeSize * 1.57),
-    fontLigatures: fonts.ligatures,
-  });
+  fontListeners.forEach((listener) => listener(fonts));
   // Monaco measures a font once; a newly chosen one has to be measured again.
   monaco.editor.remeasureFonts();
-  fontListeners.forEach((listener) => listener(fonts));
 };
 
 export interface FontControls {
@@ -82,7 +84,7 @@ export interface FontControls {
   interfaceList: HTMLDataListElement;
 }
 
-export const setUpFontSettings = (editor: monaco.editor.IStandaloneCodeEditor, controls: FontControls): void => {
+export const setUpFontSettings = (controls: FontControls): void => {
   const fonts = loadFonts();
   const options = (names: string[]): HTMLOptionElement[] => names.map((name) => {
     const option = document.createElement('option');
@@ -103,9 +105,9 @@ export const setUpFontSettings = (editor: monaco.editor.IStandaloneCodeEditor, c
       ligatures: controls.ligatures.checked,
       interface: controls.interface.value,
     });
-    applyFonts(editor, fonts);
+    applyFonts(fonts);
   };
   [controls.code, controls.codeSize, controls.interface].forEach((input) => input.addEventListener('input', update));
   controls.ligatures.addEventListener('change', update);
-  applyFonts(editor, fonts);
+  applyFonts(fonts);
 };

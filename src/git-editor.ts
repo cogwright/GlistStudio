@@ -9,10 +9,12 @@ import { notify } from './notifications';
 import { baseName } from './paths';
 import { fullTime, shortDate } from './time';
 
-// Git in the code editor: marks beside the line numbers for lines changed
+// Git in the code editors: marks beside the line numbers for lines changed
 // since the last commit, which show the lines as they were and can put them
 // back; who last changed each line (Annotate with Git Blame); and buttons
-// above conflict markers to keep one side or both.
+// above conflict markers to keep one side or both. Each editor, one per side
+// of the editor area, is attached and keeps its own marks; what is known of a
+// file, such as its blame, is shared, so both sides show it.
 
 export interface GitEditorHooks {
   // The file a model is the tab of, or null.
@@ -32,80 +34,100 @@ interface Committed {
 
 const cssColor = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888888';
 
+// One attached editor's marks, for the file it shows.
+interface EditorMarks {
+  editor: monaco.editor.ICodeEditor;
+  markers: monaco.editor.IEditorDecorationsCollection;
+  blameLines: monaco.editor.IEditorDecorationsCollection;
+  conflictLines: monaco.editor.IEditorDecorationsCollection;
+  changes: LineChange[];
+  timer: number;
+  blameTimer: number;
+}
+
 export class GitEditor {
   private readonly committed = new Map<string, Committed>();
   private readonly blames = new Map<string, GlistGitBlameLine[]>();
-  private readonly markers: monaco.editor.IEditorDecorationsCollection;
-  private readonly blameLines: monaco.editor.IEditorDecorationsCollection;
-  private readonly conflictLines: monaco.editor.IEditorDecorationsCollection;
-  private changes: LineChange[] = [];
-  private timer = 0;
-  private blameTimer = 0;
+  private readonly attached: EditorMarks[] = [];
   private readonly popup = document.createElement('div');
-  // The last changed line the popup is shown under, while it shows.
+  // The editor the popup shows a change of, and the last changed line it is shown under.
+  private popupMarks: EditorMarks | null = null;
   private popupLine = 0;
   private readonly lensChanged = new monaco.Emitter<monaco.languages.CodeLensProvider>();
 
   constructor(
-    private readonly editor: monaco.editor.IStandaloneCodeEditor,
+    // The editor worked in, for Annotate from a menu.
+    private readonly currentEditor: () => monaco.editor.ICodeEditor,
     private readonly client: GitClient,
     private readonly hooks: GitEditorHooks,
   ) {
-    this.markers = editor.createDecorationsCollection();
-    this.blameLines = editor.createDecorationsCollection();
-    this.conflictLines = editor.createDecorationsCollection();
     this.popup.className = 'git-change-popup';
     this.popup.hidden = true;
     document.body.append(this.popup);
-    editor.onDidChangeModel(() => { this.hidePopup(); this.showBlame(); void this.update(); });
-    editor.onDidChangeModelContent(() => {
-      this.hidePopup();
-      window.clearTimeout(this.timer);
-      this.timer = window.setTimeout(() => { void this.update(); }, 200);
-      if (this.blames.has(this.path() ?? '')) {
-        window.clearTimeout(this.blameTimer);
-        this.blameTimer = window.setTimeout(() => { void this.loadBlame(); }, 800);
-      }
-    });
-    editor.onDidScrollChange(() => { if (!this.popup.hidden) this.placePopup(); });
-    editor.onMouseDown((event) => {
-      const target = event.target;
-      if (target.type === monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS
-        && (target.element as HTMLElement | null)?.classList.contains('git-gutter') && target.position) {
-        this.showPopup(target.position.lineNumber);
-      } else if (target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS && target.position) {
-        const filePath = this.path();
-        const line = filePath ? this.blames.get(filePath)?.[target.position.lineNumber - 1] : undefined;
-        if (filePath && line && !line.uncommitted) hooks.showCommit(line.commit, filePath);
-      }
-    });
     document.addEventListener('pointerdown', (event) => {
       if (!this.popup.hidden && !this.popup.contains(event.target as Node)) this.hidePopup();
     });
     // Before the editor, which keeps Escape to itself.
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') this.hidePopup(); }, true);
-    client.onStatus(() => { void this.update(); });
+    client.onStatus(() => { this.attached.forEach((marks) => { void this.update(marks); }); });
     client.onEnabled((enabled) => {
-      if (!enabled) { this.blames.clear(); this.showBlame(); }
+      if (!enabled) { this.blames.clear(); this.attached.forEach((marks) => this.showBlame(marks)); }
       this.lensChanged.fire(this.lenses);
     });
     this.registerConflictLenses();
   }
 
-  private path(): string | null {
-    const model = this.editor.getModel();
+  // Marks an editor, from now on, as it shows one file and then another.
+  attach(editor: monaco.editor.ICodeEditor): void {
+    const marks: EditorMarks = {
+      editor,
+      markers: editor.createDecorationsCollection(),
+      blameLines: editor.createDecorationsCollection(),
+      conflictLines: editor.createDecorationsCollection(),
+      changes: [],
+      timer: 0,
+      blameTimer: 0,
+    };
+    this.attached.push(marks);
+    editor.onDidChangeModel(() => { this.hidePopup(marks); this.showBlame(marks); void this.update(marks); });
+    editor.onDidChangeModelContent(() => {
+      this.hidePopup(marks);
+      window.clearTimeout(marks.timer);
+      marks.timer = window.setTimeout(() => { void this.update(marks); }, 200);
+      if (this.blames.has(this.path(marks) ?? '')) {
+        window.clearTimeout(marks.blameTimer);
+        marks.blameTimer = window.setTimeout(() => { void this.loadBlame(marks); }, 800);
+      }
+    });
+    editor.onDidScrollChange(() => { if (!this.popup.hidden && this.popupMarks === marks) this.placePopup(); });
+    editor.onMouseDown((event) => {
+      const target = event.target;
+      if (target.type === monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS
+        && (target.element as HTMLElement | null)?.classList.contains('git-gutter') && target.position) {
+        this.showPopup(marks, target.position.lineNumber);
+      } else if (target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS && target.position) {
+        const filePath = this.path(marks);
+        const line = filePath ? this.blames.get(filePath)?.[target.position.lineNumber - 1] : undefined;
+        if (filePath && line && !line.uncommitted) this.hooks.showCommit(line.commit, filePath);
+      }
+    });
+    void this.update(marks);
+  }
+
+  private path(marks: EditorMarks): string | null {
+    const model = marks.editor.getModel();
     return model ? this.hooks.pathOf(model) : null;
   }
 
   // The marks follow the file as it is typed, against its last commit.
-  async update(): Promise<void> {
-    const model = this.editor.getModel();
-    const filePath = this.path();
+  private async update(marks: EditorMarks): Promise<void> {
+    const model = marks.editor.getModel();
+    const filePath = this.path(marks);
     const repository = filePath ? this.client.repositoryOf(filePath) : null;
     if (!model || !filePath || !repository || this.client.isIgnored(filePath)) {
-      this.changes = [];
-      this.markers.clear();
-      this.conflictLines.clear();
+      marks.changes = [];
+      marks.markers.clear();
+      marks.conflictLines.clear();
       return;
     }
     const state = this.client.changeOf(filePath)?.state;
@@ -117,17 +139,17 @@ export class GitEditor {
       }
       committed = { head: repository.head, text };
       this.committed.set(filePath, committed);
-      if (this.editor.getModel() !== model) return;
+      if (marks.editor.getModel() !== model) return;
     }
-    this.changes = committed.text === null ? [] : lineChanges(committed.text, model.getValue());
-    this.showMarkers(model);
-    this.showConflicts(model);
+    marks.changes = committed.text === null ? [] : lineChanges(committed.text, model.getValue());
+    this.showMarkers(marks, model);
+    this.showConflicts(marks, model);
   }
 
-  private showMarkers(model: monaco.editor.ITextModel): void {
+  private showMarkers(marks: EditorMarks, model: monaco.editor.ITextModel): void {
     const colors = { added: cssColor('--ansi-green'), modified: cssColor('--ansi-blue'), deleted: cssColor('--ansi-red') };
     const lastLine = model.getLineCount();
-    this.markers.set(this.changes.map((change) => {
+    marks.markers.set(marks.changes.map((change) => {
       const kind = change.originalCount === 0 ? 'added' : change.modifiedCount === 0 ? 'deleted' : 'modified';
       const range = kind === 'deleted'
         ? new monaco.Range(Math.max(1, Math.min(lastLine, change.modifiedStart - 1)), 1, Math.max(1, Math.min(lastLine, change.modifiedStart - 1)), 1)
@@ -145,21 +167,21 @@ export class GitEditor {
     }));
   }
 
-  private changeAt(line: number): LineChange | undefined {
-    return this.changes.find((change) => (change.modifiedCount === 0
+  private changeAt(marks: EditorMarks, line: number): LineChange | undefined {
+    return marks.changes.find((change) => (change.modifiedCount === 0
       ? line === Math.max(1, change.modifiedStart - 1)
       : line >= change.modifiedStart && line < change.modifiedStart + change.modifiedCount));
   }
 
   // Like JetBrains' change popup: the lines as the last commit had them, with
   // the way to put them back, and to step to the other changes.
-  private showPopup(line: number): void {
-    const model = this.editor.getModel();
-    const change = this.changeAt(line);
-    const filePath = this.path();
+  private showPopup(marks: EditorMarks, line: number): void {
+    const model = marks.editor.getModel();
+    const change = this.changeAt(marks, line);
+    const filePath = this.path(marks);
     const committed = filePath ? this.committed.get(filePath)?.text : null;
     if (!model || !change || committed === null || committed === undefined || !filePath) return;
-    const index = this.changes.indexOf(change);
+    const index = marks.changes.indexOf(change);
     const before = committed.split(/\r?\n/).slice(change.originalStart - 1, change.originalStart - 1 + change.originalCount);
     const button = (name: Parameters<typeof icon>[0], title: string, run: () => void, disabled = false): HTMLButtonElement => {
       const element = document.createElement('button');
@@ -177,18 +199,18 @@ export class GitEditor {
     const label = document.createElement('span');
     label.textContent = change.originalCount === 0 ? t('linesAdded') : t('linesBefore');
     const step = (offset: number): void => {
-      const next = this.changes[index + offset];
+      const next = marks.changes[index + offset];
       if (!next) return;
       const target = Math.max(1, next.modifiedCount === 0 ? next.modifiedStart - 1 : next.modifiedStart);
-      this.editor.revealLineInCenterIfOutsideViewport(target);
-      this.editor.setPosition({ lineNumber: target, column: 1 });
-      window.requestAnimationFrame(() => this.showPopup(target));
+      marks.editor.revealLineInCenterIfOutsideViewport(target);
+      marks.editor.setPosition({ lineNumber: target, column: 1 });
+      window.requestAnimationFrame(() => this.showPopup(marks, target));
     };
     toolbar.append(
       label,
       button('arrow-up', t('previousChange'), () => step(-1), index === 0),
-      button('arrow-down', t('nextChange'), () => step(1), index === this.changes.length - 1),
-      ...(this.hooks.readOnly(model) ? [] : [button('discard', t('rollbackChange'), () => { this.rollback(model, change, before); this.hidePopup(); })]),
+      button('arrow-down', t('nextChange'), () => step(1), index === marks.changes.length - 1),
+      ...(this.hooks.readOnly(model) ? [] : [button('discard', t('rollbackChange'), () => { this.rollback(marks, model, change, before); this.hidePopup(); })]),
       button('diff', t('showDiff'), () => { this.hidePopup(); this.hooks.openDiff(filePath); }),
       button('close', t('close'), () => this.hidePopup()),
     );
@@ -200,6 +222,7 @@ export class GitEditor {
       nodes.push(code);
     }
     this.popup.replaceChildren(...nodes);
+    this.popupMarks = marks;
     this.popupLine = change.modifiedCount === 0 ? line : change.modifiedStart + change.modifiedCount - 1;
     this.popup.hidden = false;
     this.placePopup();
@@ -207,11 +230,12 @@ export class GitEditor {
 
   // Under the change, or above it near the bottom; it follows the change as the editor scrolls.
   private placePopup(): void {
+    const editor = this.popupMarks?.editor;
     const zoom = Number(document.documentElement.style.getPropertyValue('--page-zoom')) || 1;
-    const bounds = this.editor.getDomNode()?.getBoundingClientRect();
-    const position = this.editor.getScrolledVisiblePosition({ lineNumber: this.popupLine, column: 1 });
-    const layout = this.editor.getLayoutInfo();
-    if (!bounds || !position || position.top < 0 || position.top > layout.height) { this.hidePopup(); return; }
+    const bounds = editor?.getDomNode()?.getBoundingClientRect();
+    const position = editor?.getScrolledVisiblePosition({ lineNumber: this.popupLine, column: 1 });
+    const layout = editor?.getLayoutInfo();
+    if (!bounds || !position || !layout || position.top < 0 || position.top > layout.height) { this.hidePopup(); return; }
     this.popup.style.left = `${bounds.left / zoom + layout.decorationsLeft}px`;
     this.popup.style.width = `${Math.max(320, Math.min(760, layout.width - layout.decorationsLeft - 30))}px`;
     const below = bounds.top / zoom + position.top + position.height + 2;
@@ -219,12 +243,15 @@ export class GitEditor {
     this.popup.style.top = `${below + height > window.innerHeight / zoom ? Math.max(0, bounds.top / zoom + position.top - height - 2) : below}px`;
   }
 
-  private hidePopup(): void {
+  // Hides the popup, or only the one of the editor given.
+  private hidePopup(marks?: EditorMarks): void {
+    if (marks && this.popupMarks !== marks) return;
     this.popup.hidden = true;
+    this.popupMarks = null;
   }
 
   // Puts the committed lines back in place of the changed ones, as one edit that Undo takes back.
-  private rollback(model: monaco.editor.ITextModel, change: LineChange, before: string[]): void {
+  private rollback(marks: EditorMarks, model: monaco.editor.ITextModel, change: LineChange, before: string[]): void {
     const eol = model.getEOL();
     const lines = model.getLineCount();
     const start = change.modifiedStart;
@@ -247,29 +274,38 @@ export class GitEditor {
       range = new monaco.Range(lines, model.getLineMaxColumn(lines), lines, model.getLineMaxColumn(lines));
       text = eol + before.join(eol);
     }
-    this.editor.pushUndoStop();
-    this.editor.executeEdits('git-rollback', [{ range, text, forceMoveMarkers: true }]);
-    this.editor.pushUndoStop();
+    marks.editor.pushUndoStop();
+    marks.editor.executeEdits('git-rollback', [{ range, text, forceMoveMarkers: true }]);
+    marks.editor.pushUndoStop();
+  }
+
+  // The marks of the editor worked in.
+  private current(): EditorMarks | undefined {
+    const editor = this.currentEditor();
+    return this.attached.find((marks) => marks.editor === editor);
   }
 
   isBlaming(): boolean {
-    return this.blames.has(this.path() ?? '');
+    const marks = this.current();
+    return Boolean(marks && this.blames.has(this.path(marks) ?? ''));
   }
 
+  // For the file in the editor worked in, and every editor showing it.
   async toggleBlame(): Promise<void> {
-    const filePath = this.path();
-    if (!filePath) return;
+    const marks = this.current();
+    const filePath = marks && this.path(marks);
+    if (!marks || !filePath) return;
     if (this.blames.has(filePath)) {
       this.blames.delete(filePath);
-      this.showBlame();
+      this.showBlameOf(filePath);
       return;
     }
-    await this.loadBlame();
+    await this.loadBlame(marks);
   }
 
-  private async loadBlame(): Promise<void> {
-    const model = this.editor.getModel();
-    const filePath = this.path();
+  private async loadBlame(marks: EditorMarks): Promise<void> {
+    const model = marks.editor.getModel();
+    const filePath = this.path(marks);
     if (!model || !filePath) return;
     let lines: GlistGitBlameLine[] = [];
     try { lines = await window.glistAPI.gitBlame(filePath, model.getValue()); } catch { lines = []; }
@@ -277,26 +313,30 @@ export class GitEditor {
       notify({ text: t('blameUnavailable') });
       this.blames.delete(filePath);
     } else this.blames.set(filePath, lines);
-    if (this.editor.getModel() === model) this.showBlame();
+    this.showBlameOf(filePath);
+  }
+
+  private showBlameOf(filePath: string): void {
+    this.attached.filter((marks) => this.path(marks) === filePath).forEach((marks) => this.showBlame(marks));
   }
 
   // Who last changed each line and when, beside its number, as JetBrains shows
   // it; hovering a number tells the rest.
-  private showBlame(): void {
-    const lines = this.blames.get(this.path() ?? '');
+  private showBlame(marks: EditorMarks): void {
+    const lines = this.blames.get(this.path(marks) ?? '');
     if (!lines) {
-      this.blameLines.clear();
-      this.editor.updateOptions({ lineNumbers: 'on', lineNumbersMinChars: 5 });
+      marks.blameLines.clear();
+      marks.editor.updateOptions({ lineNumbers: 'on', lineNumbersMinChars: 5 });
       return;
     }
     const recent = Date.now() / 1000 - 14 * 24 * 3600;
     const author = (line: GlistGitBlameLine): string => (line.uncommitted ? t('notCommittedYet') : line.author);
     const labels = lines.map((line) => `${line.uncommitted ? '' : shortDate(line.date * 1000)} ${author(line)}`.trim().slice(0, 26));
-    this.editor.updateOptions({
+    marks.editor.updateOptions({
       lineNumbers: (number) => `${(labels[number - 1] ?? '').padEnd(27)}${String(number).padStart(4)}`,
       lineNumbersMinChars: 32,
     });
-    this.blameLines.set(lines.map((line, index) => ({
+    marks.blameLines.set(lines.map((line, index) => ({
       range: new monaco.Range(index + 1, 1, index + 1, 1),
       options: {
         lineNumberClassName: line.uncommitted ? 'git-blame-new' : line.date > recent ? 'git-blame-recent' : 'git-blame',
@@ -308,9 +348,9 @@ export class GitEditor {
   }
 
   // Colors for both sides of each conflict, as the file is edited.
-  private showConflicts(model: monaco.editor.ITextModel): void {
-    const filePath = this.path();
-    if (!filePath || this.client.changeOf(filePath)?.state !== 'conflict') { this.conflictLines.clear(); return; }
+  private showConflicts(marks: EditorMarks, model: monaco.editor.ITextModel): void {
+    const filePath = this.path(marks);
+    if (!filePath || this.client.changeOf(filePath)?.state !== 'conflict') { marks.conflictLines.clear(); return; }
     const blocks = conflictBlocks(model.getLinesContent());
     const decoration = (from: number, to: number, className: string, label?: string): monaco.editor.IModelDeltaDecoration[] => (to < from ? []
       : [{
@@ -323,7 +363,7 @@ export class GitEditor {
         },
       }]);
     const [upper, lower] = this.mineIsUpper(filePath) ? ['mine', 'theirs'] as const : ['theirs', 'mine'] as const;
-    this.conflictLines.set(blocks.flatMap((block) => [
+    marks.conflictLines.set(blocks.flatMap((block) => [
       ...decoration(block.start, block.start, `git-conflict-marker ${upper}`, t(upper)),
       ...decoration(block.start + 1, (block.base ?? block.separator) - 1, `git-conflict-${upper}`),
       ...decoration(block.base ?? block.separator, block.separator, 'git-conflict-marker'),

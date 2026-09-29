@@ -8,7 +8,8 @@ import { baseName, pathUri, uriPath } from './paths';
 export type DebugState = 'idle' | 'starting' | 'running' | 'paused';
 
 export interface DebuggerHost {
-  editor: monaco.editor.IStandaloneCodeEditor;
+  // The editor worked in, for a breakpoint at its cursor.
+  currentEditor(): monaco.editor.ICodeEditor;
   // Opens a file in a tab and shows the line. False if it cannot be opened.
   openLocation(filePath: string, line: number): Promise<boolean>;
   log(text: string, kind?: 'normal' | 'success' | 'error'): void;
@@ -53,7 +54,6 @@ export class Debugger {
   private readonly unverified = new Set<string>();
   private readonly decorations = new Map<string, string[]>();
   private current: { model: monaco.editor.ITextModel; ids: string[] } | null = null;
-  private readonly hint: monaco.editor.IEditorDecorationsCollection;
 
   constructor(private readonly host: DebuggerHost) {
     window.glistAPI.onDebugMessage((message) => this.receive(message as DebugProtocol.ProtocolMessage));
@@ -65,24 +65,29 @@ export class Debugger {
       this.finish();
     });
     monaco.editor.onDidCreateModel((model) => this.decorate(model));
-    this.hint = host.editor.createDecorationsCollection();
+    monaco.languages.registerHoverProvider('cpp', {
+      provideHover: async (model, position) => this.hover(model, position),
+    });
+    this.render();
+  }
+
+  // Breakpoints come and go with a click in an editor's margin. Breakpoints
+  // and the current line belong to the file, so every editor showing it has them.
+  attach(editor: monaco.editor.ICodeEditor): void {
+    const hint = editor.createDecorationsCollection();
     const { MouseTargetType } = monaco.editor;
-    host.editor.onMouseDown((event) => {
-      const model = host.editor.getModel();
+    editor.onMouseDown((event) => {
+      const model = editor.getModel();
       if (model && event.target.type === MouseTargetType.GUTTER_GLYPH_MARGIN && event.target.position) {
         this.toggle(model, event.target.position.lineNumber);
       }
     });
     // A faint dot where a click in the margin would put a breakpoint.
-    host.editor.onMouseMove((event) => {
+    editor.onMouseMove((event) => {
       const line = event.target.type === MouseTargetType.GUTTER_GLYPH_MARGIN ? event.target.position?.lineNumber : undefined;
-      this.hint.set(line ? [{ range: new monaco.Range(line, 1, line, 1), options: { glyphMarginClassName: 'debug-breakpoint-hint' } }] : []);
+      hint.set(line ? [{ range: new monaco.Range(line, 1, line, 1), options: { glyphMarginClassName: 'debug-breakpoint-hint' } }] : []);
     });
-    host.editor.onMouseLeave(() => this.hint.clear());
-    monaco.languages.registerHoverProvider('cpp', {
-      provideHover: async (model, position) => this.hover(model, position),
-    });
-    this.render();
+    editor.onMouseLeave(() => hint.clear());
   }
 
   get active(): boolean {
@@ -104,8 +109,9 @@ export class Debugger {
   }
 
   toggleAtCursor(): void {
-    const model = this.host.editor.getModel();
-    const position = this.host.editor.getPosition();
+    const editor = this.host.currentEditor();
+    const model = editor.getModel();
+    const position = editor.getPosition();
     if (model && position) this.toggle(model, position.lineNumber);
   }
 
