@@ -7,6 +7,7 @@ import type { IPty } from 'node-pty';
 import { agentLaunch, findAgents, installAgent, isAgentId, type AgentPlaces, type AgentStatus } from './agents';
 import type { Handlers } from './api';
 import { findDebugAdapter } from './debug-adapters';
+import { debuggerRelease, installDebugger, installedDebugger } from './debugger-download';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
@@ -88,6 +89,9 @@ const messages = {
     debugCancelled: 'Debugging cancelled',
     debuggerMissing: 'No debugger was found. Install LLVM (for lldb-dap) or GDB 14 or newer, and make sure it is on PATH.',
     debuggerFailed: 'The debugger could not be started',
+    debuggerMissingWindows: 'No debugger is installed yet. Glist\'s tools have none on Windows; install GDB in Settings, under Debugger.',
+    debuggerInstalled: 'GDB is installed.', debuggerInstallFailed: 'GDB could not be installed',
+    debuggerInstallRunning: 'GDB is already being installed.',
     launchFailed: 'Could not launch application', stopped: 'Running process stopped.',
     nothingToStop: 'No running process to stop.', fileRequired: 'The selected path is not a file.',
     fileTooLarge: 'Files larger than 5 MB cannot be opened in this version.',
@@ -126,6 +130,9 @@ const messages = {
     debugCancelled: 'Hata ayıklama iptal edildi',
     debuggerMissing: 'Hata ayıklayıcı bulunamadı. LLVM (lldb-dap için) ya da GDB 14 veya daha yenisini kurun ve PATH’te olduğundan emin olun.',
     debuggerFailed: 'Hata ayıklayıcı başlatılamadı',
+    debuggerMissingWindows: 'Henüz kurulu bir hata ayıklayıcı yok. Glist araçlarında Windows için yok; GDB’yi Ayarlar’da, Hata Ayıklayıcı altında kurun.',
+    debuggerInstalled: 'GDB kuruldu.', debuggerInstallFailed: 'GDB kurulamadı',
+    debuggerInstallRunning: 'GDB zaten kuruluyor.',
     launchFailed: 'Uygulama başlatılamadı', stopped: 'Çalışan işlem durduruldu.',
     nothingToStop: 'Durdurulacak işlem yok.', fileRequired: 'Seçilen yol bir dosya değil.',
     fileTooLarge: '5 MB üzerindeki dosyalar bu sürümde açılamıyor.',
@@ -1010,8 +1017,12 @@ const startDebugging = async (): Promise<GlistDebugStart> => {
   if (!found.program) return { success: false, message: found.message };
   const { program } = found;
   const env = processEnvironment(resolveToolchain(projectRoot));
-  const adapter = await findDebugAdapter(env);
-  if (!adapter) return { success: false, message: msg('debuggerMissing') };
+  const adapter = await findDebugAdapter(env, installedDebugger(studioHome()));
+  if (!adapter) {
+    return process.platform === 'win32'
+      ? { success: false, message: msg('debuggerMissingWindows'), missingDebugger: true }
+      : { success: false, message: msg('debuggerMissing') };
+  }
   const status = await debugAdapter.start({ command: adapter.command, args: adapter.args, cwd: projectRoot, env });
   if (!status.running) return { success: false, message: `${msg('debuggerFailed')}: ${status.message}` };
   return { success: true, message: '', program, cwd: projectRoot, flavor: adapter.flavor };
@@ -1224,6 +1235,30 @@ const resizeTerminal = (session: unknown, columns: unknown, rows: unknown): void
 const listAgents = (): Promise<AgentStatus[]> =>
   findAgents(agentPlaces(processEnvironment(resolveToolchain(terminalDirectory()))));
 
+// Settings > Debugger: on Windows, GDB from MSYS2, pinned (debugger-download.ts).
+const debuggerStatus = (): GlistDebuggerStatus => ({
+  offered: process.platform === 'win32',
+  installed: Boolean(installedDebugger(studioHome())),
+  name: debuggerRelease.name,
+  version: debuggerRelease.version,
+  size: debuggerRelease.packages.reduce((total, entry) => total + entry.size, 0),
+});
+
+let installingDebugger = false;
+
+const installDebuggerFromSettings = async (): Promise<ProcessResult> => {
+  if (installingDebugger) return { success: false, message: msg('debuggerInstallRunning') };
+  installingDebugger = true;
+  try {
+    await installDebugger(studioHome(), (text) => sendToRenderer('debugger:install-output', text));
+    return { success: true, message: msg('debuggerInstalled') };
+  } catch (error) {
+    return { success: false, message: `${msg('debuggerInstallFailed')}: ${error instanceof Error ? error.message : String(error)}` };
+  } finally {
+    installingDebugger = false;
+  }
+};
+
 let installingAgent = false;
 
 const installAgentFromSettings = async (agent: unknown): Promise<ProcessResult> => {
@@ -1303,5 +1338,7 @@ export const studio: Handlers = {
   listAgents,
   glistStatus,
   installAgent: installAgentFromSettings,
+  debuggerStatus,
+  installDebugger: installDebuggerFromSettings,
   ...git.handlers,
 };

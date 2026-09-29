@@ -26,6 +26,7 @@ import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { GitEditor } from './git-editor';
+import { installGdb, setUpDebuggerSettings } from './debugger-settings';
 import { GitPanel, type GitPanelView } from './git-panel';
 import { notify, type Notice } from './notifications';
 import { setUpProjectPicker } from './project-picker';
@@ -791,6 +792,10 @@ const debug = new Debugger({
   openLocation: (filePath, line) => revealLocation(pathUri(filePath), { lineNumber: line, column: 1 }),
   log: (text, kind) => appendOutput(text, kind),
   changed: () => updateButtons(),
+  missingDebugger: () => notify({
+    text: t('debuggerMissingNotice'), kind: 'error',
+    actions: [{ label: t('installDebugger'), run: () => { void installGdb(); } }],
+  }),
   views: {
     status: element<HTMLElement>('#debug-status'),
     variables: element<HTMLElement>('#debug-variables'),
@@ -2343,6 +2348,7 @@ window.glistAPI.onBuildOutput((text) => appendOutput(text));
 const autoConfigureInput = element<HTMLInputElement>('#auto-configure');
 autoConfigureInput.checked = ((): boolean => { try { return window.localStorage.getItem('glist-studio-auto-configure') !== 'off'; } catch { return true; } })();
 void window.glistAPI.setAutoConfigure(autoConfigureInput.checked);
+void setUpDebuggerSettings();
 autoConfigureInput.addEventListener('change', () => {
   try { window.localStorage.setItem('glist-studio-auto-configure', autoConfigureInput.checked ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
   void window.glistAPI.setAutoConfigure(autoConfigureInput.checked);

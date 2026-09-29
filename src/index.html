@@ -279,6 +279,11 @@
           <p class="dialog-hint" data-i18n="themeHint">Themes color the whole studio. Color themes from VS Code (.json) can be imported.</p>
           <p id="theme-error" class="dialog-error" role="alert"></p>
         </fieldset>
+        <fieldset id="debugger-settings" class="settings-section debugger-settings" hidden>
+          <legend data-i18n="debuggerSettings">Debugger</legend>
+          <p id="debugger-state" class="dialog-hint"></p>
+          <button id="debugger-install" class="debugger-install" type="button" data-i18n="installDebugger">Install GDB</button>
+        </fieldset>
         <fieldset class="settings-section build-settings">
           <legend data-i18n="buildSettings">Build</legend>
           <label class="checkbox-row"><input id="auto-configure" type="checkbox" /><span data-i18n="autoConfigure">Configure again when CMake files change</span></label>

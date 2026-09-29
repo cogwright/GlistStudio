@@ -70,8 +70,20 @@ interface GlistTarget {
   artifact?: string;
 }
 
+// Settings > Debugger: the GDB Glist Studio installs on Windows, where Glist's tools have no debugger.
+interface GlistDebuggerStatus {
+  offered: boolean;
+  installed: boolean;
+  name: string;
+  version: string;
+  // Bytes to download.
+  size: number;
+}
+
 interface GlistDebugStart {
   success: boolean;
+  // On Windows: there is none yet, and Settings can install one.
+  missingDebugger?: boolean;
   message: string;
   program?: string;
   cwd?: string;
@@ -357,6 +369,8 @@ interface Window {
     startDebugging(): Promise<GlistDebugStart>;
     sendDebug(message: unknown): Promise<void>;
     stopDebugging(): Promise<void>;
+    debuggerStatus(): Promise<GlistDebuggerStatus>;
+    installDebugger(): Promise<GlistProcessResult>;
     startTerminal(session: GlistTerminalSession, columns: number, rows: number, agent?: GlistAgentId): Promise<GlistProcessResult>;
     writeTerminal(session: GlistTerminalSession, data: string): Promise<void>;
     resizeTerminal(session: GlistTerminalSession, columns: number, rows: number): Promise<void>;
@@ -399,6 +413,7 @@ interface Window {
     onSaveAndClose(callback: () => void): () => void;
     onDebugMessage(callback: (message: unknown) => void): () => void;
     onDebugStatus(callback: (status: GlistClangdStatus) => void): () => void;
+    onDebuggerInstall(callback: (text: string) => void): () => void;
     onTerminalData(callback: (event: { session: GlistTerminalSession; data: string }) => void): () => void;
     onTerminalExit(callback: (event: { session: GlistTerminalSession; exitCode: number }) => void): () => void;
     onAgentInstall(callback: (text: string) => void): () => void;
