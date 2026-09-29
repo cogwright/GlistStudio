@@ -16,6 +16,8 @@ export interface DebuggerHost {
   changed(): void;
   // There is no debugger, and Settings can install one.
   missingDebugger?(): void;
+  // The GDB Settings installed did not start; it can be installed again.
+  debuggerFailed?(): void;
   views: { status: HTMLElement; variables: HTMLElement; stack: HTMLElement; breakpoints: HTMLElement };
 }
 
@@ -35,6 +37,8 @@ const storageKey = (projectRoot: string): string => `glist-studio-breakpoints:${
 // bridge, and shows breakpoints, the current line, variables and the call stack.
 export class Debugger {
   state: DebugState = 'idle';
+  // The session's debugger is the GDB Settings installed.
+  private installedDebugger = false;
   private seq = 1;
   private readonly pending = new Map<number, Pending>();
   private readonly eventWaiters = new Map<string, Array<() => void>>();
@@ -56,6 +60,8 @@ export class Debugger {
     window.glistAPI.onDebugStatus((status) => {
       if (this.state === 'idle') return;
       if (status.message) host.log(`\n${status.message}\n`, 'error');
+      // Ended before the session began: the installed GDB does not start.
+      if (this.state === 'starting' && this.installedDebugger) host.debuggerFailed?.();
       this.finish();
     });
     monaco.editor.onDidCreateModel((model) => this.decorate(model));
@@ -118,9 +124,11 @@ export class Debugger {
     if (!started.success || !started.program) {
       this.host.log(`\n${started.message}\n`, 'error');
       if (started.missingDebugger) this.host.missingDebugger?.();
+      else if (started.installedDebugger) this.host.debuggerFailed?.();
       this.setState('idle');
       return;
     }
+    this.installedDebugger = Boolean(started.installedDebugger);
     try {
       // Adapters send 'initialized' after the initialize response or after launch; catch either.
       const initialized = this.nextEvent('initialized');
@@ -140,8 +148,10 @@ export class Debugger {
       if ((this.state as DebugState) === 'starting') this.setState('running');
     } catch (error) {
       if (this.state !== 'idle') {
+        const starting = this.state === 'starting';
         this.host.log(`\n${t('debuggerFailed')}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
         await this.stop();
+        if (starting && this.installedDebugger) this.host.debuggerFailed?.();
       }
     }
   }

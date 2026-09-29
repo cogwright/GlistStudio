@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, promises as fs, readFileSync, watch, type Dirent, type FSWatcher } from 'node:fs';
 import { availableParallelism, homedir, userInfo } from 'node:os';
@@ -7,7 +7,7 @@ import type { IPty } from 'node-pty';
 import { agentLaunch, findAgents, installAgent, isAgentId, type AgentPlaces, type AgentStatus } from './agents';
 import type { Handlers } from './api';
 import { findDebugAdapter } from './debug-adapters';
-import { debuggerRelease, installDebugger, installedDebugger } from './debugger-download';
+import { debuggerRelease, installDebugger, installedDebugger, removeDebugger } from './debugger-download';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
@@ -448,19 +448,61 @@ const resolveToolchain = (projectRoot: string): Toolchain => {
 // Folders added in Settings > PATH.
 let customPath: string[] = [];
 
+// The PATH Glist Studio itself was started with. Only finding agents and the
+// Glist installer use it; everything else gets pathFor's.
+export const osPath = (): string => Object.entries(process.env).find(([key]) => key.toUpperCase() === 'PATH')?.[1] ?? '';
+
+// Xcode's tools, where xcode-select points: the command line tools or an Xcode.
+let xcodeFolders: string[] | null = null;
+const xcodeTools = (): string[] => {
+  if (xcodeFolders) return xcodeFolders;
+  let developer = '';
+  try { developer = execFileSync('xcode-select', ['-p'], { encoding: 'utf8', timeout: 5000 }).trim(); } catch { /* No Xcode tools. */ }
+  xcodeFolders = developer ? [path.join(developer, 'usr', 'bin'), path.join(developer, 'Toolchains', 'XcodeDefault.xctoolchain', 'usr', 'bin')] : [];
+  return xcodeFolders;
+};
+
+// This computer's own folders the studio's programs need, rather than whatever
+// PATH the studio was started with: on macOS, Homebrew's, the system's and
+// Xcode's; on Linux, the system's; on Windows, Windows' own, since Glist's
+// tools come from zbin.
+export const systemFolders = (): string[] => {
+  let folders: string[];
+  if (process.platform === 'win32') {
+    const windows = process.env.SystemRoot ?? 'C:\\Windows';
+    const system = path.join(windows, 'System32');
+    folders = [system, windows, path.join(system, 'Wbem'), path.join(system, 'WindowsPowerShell', 'v1.0'), path.join(system, 'OpenSSH')];
+  } else if (process.platform === 'darwin') {
+    folders = ['/opt/homebrew/bin', '/opt/homebrew/sbin', '/usr/local/bin', '/System/Cryptexes/App/usr/bin', '/usr/bin', '/bin', '/usr/sbin', '/sbin', ...xcodeTools()];
+  } else {
+    folders = ['/usr/local/sbin', '/usr/local/bin', '/usr/sbin', '/usr/bin', '/sbin', '/bin', '/snap/bin'];
+  }
+  return folders.filter((folder) => existsSync(folder));
+};
+
+// Git for Windows, which is not in zbin: where the computer's PATH has it, or where it installs.
+let gitFolderFound: string | null | undefined;
+const windowsGitFolder = (): string | null => {
+  if (gitFolderFound !== undefined) return gitFolderFound;
+  const places = [...osPath().split(path.delimiter), path.join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'cmd')];
+  gitFolderFound = places.find((folder) => folder && existsSync(path.join(folder, 'git.exe'))) ?? null;
+  return gitFolderFound;
+};
+
 // PATH for builds, clangd, the debugger, the app and the terminal, entry by
 // entry with where each comes from; Settings > PATH shows the same list. Plugin
 // folders go after this computer's own, as their READMEs say: some carry their
 // own copies of the compiler's runtime DLLs, such as gipDebug's libstdc++, which
 // must not come before Glist's. Folders added in Settings come last of all.
 const pathFor = (toolchain: Toolchain): GlistPathEntry[] => {
-  const systemPath = Object.entries(process.env).find(([key]) => key.toUpperCase() === 'PATH')?.[1] ?? '';
   const cmakeBin = path.isAbsolute(toolchain.cmake) ? path.dirname(toolchain.cmake) : undefined;
   const entry = (folder: string, source: GlistPathEntry['source'], owner = ''): GlistPathEntry => ({ path: folder, source, owner });
+  const git = process.platform === 'win32' ? windowsGitFolder() : null;
   return [
     ...(toolchain.toolBin ? [entry(toolchain.toolBin, 'glist')] : []),
     ...(cmakeBin ? [entry(cmakeBin, 'cmake')] : []),
-    ...systemPath.split(path.delimiter).filter(Boolean).map((folder) => entry(folder, 'system')),
+    ...systemFolders().map((folder) => entry(folder, 'system')),
+    ...(git ? [entry(git, 'git')] : []),
     ...(toolchain.pluginBins ?? []).map((folder) => entry(folder, 'plugin', path.basename(path.dirname(path.dirname(folder))))),
     ...customPath.map((folder) => entry(folder, 'custom')),
   ];
@@ -1070,15 +1112,18 @@ const startDebugging = async (): Promise<GlistDebugStart> => {
   if (!found.program) return { success: false, message: found.message };
   const { program } = found;
   const env = processEnvironment(resolveToolchain(projectRoot));
-  const adapter = await findDebugAdapter(env, installedDebugger(studioHome()));
+  const installedGdb = installedDebugger(studioHome());
+  const adapter = await findDebugAdapter(env, installedGdb);
   if (!adapter) {
     return process.platform === 'win32'
       ? { success: false, message: msg('debuggerMissingWindows'), missingDebugger: true }
       : { success: false, message: msg('debuggerMissing') };
   }
+  // The GDB Settings installed can be installed again when it fails.
+  const ours = adapter.command === installedGdb;
   const status = await debugAdapter.start({ command: adapter.command, args: adapter.args, cwd: projectRoot, env });
-  if (!status.running) return { success: false, message: `${msg('debuggerFailed')}: ${status.message}` };
-  return { success: true, message: '', program, cwd: projectRoot, flavor: adapter.flavor };
+  if (!status.running) return { success: false, message: `${msg('debuggerFailed')}: ${status.message}`, installedDebugger: ours };
+  return { success: true, message: '', program, cwd: projectRoot, flavor: adapter.flavor, installedDebugger: ours };
 };
 
 export const stopDebugging = (): void => debugAdapter.stop();
@@ -1119,7 +1164,11 @@ const terminalDirectory = (): string => activeProjectRoot
   ?? [projectsDirectory(), homedir()].find((candidate) => existsSync(candidate))
   ?? process.cwd();
 
-const agentPlaces = (env: NodeJS.ProcessEnv): AgentPlaces => ({ home: studioHome(), glist: glistRoot(), searchPath: env.PATH ?? '' });
+// Agents are looked for on the computer's own PATH too, wherever they were
+// installed; each then runs with the studio's PATH and its own folder.
+const agentPlaces = (env: NodeJS.ProcessEnv): AgentPlaces => ({
+  home: studioHome(), glist: glistRoot(), searchPath: [env.PATH ?? '', osPath()].filter(Boolean).join(path.delimiter),
+});
 
 // Whether Glist is set up where the install scripts put it, or where the
 // projects folder this studio was given points.
@@ -1213,8 +1262,9 @@ const startTerminal = async (session: unknown, columns: number, rows: number, ag
       return { success: false, message: `${msg('installerMissing')}: ${error instanceof Error ? error.message : String(error)}` };
     }
     // From GlistEngine's own repositories, asking nothing but a password, and
-    // without the Eclipse setup the studio does not need.
-    Object.assign(env, { GLIST_UNATTENDED: '1', GLIST_NO_ECLIPSE: '1', GLIST_GITHUB_USERNAME: 'GlistEngine' });
+    // without the Eclipse setup the studio does not need. It installs what the
+    // computer lacks, so it gets the computer's own PATH.
+    Object.assign(env, { GLIST_UNATTENDED: '1', GLIST_NO_ECLIPSE: '1', GLIST_GITHUB_USERNAME: 'GlistEngine', PATH: osPath() });
     directory = homedir();
     if (passwordPrompt() === 'system') {
       const askpass = path.join(studioHome(), 'installer', 'askpass.sh');
@@ -1299,10 +1349,12 @@ const debuggerStatus = (): GlistDebuggerStatus => ({
 
 let installingDebugger = false;
 
-const installDebuggerFromSettings = async (): Promise<ProcessResult> => {
+// Again: the installed one is removed first, for one that does not start.
+const installDebuggerFromSettings = async (again?: unknown): Promise<ProcessResult> => {
   if (installingDebugger) return { success: false, message: msg('debuggerInstallRunning') };
   installingDebugger = true;
   try {
+    if (again === true) await removeDebugger(studioHome());
     await installDebugger(studioHome(), (text) => sendToRenderer('debugger:install-output', text));
     return { success: true, message: msg('debuggerInstalled') };
   } catch (error) {

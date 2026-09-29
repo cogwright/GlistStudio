@@ -34,11 +34,11 @@ interface GlistProjectSummary {
 }
 
 // A folder on PATH for the programs the studio starts, and where it comes from:
-// Glist's compilers and tools, CMake's folder, this computer's own PATH, a
-// plugin's DLLs (owner names it), or one added in Settings.
+// Glist's compilers and tools, CMake's folder, this computer's system folders,
+// Git for Windows, a plugin's DLLs (owner names it), or one added in Settings.
 interface GlistPathEntry {
   path: string;
-  source: 'glist' | 'cmake' | 'system' | 'plugin' | 'custom';
+  source: 'glist' | 'cmake' | 'system' | 'git' | 'plugin' | 'custom';
   owner: string;
   exists?: boolean;
 }
@@ -132,6 +132,8 @@ interface GlistDebugStart {
   success: boolean;
   // On Windows: there is none yet, and Settings can install one.
   missingDebugger?: boolean;
+  // The debugger is the GDB Settings installed, which can be installed again if it fails.
+  installedDebugger?: boolean;
   message: string;
   program?: string;
   cwd?: string;
@@ -423,7 +425,8 @@ interface Window {
     sendDebug(message: unknown): Promise<void>;
     stopDebugging(): Promise<void>;
     debuggerStatus(): Promise<GlistDebuggerStatus>;
-    installDebugger(): Promise<GlistProcessResult>;
+    // Again: removes the installed one first.
+    installDebugger(again?: boolean): Promise<GlistProcessResult>;
     startTerminal(session: GlistTerminalSession, columns: number, rows: number, agent?: GlistAgentId): Promise<GlistProcessResult>;
     writeTerminal(session: GlistTerminalSession, data: string): Promise<void>;
     resizeTerminal(session: GlistTerminalSession, columns: number, rows: number): Promise<void>;

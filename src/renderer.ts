@@ -27,7 +27,7 @@ import { branchName, CommitView } from './git-commit-view';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { PluginsView } from './plugins-view';
 import { GitEditor } from './git-editor';
-import { installGdb, setUpDebuggerSettings } from './debugger-settings';
+import { describeDebugger, installGdb, setUpDebuggerSettings } from './debugger-settings';
 import { GitPanel, type GitPanelView } from './git-panel';
 import { notify, type Notice } from './notifications';
 import { setUpProjectPicker } from './project-picker';
@@ -344,6 +344,7 @@ setZoom(zoomPercentage);
 
 const refreshLanguage = (): void => {
   applyLanguage(getLanguage());
+  describeDebugger();
   if (!activeProject) {
     projectRootLabel.textContent = t('projectPlaceholder');
     if (output.textContent === '' || output.textContent.includes('Glist Studio is ready')
@@ -811,6 +812,10 @@ const debug = new Debugger({
   missingDebugger: () => notify({
     text: t('debuggerMissingNotice'), kind: 'error',
     actions: [{ label: t('installDebugger'), run: () => { void installGdb(); } }],
+  }),
+  debuggerFailed: () => notify({
+    text: t('debuggerFailedNotice'), kind: 'error',
+    actions: [{ label: t('installDebuggerAgain'), run: () => { void installGdb(true); } }],
   }),
   views: {
     status: element<HTMLElement>('#debug-status'),

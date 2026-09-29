@@ -32,6 +32,9 @@ export const installedDebugger = (home: string, release = debuggerRelease): stri
   return existsSync(path.join(folder, doneMarker)) ? path.join(folder, ...release.program.split('/')) : null;
 };
 
+export const removeDebugger = (home: string, release = debuggerRelease): Promise<void> =>
+  fs.rm(folderFor(home, release), { recursive: true, force: true });
+
 const fileHash = async (file: string): Promise<string> => {
   const hash = createHash('sha256');
   try {

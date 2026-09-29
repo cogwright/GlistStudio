@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { initializeStudio, openProjectAt, pluginDllFolders, studio } from '../src/studio.ts';
+import { initializeStudio, openProjectAt, pluginDllFolders, studio, systemFolders } from '../src/studio.ts';
 
 // What the studio may write: the project, and the engine and the plugins the
 // project names, which only build from an app. Run with jiti.
@@ -63,9 +63,15 @@ try {
   const kept = await studio.setCustomPath([at('tools'), 'relative/tools', `${at('a')}${path.delimiter}${at('b')}`, at('tools/'), at('tools/../tools'), 7]);
   assert.deepEqual(kept, [at('tools')], 'only absolute folders without the separator, each once');
   write('tools/tool.txt', '');
+  // Not the PATH the studio was started with: a folder only there is left out.
+  write('os-only/tool.txt', '');
+  const startedWith = process.env.PATH;
+  process.env.PATH = [at('os-only'), startedWith].join(path.delimiter);
   const entries = await studio.pathEntries();
-  const system = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
-  assert.deepEqual(entries.filter((entry) => entry.source === 'system').map((entry) => entry.path), system);
+  process.env.PATH = startedWith;
+  assert.equal(entries.some((entry) => entry.path === at('os-only')), false);
+  assert.deepEqual(entries.filter((entry) => entry.source === 'system').map((entry) => entry.path), systemFolders());
+  assert.ok(systemFolders().length > 0 && systemFolders().every((folder) => existsSync(folder)));
   assert.deepEqual(entries.slice(-1).map((entry) => [entry.path, entry.source, entry.exists]), [[at('tools'), 'custom', true]]);
   const top = path.parse(root).root;
   assert.deepEqual(await studio.setCustomPath([top]), [top], 'a root stays as it is');
