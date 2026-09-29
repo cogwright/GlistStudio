@@ -13,6 +13,8 @@ export interface GitClientHooks {
   saveAll(): Promise<boolean>;
   // Reads open files and the explorer again after git changed files on disk.
   reloadFiles(): Promise<void>;
+  // Reads open files again that changed on disk, such as by git in the terminal or an agent.
+  filesChanged(): void;
   // The label beside the build status while something runs, or null when done.
   busy(label: string | null): void;
   showConsole(): void;
@@ -48,7 +50,7 @@ export class GitClient {
 
   constructor(private readonly hooks: GitClientHooks) {
     try { this.enabled = window.localStorage.getItem(storageKey) === 'on'; } catch { this.enabled = false; }
-    window.glistAPI.onGitChanged(() => { void this.refresh(); });
+    window.glistAPI.onGitChanged(() => { this.hooks.filesChanged(); void this.refresh(); });
     window.addEventListener('focus', () => { void this.refresh(); });
   }
 

@@ -912,6 +912,7 @@ diffRollbackButton.addEventListener('click', () => {
 const git = new GitClient({
   saveAll: () => saveProjectFiles(),
   reloadFiles: () => reloadFromDisk(),
+  filesChanged: () => { void reloadOpenFiles(); },
   busy: (label) => {
     if (label) setProcessStatus(label, true);
     else if (!isBuildRunning && !isRunRunning) setProcessStatus(t('ready'), false);
@@ -936,8 +937,8 @@ const showCommitView = (): void => {
   commitPane.focusMessage();
 };
 
-// Files git changed on disk are read again, unless they have unsaved changes.
-const reloadFromDisk = async (): Promise<void> => {
+// Open files changed on disk are read again, unless they have unsaved changes.
+const reloadOpenFiles = async (): Promise<void> => {
   for (const file of fileTabs()) {
     if (file.readOnly || !isProjectPath(file.path) || isDirty(file)) continue;
     let contents: string;
@@ -948,6 +949,8 @@ const reloadFromDisk = async (): Promise<void> => {
       closeFile(file.path);
       continue;
     }
+    // Typed into while it was read: what is typed wins.
+    if (isDirty(file) || file.model.isDisposed()) continue;
     if (file.model.getValue() !== contents) {
       // As an edit, so Undo can bring back what was there.
       file.model.pushStackElement();
@@ -957,9 +960,14 @@ const reloadFromDisk = async (): Promise<void> => {
     file.savedVersion = file.model.getAlternativeVersionId();
     refreshDirtyMark(file);
   }
-  await loadProjectTree();
   const diff = activeDiff();
   if (diff) await fillDiff(diff);
+};
+
+// After git changed files: the open ones, and the explorer's list of them.
+const reloadFromDisk = async (): Promise<void> => {
+  await reloadOpenFiles();
+  await loadProjectTree();
 };
 
 const ensureIdentity = async (): Promise<boolean> => {
