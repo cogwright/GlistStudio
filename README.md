@@ -15,7 +15,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 - A debugger: breakpoints, stepping, variables, the call stack, and values on hover, through lldb-dap or GDB
 - A terminal next to the output, in the project folder, with the same tools on `PATH` as builds
 - Coding agents (Claude Code, Codex, Gemini CLI, Antigravity) in an Agent tab, off until turned on, and installable into the Glist folder
-- Git, off until turned on: a Commit view, changes shown as diffs in the editor area, a Git tab with the log and its graph, branches, remotes and stashes, changed lines and blame in the editor, and help with conflicts
+- Git, off until turned on: a Commit view, changes shown as diffs in the editor area, a Git tab with the log and its graph, branches, remotes and stashes, changed lines and blame in the editor, help with conflicts, and the engine's and plugins' own repositories
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - C++ class generation with matching header and source files
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
@@ -80,6 +80,15 @@ Turned on, it works like it does in JetBrains IDEs:
 - **The title bar** shows the branch and how many commits there are to push and to pull. Clicking it offers Update Project, Commit, Push, New Branch and the branches to switch to. The Git menu has all of this, and the explorer colors files by what changed: blue for changed, green for added, orange for unversioned, red for conflicts, and dimmed for ignored.
 
 Update Project (Ctrl+T) brings in the remote's commits by merging, or by rebasing if Settings says so, and puts changes not committed yet aside while it runs; merging and rebasing a branch do the same. Push (Ctrl+Shift+K) lists the commits it sends, and a branch pushed for the first time follows the remote branch of its name from then on. Checking out a branch over local changes offers to stash them and bring them back. Get from Git, in the File menu and in Open Project, clones a repository into the projects folder and opens it. A conflict resolved with one click can be undone from the message that says so.
+
+**The engine and plugins** a project is built with, GlistEngine and the plugins its CMakeLists.txt names, are repositories of their own, and the studio manages them too:
+
+- The Git tab has a picker that shows any of them in the Log, Branches, Remotes and Stashes.
+- The branch menu lists each with its branch and the commits it is ahead or behind.
+- Their changes appear in the Commit view, each in a group of its own, closed and unchecked. Checked files are committed to their own repository with the same message; Amend only ever changes the project's last commit.
+- Push offers each one that has commits to send, with a checkbox.
+
+Update Engine and Plugins, in the Git menu and the branch menu, brings in their remotes' commits. It is separate from Update Project, because every project shares them. For the same reason, the studio asks before rolling back, checking out, merging, rebasing or resetting one. Their files stay read-only in the editor, with their changed lines marked all the same.
 
 A remote that asks for a password is answered through the system, never through the studio: git and ssh ask a system dialog on macOS, and the desktop's password dialog on Linux (zenity, kdialog or ssh-askpass), through `GIT_ASKPASS` and `SSH_ASKPASS`. Git's own credential helper, such as the macOS keychain or Git Credential Manager on Windows, remembers it. GitHub takes a personal access token instead of the account password.
 
