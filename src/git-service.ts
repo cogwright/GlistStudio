@@ -6,6 +6,7 @@ import {
   branchFormat, logFormat, parseBlame, parseBranches, parseLog, parseNameStatus, parseRemotes, parseStashes, parseStatus,
   parseTags, stashFormat, tagFormat, type GitFileChange,
 } from './git';
+import { createHostProtection, defaultProtection, matchesBranch, protectionFrom } from './git-protection';
 
 // Git for the Commit view and the Git panel, by running the git program in the
 // open project's repository. Anything that changes the repository runs one at
@@ -27,6 +28,8 @@ export interface GitContext {
   // Where Clone puts a repository.
   projectsDirectory(): string;
   language(): 'en' | 'tr';
+  // GitHub's API, for the branches it protects; a test server in tests.
+  githubApi?: string;
 }
 
 const messages = {
@@ -58,6 +61,8 @@ const messages = {
     committed: 'Committed',
     pushed: 'Pushed.',
     askpass: 'Git needs a password.',
+    amendPushed: 'The last commit is already pushed, so it cannot be amended. Commit the changes as a new commit instead.',
+    forceProtected: '{branch} is a protected branch, so it cannot be overwritten.',
   },
   tr: {
     noProject: 'Önce bir proje açın.',
@@ -87,6 +92,8 @@ const messages = {
     committed: 'Commit edildi',
     pushed: 'Gönderildi.',
     askpass: 'Git bir parola istiyor.',
+    amendPushed: 'Son commit zaten gönderildiği için düzeltilemez. Değişiklikleri yeni bir commit olarak commit edin.',
+    forceProtected: '{branch} korunan bir dal olduğu için üzerine yazılamaz.',
   },
 } as const;
 
@@ -133,6 +140,10 @@ const askpassPrograms = ['zenity', 'kdialog', 'ssh-askpass', '/usr/lib/ssh/ssh-a
 export const createGitService = (context: GitContext) => {
   const say = (key: MessageKey): string => messages[context.language()][key];
   const fail = (key: MessageKey): never => { throw new Error(say(key)); };
+
+  // Settings > Git: whether pushed commits are protected, and which branches are.
+  let protection = defaultProtection;
+  const hostProtected = createHostProtection(context.githubApi ?? 'https://api.github.com', () => context.send('git:changed', null));
 
   const report = (entry: GlistGitConsoleEntry): void => context.send('git:console', entry);
 
@@ -382,6 +393,7 @@ exit 1
       changes: parsed.changes.map(change),
       ignored: parsed.ignored.map((entry) => fromGit(repo, entry.replace(/\/$/, '')) + (entry.endsWith('/') ? path.sep : '')),
       stashes: stashLog.split('\n').filter(Boolean).length,
+      ...(kind === 'project' && protection.on && parsed.head ? { headPushed: await headPushed(repo) } : {}),
     };
   };
 
@@ -530,6 +542,21 @@ exit 1
     return result.code === 0 ? text(result).trim() : null;
   };
 
+  // The remote branch a push of the current branch goes to: its upstream's, or its own name.
+  const pushTarget = (branch: string | null, upstream: string | null, remote: string | null): string | null =>
+    (upstream && remote && upstream.startsWith(`${remote}/`) ? upstream.slice(remote.length + 1) : branch);
+
+  const isProtected = async (repo: Repository, remote: string | null, branch: string | null, wait = false): Promise<boolean> => {
+    if (!protection.on || !branch) return false;
+    if (matchesBranch(branch, protection.branches)) return true;
+    const address = remote ? text(await run(['remote', 'get-url', '--push', remote], { cwd: repo.folder })).trim() : '';
+    return (await hostProtected(address || null, wait)).includes(branch);
+  };
+
+  // Whether HEAD's commit is on a remote branch already, so others may have it.
+  const headPushed = async (repo: Repository): Promise<boolean> =>
+    text(await run(['for-each-ref', '--contains', 'HEAD', '--count=1', '--format=%(refname)', 'refs/remotes/'], { cwd: repo.folder })).trim() !== '';
+
   // What Push would send, and where.
   const outgoing = async (root?: unknown) => {
     const repo = await repository(root);
@@ -543,7 +570,8 @@ exit 1
       const result = await run(['-c', 'log.showSignature=false', 'log', `--format=${logFormat}`, '--max-count=200', ...range], { cwd: repo.folder });
       if (result.code === 0) commits = parseLog(text(result));
     }
-    return { remote, branch: parsed.branch, remotes: remoteNames, commits };
+    const target = parsed.upstream ? pushTarget(parsed.branch, parsed.upstream, remote) : parsed.branch;
+    return { remote, branch: parsed.branch, remotes: remoteNames, commits, protected: await isProtected(repo, remote, target, true) };
   };
 
   // What git printed, in the words people need: its own last lines unless a
@@ -612,6 +640,7 @@ exit 1
       return result.code === 0 ? done(say('committed')) : explain(result);
     }
     if (chosen.size === 0 && !action.amend) fail('nothingSelected');
+    if (action.amend && protection.on && parsed.head && await headPushed(repo)) fail('amendPushed');
     // Only the chosen files are committed, as they are on disk, whatever else was
     // staged; new files have to be known to git for that.
     const untracked = parsed.changes.filter((entry) => entry.state === 'untracked' && chosen.has(entry.path)).map((entry) => entry.path);
@@ -756,6 +785,10 @@ exit 1
     const remote = action.remote ? name(action.remote) : await upstreamRemote(repo, parsed.branch)
       ?? (remoteNames.includes('origin') ? 'origin' : remoteNames[0]);
     if (!remote) fail('noRemote');
+    const target = action.remote ? parsed.branch : pushTarget(parsed.branch, parsed.upstream, remote);
+    if (action.force && await isProtected(repo, remote, target, true)) {
+      return { success: false, message: say('forceProtected').replace('{branch}', target ?? '') };
+    }
     const args = ['push', '--progress', ...(action.force ? ['--force-with-lease'] : []), ...(action.tags ? ['--tags'] : [])];
     // A branch without an upstream gets one of the same name, and follows it from then on.
     args.push(...(parsed.upstream && !action.remote ? [] : ['--set-upstream', remote, parsed.branch]));
@@ -919,6 +952,7 @@ exit 1
       gitIdentity: identity,
       gitLastMessage: lastMessage,
       gitOutgoing: outgoing,
+      gitProtection: (value: unknown) => { protection = protectionFrom(value); context.send('git:changed', null); },
       gitRun: (action: GlistGitAction, root?: unknown) => exclusive(() => act(action, root).catch(failure)),
       gitClone: (address: unknown, folder: unknown) => clone(address, folder).catch(failure),
     },

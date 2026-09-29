@@ -3,7 +3,44 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { createGitService } from '../src/git-service.ts';
+import { createHostProtection, githubRepository, matchesBranch, protectionFrom } from '../src/git-protection.ts';
+
+// Protected branches: names and patterns, GitHub addresses, and asking GitHub.
+assert.equal(matchesBranch('main', ['main', 'master']), true);
+assert.equal(matchesBranch('release/1.2', ['release/*']), true);
+assert.equal(matchesBranch('mainline', ['main']), false);
+assert.equal(matchesBranch('a.b', ['a*b']), true);
+assert.equal(matchesBranch('axb', ['a.b']), false, 'a dot is a dot, not any character');
+for (const address of ['https://github.com/owner/repo.git', 'https://user@github.com/owner/repo', 'git@github.com:owner/repo.git', 'ssh://git@github.com/owner/repo.git']) {
+  assert.equal(githubRepository(address), 'owner/repo', address);
+}
+assert.equal(githubRepository('https://gitlab.com/owner/repo.git'), null);
+assert.equal(githubRepository('/local/remote.git'), null);
+assert.deepEqual(protectionFrom(null), { on: true, branches: ['main', 'master'] });
+assert.deepEqual(protectionFrom({ on: false, branches: [' dev ', '', 3] }), { on: false, branches: ['dev'] });
+{
+  const asked = [];
+  const host = http.createServer((request, response) => {
+    asked.push(request.url);
+    const body = request.url.startsWith('/repos/owner/repo/') ? [{ name: 'main' }, { name: 'stable' }] : { message: 'Not Found' };
+    response.writeHead(request.url.startsWith('/repos/owner/repo/') ? 200 : 404, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify(body));
+  });
+  await new Promise((resolve) => { host.listen(0, '127.0.0.1', resolve); });
+  let changes = 0;
+  const lookup = createHostProtection(`http://127.0.0.1:${host.address().port}`, () => { changes += 1; });
+  assert.deepEqual(await lookup('git@github.com:owner/repo.git'), [], 'not waited for, it is asked in the background');
+  assert.deepEqual(await lookup('git@github.com:owner/repo.git', true), ['main', 'stable']);
+  assert.equal(changes, 1, 'the views are told once it is known');
+  assert.deepEqual(await lookup('https://github.com/owner/repo'), ['main', 'stable']);
+  assert.equal(asked.length, 1, 'asked once, then remembered');
+  assert.equal(asked[0], '/repos/owner/repo/branches?protected=true&per_page=100');
+  assert.deepEqual(await lookup('https://github.com/owner/private', true), [], 'a repository GitHub will not describe has none');
+  assert.deepEqual(await lookup('/local/remote.git', true), []);
+  host.close();
+}
 
 // The Git service against a project made for the test and a remote beside it.
 // Run with jiti, which resolves the service's own imports.
@@ -200,6 +237,31 @@ try {
   status = await git.gitStatus();
   assert.equal(status.repository.upstream, 'origin/main');
   assert.equal((await git.gitOutgoing()).commits.length, 0);
+
+  // Protection is on until turned off: the pushed commit is not amended, and main is not force pushed.
+  assert.equal((await git.gitStatus()).repository.headPushed, true);
+  result = await git.gitRun({ kind: 'commit', message: 'Rewritten', paths: [], amend: true });
+  assert.match(result.message, /already pushed, so it cannot be amended/);
+  assert.equal((await git.gitOutgoing()).protected, true);
+  result = await git.gitRun({ kind: 'push', force: true });
+  assert.match(result.message, /main is a protected branch/);
+  // A commit not pushed yet can be amended.
+  write('protected.txt', 'draft\n');
+  await run({ kind: 'commit', message: 'Draft', paths: [inProject('protected.txt')], amend: false });
+  assert.equal((await git.gitStatus()).repository.headPushed, false);
+  await run({ kind: 'commit', message: 'Draft, amended', paths: [], amend: true });
+  assert.equal((await git.gitLog({}))[0].subject, 'Draft, amended');
+  // Branches not listed are not protected, and turned off nothing is.
+  await git.gitProtection({ on: true, branches: ['release/*'] });
+  assert.equal((await git.gitOutgoing()).protected, false);
+  await git.gitProtection({ on: false, branches: ['main'] });
+  assert.equal((await git.gitOutgoing()).protected, false);
+  await run({ kind: 'push' });
+  assert.equal((await git.gitStatus()).repository.headPushed, undefined);
+  await run({ kind: 'commit', message: 'Draft, amended after pushing', paths: [], amend: true });
+  await run({ kind: 'push', force: true });
+  await git.gitProtection({ on: true, branches: ['main', 'master'] });
+
   await run({ kind: 'create-tag', name: 'v1', message: 'Version one' });
   await run({ kind: 'push', tags: true });
   assert.deepEqual((await git.gitTags()).map((tag) => tag.name), ['v1']);
