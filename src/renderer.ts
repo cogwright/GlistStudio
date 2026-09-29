@@ -26,6 +26,8 @@ import { TargetPicker } from './targets';
 import { canUpdate, checkForUpdates, setUpUpdates } from './updates';
 import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
+import { showMenu, type MenuEntry } from './context-menu';
+import { editorMenu, editorMenuPoint, type EditorMenuHooks } from './editor-menu';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { PluginsView } from './plugins-view';
 import { GitEditor } from './git-editor';
@@ -123,7 +125,6 @@ const output = element<HTMLPreElement>('#output');
 const projectRootLabel = element<HTMLDivElement>('#project-root-label');
 const processStatus = element<HTMLSpanElement>('#process-status');
 const clangdStatus = element<HTMLSpanElement>('#clangd-status');
-const contextMenu = element<HTMLDivElement>('#explorer-context-menu');
 const inputDialog = element<HTMLDialogElement>('#input-dialog');
 const inputForm = element<HTMLFormElement>('#input-form');
 const inputValue = element<HTMLInputElement>('#input-dialog-value');
@@ -405,6 +406,8 @@ const editor = monaco.editor.create(editorHost, {
   renderWhitespace: 'selection',
   scrollBeyondLastLine: false,
   tabSize: 4,
+  // The studio draws the right-click menu (editor-menu.ts).
+  contextmenu: false,
 });
 
 // Appends a text node; rewriting textContent made long builds quadratic.
@@ -850,9 +853,13 @@ const ensureDiffEditor = (): monaco.editor.IStandaloneDiffEditor => {
     renderSideBySide: !diffInline,
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
+    contextmenu: false,
     ...diffFonts(loadFonts()),
   });
   onFontsChange((fonts) => diffEditor?.updateOptions(diffFonts(fonts)));
+  [diffEditor.getOriginalEditor(), diffEditor.getModifiedEditor()].forEach((side) => {
+    side.onContextMenu((event) => showMenu(event.event.browserEvent, editorMenu(side, editorMenuHooks, false)));
+  });
   return diffEditor;
 };
 
@@ -1238,24 +1245,29 @@ monaco.editor.registerEditorOpener({
   openCodeEditor: (_source, resource, selectionOrPosition) => revealLocation(resource, selectionOrPosition),
 });
 
-// Added again when the language changes, for its name in the right-click menu.
-let switchSourceHeaderAction: monaco.IDisposable | null = null;
-const addSwitchSourceHeader = (): void => {
-  switchSourceHeaderAction?.dispose();
-  switchSourceHeaderAction = editor.addAction({
-    id: 'glist.switchSourceHeader',
-    label: t('switchSourceHeader'),
-    keybindings: [monaco.KeyMod.Alt | monaco.KeyCode.KeyO],
-    precondition: 'editorLangId == cpp',
-    contextMenuGroupId: 'navigation',
-    run: async () => {
-      const model = editor.getModel();
-      const target = model && await clangd.switchSourceHeader(model);
-      if (target) await revealLocation(target);
-    },
-  });
+const switchSourceHeader = async (): Promise<void> => {
+  const model = editor.getModel();
+  const target = model && await clangd.switchSourceHeader(model);
+  if (target) await revealLocation(target);
 };
-addSwitchSourceHeader();
+editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
+
+// The right-click menu, and the same from the keyboard at the cursor.
+const editorMenuHooks: EditorMenuHooks = {
+  navigates: () => clangd.navigates,
+  switchSourceHeader: () => { void switchSourceHeader(); },
+  commandPalette: () => { editor.focus(); editor.trigger('menu', 'editor.action.quickCommand', null); },
+};
+// As Monaco's own menu did: focus, and the cursor at the click unless it is in the selection.
+editor.onContextMenu((event) => {
+  editor.focus();
+  const position = event.target.position;
+  if (position && !editor.getSelection()?.containsPosition(position)) editor.setPosition(position);
+  showMenu(event.event.browserEvent, editorMenu(editor, editorMenuHooks));
+});
+const showEditorMenuHere = (): void => showMenu(editorMenuPoint(editor), editorMenu(editor, editorMenuHooks));
+editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F10, showEditorMenuHere);
+editor.addCommand(monaco.KeyCode.ContextMenu, showEditorMenuHere);
 
 const selectTreeEntry = (entry: GlistFileEntry, row: HTMLButtonElement): void => {
   fileTree.querySelectorAll('.tree-row.selected').forEach((selectedRow) => {
@@ -1272,98 +1284,38 @@ const clearTreeSelection = (): void => {
   updateButtons();
 };
 
-const closeContextMenu = (): void => { contextMenu.hidden = true; };
-
 const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLButtonElement): void => {
   event.preventDefault();
   event.stopPropagation();
   if (entry && row) { selectTreeEntry(entry, row); row.focus({ preventScroll: true }); }
   if (!activeProject) return;
-  contextMenu.replaceChildren();
-  const addItem = (key: TranslationKey, action: () => void, danger = false): void => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = `context-item${danger ? ' danger' : ''}`;
-    item.textContent = t(key);
-    item.addEventListener('click', () => { closeContextMenu(); action(); });
-    contextMenu.append(item);
-  };
-  const addSubmenu = (key: TranslationKey, children: Array<{ key: TranslationKey; action: () => void }>): void => {
-    const group = document.createElement('div');
-    group.className = 'context-group';
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.className = 'context-item has-submenu';
-    trigger.append(t(key), icon('chevron-right'));
-    trigger.setAttribute('aria-haspopup', 'menu');
-    trigger.addEventListener('click', (clickEvent) => {
-      clickEvent.stopPropagation();
-      group.classList.toggle('expanded');
-    });
-    const submenu = document.createElement('div');
-    submenu.className = 'context-submenu';
-    children.forEach(({ key: childKey, action }) => {
-      const child = document.createElement('button');
-      child.type = 'button';
-      child.className = 'context-item';
-      child.textContent = t(childKey);
-      child.addEventListener('click', () => { closeContextMenu(); action(); });
-      submenu.append(child);
-    });
-    group.append(trigger, submenu);
-    contextMenu.append(group);
-  };
-  addSubmenu('newMenu', [
-    { key: 'newFile', action: createFile },
-    { key: 'newFolder', action: createFolder },
-    { key: 'newCppClass', action: createClass },
-  ]);
-  if (entry) {
-    const separator = document.createElement('div');
-    separator.className = 'context-separator';
-    contextMenu.append(separator);
-    addItem('copy', copySelectedEntry);
-  }
-  if (copiedEntryPath) addItem('paste', pasteCopiedEntry);
-  if (entry) {
-    addItem('rename', renameSelectedEntry);
-    addItem('delete', deleteSelectedEntry, true);
-  }
-  const separator = document.createElement('div');
-  separator.className = 'context-separator';
-  contextMenu.append(separator);
-  addSubmenu('showIn', [
-    { key: 'systemExplorer', action: showInExplorer },
-    { key: 'commandPrompt', action: openCommandPrompt },
-  ]);
+  const item = (key: TranslationKey, run: () => void, danger = false): MenuEntry => ({ label: t(key), run, danger });
+  const gitItems: MenuEntry[] = [];
   if (git.repository && entry) {
     const change = git.changeOf(entry.path);
-    const items: Array<{ key: TranslationKey; action: () => void }> = [];
     if (!entry.isDirectory && change?.state !== 'untracked') {
-      items.push({ key: 'showDiff', action: () => { void openWorkingDiff(entry.path); } });
-      items.push({ key: 'showHistory', action: () => showGitHistory(entry.path) });
+      gitItems.push(item('showDiff', () => { void openWorkingDiff(entry.path); }));
+      gitItems.push(item('showHistory', () => showGitHistory(entry.path)));
     }
     if (change && change.state !== 'untracked' && change.state !== 'conflict') {
-      items.push({
-        key: 'rollback',
-        action: () => {
-          if (window.confirm(t('confirmRollbackOne').replace('{name}', entry.name))) void git.run({ kind: 'rollback', paths: [entry.path] });
-        },
-      });
+      gitItems.push(item('rollback', () => {
+        if (window.confirm(t('confirmRollbackOne').replace('{name}', entry.name))) void git.run({ kind: 'rollback', paths: [entry.path] });
+      }));
     }
     if (change?.state === 'untracked' || (entry.isDirectory && !git.isIgnored(entry.path))) {
-      items.push({ key: 'addToGitignore', action: () => { void git.run({ kind: 'ignore', paths: [entry.path] }); } });
+      gitItems.push(item('addToGitignore', () => { void git.run({ kind: 'ignore', paths: [entry.path] }); }));
     }
-    if (items.length > 0) addSubmenu('menuGit', items);
   }
-  contextMenu.hidden = false;
-  const zoom = pageZoom();
-  const width = contextMenu.offsetWidth * zoom;
-  const height = contextMenu.offsetHeight * zoom;
-  const left = Math.max(0, Math.min(event.clientX, window.innerWidth - width - 6));
-  contextMenu.classList.toggle('submenu-left', left + width + 210 * zoom > window.innerWidth);
-  contextMenu.style.left = `${left / zoom}px`;
-  contextMenu.style.top = `${Math.max(0, Math.min(event.clientY, window.innerHeight - height - 6)) / zoom}px`;
+  showMenu(event, [
+    { label: t('newMenu'), children: [item('newFile', createFile), item('newFolder', createFolder), item('newCppClass', createClass)] },
+    'separator',
+    ...(entry ? [item('copy', copySelectedEntry)] : []),
+    ...(copiedEntryPath ? [item('paste', pasteCopiedEntry)] : []),
+    ...(entry ? [item('rename', renameSelectedEntry), item('delete', deleteSelectedEntry, true)] : []),
+    'separator',
+    { label: t('showIn'), children: [item('systemExplorer', showInExplorer), item('commandPrompt', openCommandPrompt)] },
+    ...(gitItems.length > 0 ? [{ label: t('menuGit'), children: gitItems }] : []),
+  ]);
 };
 
 // Rows of the engine and plugins are read-only: they list through the
@@ -2300,7 +2252,6 @@ settingsLanguage.addEventListener('change', () => {
   const next = settingsLanguage.value === 'tr' ? 'tr' : 'en';
   applyLanguage(next);
   refreshLanguage();
-  addSwitchSourceHeader();
   // Monaco's own words follow at the next start; saying so once is enough.
   if (next !== editorLanguage) notify({ text: t('editorLanguageRestart') });
   agentSettings.render();
@@ -2353,9 +2304,6 @@ projectRootLabel.addEventListener('contextmenu', (event) => {
   clearTreeSelection();
   showContextMenu(event);
 });
-document.addEventListener('click', closeContextMenu);
-window.addEventListener('blur', closeContextMenu);
-window.addEventListener('resize', closeContextMenu);
 
 window.addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase();
@@ -2366,7 +2314,6 @@ window.addEventListener('keydown', (event) => {
 
 window.addEventListener('keydown', (event) => {
   if (inputDialog.open || projectDialog.open || settingsDialog.open) return;
-  if (event.key === 'Escape') closeContextMenu();
   if (primaryKey(event) && event.key.toLowerCase() === 'c' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntry(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 'v' && copiedEntryPath && fileTree.contains(document.activeElement)) { event.preventDefault(); pasteCopiedEntry(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 's') { event.preventDefault(); saveActiveFile(); }

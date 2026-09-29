@@ -133,6 +133,11 @@ export class ClangdClient {
   private readonly progress = new Map<number | string, string>();
   private capabilities: ServerCapabilities | null = null;
   private providersRegistered = false;
+
+  // Whether definitions, references and the like are answered for C++ files.
+  get navigates(): boolean {
+    return this.providersRegistered;
+  }
   // Tells Monaco to ask for semantic tokens again.
   private readonly semanticTokensChanged = new monaco.Emitter<void>();
   private session = 0;
