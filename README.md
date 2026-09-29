@@ -8,7 +8,7 @@ Glist Studio is a lightweight desktop IDE for Glist Engine projects, built with 
 
 - Project explorer with file operations, and the engine and plugins the project uses, to browse and edit
 - C/C++ editor powered by Monaco, with code intelligence from clangd: diagnostics, completion, go to definition, references, rename, quick fixes and formatting
-- Build, run and stop with live output, where file locations open the file at that line
+- Build, run and stop with live output, where file locations open the file at that line; the program's arguments and environment variables are set in Settings
 - With Show all targets on in Settings, a list beside Run of every CMake target, the engine's and plugins' too, as CLion has; Build, Run and Debug use the one chosen
 - A debugger with breakpoints, stepping, variables and the call stack
 - A terminal in the project folder, with the same tools on `PATH` as builds
