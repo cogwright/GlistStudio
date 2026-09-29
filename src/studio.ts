@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, promises as fs, watch, type Dirent, type FSWatcher } from 'node:fs';
+import { existsSync, promises as fs, readFileSync, watch, type Dirent, type FSWatcher } from 'node:fs';
 import { availableParallelism, homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { IPty } from 'node-pty';
@@ -52,6 +52,8 @@ interface Toolchain {
   cmake: string;
   toolBin?: string;
   generator?: string;
+  // Where the project's plugins keep their DLLs, for Windows to find them.
+  pluginBins?: string[];
 }
 
 interface ProcessResult {
@@ -406,20 +408,38 @@ export const projectsDirectory = (): string => {
   return workspaceRoot ? path.join(workspaceRoot, 'myglistapps') : host.projectsDirectory;
 };
 
+// The folders the plugins a project names keep their DLLs in: libs\bin and
+// prebuilts\bin. Plugins that do not copy their DLLs next to the app ask, in
+// their READMEs, for these to go on the app's PATH in Eclipse; here that is done
+// for them.
+export const pluginDllFolders = (projectRoot: string): string[] => {
+  let cmake = '';
+  try { cmake = readFileSync(path.join(projectRoot, 'CMakeLists.txt'), 'utf8'); } catch { return []; }
+  const workspaceRoot = findAncestorWith(projectRoot, path.join('GlistEngine', 'engine')) ?? path.resolve(projectRoot, '..', '..');
+  return pluginsInCmake(cmake).flatMap((name) => ['libs', 'prebuilts']
+    .map((folder) => path.join(workspaceRoot, 'glistplugins', name, folder, 'bin'))
+    .filter((folder) => existsSync(folder)));
+};
+
 const resolveToolchain = (projectRoot: string): Toolchain => {
   if (process.platform !== 'win32') return { cmake: 'cmake' };
+  const pluginBins = pluginDllFolders(projectRoot);
   const workspaceRoot = findAncestorWith(projectRoot, path.join('zbin', 'glistzbin-win64', 'CMake', 'bin', 'cmake.exe'));
-  if (!workspaceRoot) return { cmake: 'cmake', generator: 'MinGW Makefiles' };
+  if (!workspaceRoot) return { cmake: 'cmake', generator: 'MinGW Makefiles', pluginBins };
   const distributionRoot = path.join(workspaceRoot, 'zbin', 'glistzbin-win64');
   return {
     cmake: path.join(distributionRoot, 'CMake', 'bin', 'cmake.exe'),
     toolBin: path.join(distributionRoot, 'clang64', 'bin'),
     generator: 'MinGW Makefiles',
+    pluginBins,
   };
 };
 
 // Builds, clangd, the debugger, the app and the terminal all get this. Windows
 // spells the variable Path, so it is replaced rather than joined by a second one.
+// Plugin folders go last, as their READMEs say: some carry their own copies of
+// the compiler's runtime DLLs, such as gipDebug's libstdc++, which must not come
+// before Glist's.
 const processEnvironment = (toolchain: Toolchain): NodeJS.ProcessEnv => {
   const env: NodeJS.ProcessEnv = {};
   let searchPath = '';
@@ -428,7 +448,7 @@ const processEnvironment = (toolchain: Toolchain): NodeJS.ProcessEnv => {
     else env[key] = value;
   });
   const cmakeBin = path.isAbsolute(toolchain.cmake) ? path.dirname(toolchain.cmake) : undefined;
-  env.PATH = [toolchain.toolBin, cmakeBin, searchPath].filter(Boolean).join(path.delimiter);
+  env.PATH = [toolchain.toolBin, cmakeBin, searchPath, ...(toolchain.pluginBins ?? [])].filter(Boolean).join(path.delimiter);
   return env;
 };
 
