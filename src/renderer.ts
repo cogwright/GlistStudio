@@ -30,6 +30,7 @@ import { GitPanel, type GitPanelView } from './git-panel';
 import { notify, type Notice } from './notifications';
 import { setUpProjectPicker } from './project-picker';
 import { StudioTerminal } from './terminal';
+import { PathSettings } from './path-settings';
 import { terminalTheme } from './themes';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
 import './index.css';
@@ -1967,7 +1968,7 @@ const configureMenus = (): void => {
         }),
         { kind: 'separator' },
         { kind: 'heading', label: t('preferences') },
-        item(t('settings'), () => { settingsDialog.showModal(); void showGitSettings(); }),
+        item(t('settings'), () => { settingsDialog.showModal(); void showGitSettings(); void pathSettings.refresh(); }),
       ],
       run: [
         item(t('build'), buildProject, {
@@ -2228,11 +2229,14 @@ const agentSettings = new AgentSettings(
 );
 void agentSettings.refresh();
 void setUpUpdates();
+// Settings > PATH, whose automatic folders depend on the open project.
+const pathSettings = new PathSettings(element<HTMLElement>('#path-entries'), element<HTMLButtonElement>('#path-add'), element<HTMLElement>('#path-error'));
 element<HTMLButtonElement>('#open-settings').addEventListener('click', () => {
   settingsDialog.showModal();
   // An agent may have been installed or removed outside the studio.
   void agentSettings.refresh();
   void showGitSettings();
+  void pathSettings.refresh();
 });
 element<HTMLButtonElement>('#settings-close').addEventListener('click', () => settingsDialog.close());
 settingsLanguage.value = getLanguage();
