@@ -40,9 +40,15 @@ export interface CommitViewHooks {
   ensureIdentity(): Promise<boolean>;
 }
 
-type Group = 'conflicts' | 'changes' | 'unversioned';
+// The project's files by what happened to them, and the engine's and plugins' as 'shared'.
+type Group = 'conflicts' | 'changes' | 'unversioned' | 'shared';
 
-const groupTitle: Record<Group, TranslationKey> = { conflicts: 'mergeConflicts', changes: 'changes', unversioned: 'unversioned' };
+const byPath = (left: GlistGitChange, right: GlistGitChange): number =>
+  left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: 'base' });
+
+const kindText: Record<GlistGitRepository['kind'], TranslationKey> = { project: 'kindProject', engine: 'kindEngine', plugin: 'kindPlugin' };
+
+const groupTitle: Record<Exclude<Group, 'shared'>, TranslationKey> = { conflicts: 'mergeConflicts', changes: 'changes', unversioned: 'unversioned' };
 
 // The branch, or during a rebase the branch being rebased, or the commit HEAD is at.
 export const branchName = (repository: GlistGitRepository): string => repository.branch
@@ -58,6 +64,10 @@ export class CommitView {
   private readonly excluded = new Set<string>();
   private readonly addedUnversioned = new Set<string>();
   private readonly collapsed = new Set<Group>();
+  // The engine's and plugins' files are shared by every project, so none go into a
+  // commit until chosen, and their groups start closed.
+  private readonly includedShared = new Set<string>();
+  private readonly openShared = new Set<string>();
   private selected: string | null = null;
   // The message being written before Amend put the last commit's in its place.
   private draft = '';
@@ -72,7 +82,7 @@ export class CommitView {
   ) {
     client.onStatus(() => this.render());
     controls.refresh.addEventListener('click', () => { void client.refresh(); });
-    controls.rollback.addEventListener('click', () => { void this.rollback(this.included().filter((change) => change.state !== 'untracked')); });
+    controls.rollback.addEventListener('click', () => { void this.rollbackChosen(); });
     controls.update.addEventListener('click', () => hooks.update());
     controls.push.addEventListener('click', () => hooks.push());
     controls.commit.addEventListener('click', () => { void this.commit(false); });
@@ -93,8 +103,10 @@ export class CommitView {
     const status = this.client.status;
     const repository = this.client.repository;
     const { controls } = this;
-    controls.box.hidden = !repository;
-    [controls.rollback, controls.update, controls.push].forEach((button) => { button.disabled = !repository; });
+    const sharedChanges = this.client.dependencies.some((dependency) => dependency.changes.length > 0);
+    controls.box.hidden = !repository && !sharedChanges;
+    controls.update.disabled = !repository;
+    controls.push.disabled = !repository && this.client.dependencies.length === 0;
     this.renderBranch(repository);
     this.renderBanner(repository);
     this.rows = [];
@@ -119,7 +131,8 @@ export class CommitView {
       const wrapper = document.createElement('div');
       wrapper.className = 'commit-empty';
       wrapper.append(...nodes);
-      controls.changes.replaceChildren(wrapper);
+      controls.changes.replaceChildren(wrapper, ...this.sharedNodes());
+      this.updateButtons();
       return;
     }
     // Concluding a merge commits with git's message for it, unless one was written.
@@ -137,13 +150,47 @@ export class CommitView {
     const nodes: HTMLElement[] = [];
     groups.forEach(([group, changes]) => {
       if (changes.length === 0) return;
-      changes.sort((left, right) => left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: 'base' }));
-      nodes.push(this.groupRow(group, changes));
+      changes.sort(byPath);
+      nodes.push(this.groupRow(t(groupTitle[group as Exclude<Group, 'shared'>]), changes, {
+        open: !this.collapsed.has(group),
+        toggle: () => { if (this.collapsed.has(group)) this.collapsed.delete(group); else this.collapsed.add(group); },
+        checkbox: group !== 'conflicts',
+        title: group === 'conflicts' ? t('conflictHint') : undefined,
+      }));
       if (!this.collapsed.has(group)) changes.forEach((change) => nodes.push(this.changeRow(group, change)));
     });
     if (repository.changes.length === 0) nodes.push(this.empty(t('noChanges')));
-    controls.changes.replaceChildren(...nodes);
+    controls.changes.replaceChildren(...nodes, ...this.sharedNodes());
     this.updateButtons();
+  }
+
+  // The engine and plugins with changes, each in a group of its own.
+  private sharedNodes(): HTMLElement[] {
+    const known = new Set(this.client.dependencies.flatMap((dependency) => dependency.changes.map((change) => change.path)));
+    this.includedShared.forEach((entry) => { if (!known.has(entry)) this.includedShared.delete(entry); });
+    return this.client.dependencies.filter((dependency) => dependency.changes.length > 0).flatMap((dependency) => {
+      const changes = [...dependency.changes].sort(byPath);
+      const open = this.openShared.has(dependency.folder);
+      const header = this.groupRow(dependency.name, changes, {
+        open,
+        toggle: () => { if (open) this.openShared.delete(dependency.folder); else this.openShared.add(dependency.folder); },
+        checkbox: true,
+        title: t('sharedChanges').replace('{name}', dependency.name),
+        kind: t(kindText[dependency.kind]),
+      });
+      return [header, ...(open ? changes.map((change) => this.changeRow('shared', change, dependency)) : [])];
+    });
+  }
+
+  // The engine's and plugins' files chosen for the next commit, by repository.
+  private sharedIncluded(): Array<[GlistGitRepository, GlistGitChange[]]> {
+    return this.client.dependencies
+      .map((dependency): [GlistGitRepository, GlistGitChange[]] => [dependency, dependency.changes.filter((change) => this.includedShared.has(change.path))])
+      .filter(([, changes]) => changes.length > 0);
+  }
+
+  private isShared(change: GlistGitChange): boolean {
+    return this.client.rootOf(change.path) !== undefined;
   }
 
   // The files that go into the next commit.
@@ -153,11 +200,14 @@ export class CommitView {
   }
 
   private isIncluded(change: GlistGitChange): boolean {
+    if (this.isShared(change)) return this.includedShared.has(change.path);
     return change.state === 'untracked' ? this.addedUnversioned.has(change.path) : !this.excluded.has(change.path);
   }
 
   private setIncluded(change: GlistGitChange, on: boolean): void {
-    if (change.state === 'untracked') {
+    if (this.isShared(change)) {
+      if (on) this.includedShared.add(change.path); else this.includedShared.delete(change.path);
+    } else if (change.state === 'untracked') {
       if (on) this.addedUnversioned.add(change.path); else this.addedUnversioned.delete(change.path);
     } else if (on) this.excluded.delete(change.path);
     else this.excluded.add(change.path);
@@ -166,12 +216,13 @@ export class CommitView {
   private updateButtons(): void {
     const repository = this.client.repository;
     const merging = Boolean(repository?.operation && repository.operation !== 'rebase');
-    const hasFiles = this.included().length > 0 || merging || this.controls.amend.checked;
+    const shared = this.sharedIncluded();
+    const hasFiles = this.included().length > 0 || shared.length > 0 || merging || this.controls.amend.checked;
     const blocked = repository?.operation === 'rebase' || Boolean(repository?.changes.some((change) => change.state === 'conflict'));
-    const ready = Boolean(repository) && hasFiles && !blocked && this.controls.message.value.trim().length > 0;
+    const ready = Boolean(repository || shared.length > 0) && hasFiles && !blocked && this.controls.message.value.trim().length > 0;
     this.controls.commit.disabled = !ready;
     this.controls.commitAndPush.disabled = !ready;
-    this.controls.rollback.disabled = !repository || !this.included().some((change) => change.state !== 'untracked');
+    this.controls.rollback.disabled = ![...this.included(), ...shared.flatMap(([, changes]) => changes)].some((change) => change.state !== 'untracked');
   }
 
   private empty(text: string): HTMLElement {
@@ -233,17 +284,19 @@ export class CommitView {
     banner.replaceChildren(title, hint, buttons);
   }
 
-  private groupRow(group: Group, changes: GlistGitChange[]): HTMLElement {
+  private groupRow(label: string, changes: GlistGitChange[], options: {
+    open: boolean; toggle: () => void; checkbox: boolean; title?: string; kind?: string;
+  }): HTMLElement {
     const row = document.createElement('div');
     row.className = 'change-group';
     row.setAttribute('role', 'treeitem');
-    row.setAttribute('aria-expanded', String(!this.collapsed.has(group)));
+    row.setAttribute('aria-expanded', String(options.open));
     const arrow = document.createElement('span');
     arrow.className = 'tree-arrow';
-    arrow.classList.toggle('expanded', !this.collapsed.has(group));
+    arrow.classList.toggle('expanded', options.open);
     arrow.append(icon('chevron-right'));
     row.append(arrow);
-    if (group !== 'conflicts') {
+    if (options.checkbox) {
       const check = document.createElement('input');
       check.type = 'checkbox';
       const included = changes.filter((change) => this.isIncluded(change)).length;
@@ -256,31 +309,34 @@ export class CommitView {
       });
       row.append(check);
     }
-    const label = document.createElement('span');
-    label.className = 'change-group-label';
-    label.textContent = t(groupTitle[group]);
+    const name = document.createElement('span');
+    name.className = 'change-group-label';
+    name.textContent = label;
+    row.append(name);
+    if (options.kind) {
+      const kind = document.createElement('span');
+      kind.className = 'change-group-kind';
+      kind.textContent = options.kind;
+      row.append(kind);
+    }
     const count = document.createElement('span');
     count.className = 'change-count';
     count.textContent = String(changes.length);
-    row.append(label, count);
-    row.addEventListener('click', () => {
-      if (this.collapsed.has(group)) this.collapsed.delete(group); else this.collapsed.add(group);
-      this.render();
-    });
-    if (group === 'conflicts') {
-      row.title = t('conflictHint');
-    }
+    row.append(count);
+    row.addEventListener('click', () => { options.toggle(); this.render(); });
+    if (options.title) row.title = options.title;
     return row;
   }
 
-  private changeRow(group: Group, change: GlistGitChange): HTMLElement {
+  // A file of the project, or of an engine or plugin with its repository.
+  private changeRow(group: Group, change: GlistGitChange, shared?: GlistGitRepository): HTMLElement {
     const row = document.createElement('div');
     row.className = `change-row git-${change.state}`;
     row.tabIndex = this.selected === change.path || (!this.selected && this.rows.length === 0) ? 0 : -1;
     row.dataset.path = change.path;
     row.setAttribute('role', 'treeitem');
     row.classList.toggle('selected', this.selected === change.path);
-    const root = this.hooks.projectRoot() ?? '';
+    const root = shared?.folder ?? this.hooks.projectRoot() ?? '';
     const relative = change.path.startsWith(root) ? change.path.slice(root.length + 1) : change.path;
     const directory = relative.slice(0, Math.max(0, relative.length - baseName(relative).length - 1));
     row.title = `${relative}\n${t(stateText[change.state])}${change.from ? `: ${change.from.startsWith(root) ? change.from.slice(root.length + 1) : change.from}` : ''}`;
@@ -330,7 +386,7 @@ export class CommitView {
       else this.hooks.openDiff(change);
     });
     row.addEventListener('dblclick', () => { if (change.state !== 'deleted') this.hooks.openFile(change.path); });
-    row.addEventListener('contextmenu', (event) => { this.select(change.path); this.menu(event, group, change); });
+    row.addEventListener('contextmenu', (event) => { this.select(change.path); this.menu(event, group, change, shared?.folder); });
     this.rows.push(row);
     return row;
   }
@@ -345,7 +401,7 @@ export class CommitView {
     });
   }
 
-  private menu(event: MouseEvent, group: Group, change: GlistGitChange): void {
+  private menu(event: MouseEvent, group: Group, change: GlistGitChange, root?: string): void {
     if (group === 'conflicts') {
       showMenu(event, [
         { label: t('openFile'), run: () => this.hooks.openConflict(change.path) },
@@ -364,10 +420,11 @@ export class CommitView {
       'separator',
       ...(untracked
         ? [
-          { label: t('addToGitignore'), run: () => { void this.client.run({ kind: 'ignore', paths: [change.path] }); } },
-          { label: t('delete'), danger: true, run: () => { void this.deleteUnversioned(change); } },
+          { label: t('addToGitignore'), run: () => { void this.client.run({ kind: 'ignore', paths: [change.path] }, { root }); } },
+          // Deleting is for the project's own files; the engine's and plugins' are read-only here.
+          ...(root === undefined ? [{ label: t('delete'), danger: true, run: () => { void this.deleteUnversioned(change); } }] : []),
         ]
-        : [{ label: `${t('rollback')}...`, danger: true, run: () => { void this.rollback([change]); } }]),
+        : [{ label: `${t('rollback')}...`, danger: true, run: () => { void this.rollback([change], root); } }]),
     ]);
   }
 
@@ -388,18 +445,35 @@ export class CommitView {
     await this.client.refresh();
   }
 
-  private async rollback(changes: GlistGitChange[]): Promise<void> {
-    if (changes.length === 0) return;
-    const question = changes.length === 1
+  private confirmRollback(changes: GlistGitChange[]): boolean {
+    return window.confirm(changes.length === 1
       ? t('confirmRollbackOne').replace('{name}', baseName(changes[0].path))
-      : t('confirmRollback').replace('{count}', String(changes.length));
-    if (!window.confirm(question)) return;
-    await this.client.run({ kind: 'rollback', paths: changes.map((change) => change.path) });
+      : t('confirmRollback').replace('{count}', String(changes.length)));
+  }
+
+  private async rollback(changes: GlistGitChange[], root?: string): Promise<void> {
+    if (changes.length === 0 || !this.confirmRollback(changes)) return;
+    await this.client.run({ kind: 'rollback', paths: changes.map((change) => change.path) }, { root });
+  }
+
+  // The checked files, the project's and the engine's and plugins', each in its own repository.
+  private async rollbackChosen(): Promise<void> {
+    const tracked = (changes: GlistGitChange[]): GlistGitChange[] => changes.filter((change) => change.state !== 'untracked');
+    const project = tracked(this.included());
+    const shared = this.sharedIncluded().map(([dependency, changes]): [GlistGitRepository, GlistGitChange[]] => [dependency, tracked(changes)])
+      .filter(([, changes]) => changes.length > 0);
+    const all = [...project, ...shared.flatMap(([, changes]) => changes)];
+    if (all.length === 0 || !this.confirmRollback(all)) return;
+    if (project.length > 0) await this.client.run({ kind: 'rollback', paths: project.map((change) => change.path) });
+    for (const [dependency, changes] of shared) {
+      await this.client.run({ kind: 'rollback', paths: changes.map((change) => change.path) }, { root: dependency.folder });
+    }
   }
 
   private keydown(event: KeyboardEvent): void {
     const index = this.rows.findIndex((row) => row.dataset.path === this.selected);
-    const change = this.client.repository?.changes.find((entry) => entry.path === this.selected);
+    const change = [...(this.client.repository?.changes ?? []), ...this.client.dependencies.flatMap((dependency) => dependency.changes)]
+      .find((entry) => entry.path === this.selected);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       const next = this.rows[Math.min(this.rows.length - 1, Math.max(0, index + (event.key === 'ArrowDown' ? 1 : -1)))];
@@ -449,15 +523,29 @@ export class CommitView {
     this.updateButtons();
   }
 
+  // The project's chosen files, then the engine's and plugins', each in its own
+  // repository with the same message. Amend is only ever for the project's.
   async commit(andPush: boolean): Promise<void> {
     const repository = this.client.repository;
     const message = this.controls.message.value.trim();
-    if (!repository || !message) { this.controls.message.focus(); return; }
-    if (!(await this.hooks.ensureIdentity())) return;
-    const paths = this.included().flatMap((change) => (change.from ? [change.path, change.from] : [change.path]));
+    if (!message) { this.controls.message.focus(); return; }
+    const pathsOf = (changes: GlistGitChange[]): string[] => changes.flatMap((change) => (change.from ? [change.path, change.from] : [change.path]));
+    const paths = pathsOf(this.included());
     const amend = this.controls.amend.checked;
-    const result = await this.client.run({ kind: 'commit', message, paths, amend }, { busy: 'committing' });
-    if (!result.success) return;
+    const merging = Boolean(repository?.operation && repository.operation !== 'rebase');
+    const shared = this.sharedIncluded();
+    const project = Boolean(repository) && (paths.length > 0 || amend || merging);
+    if (!project && shared.length === 0) return;
+    if (!(await this.hooks.ensureIdentity())) return;
+    if (project) {
+      const result = await this.client.run({ kind: 'commit', message, paths, amend }, { busy: 'committing' });
+      if (!result.success) return;
+    }
+    for (const [dependency, changes] of shared) {
+      const result = await this.client.run({ kind: 'commit', message, paths: pathsOf(changes), amend: false }, { root: dependency.folder, busy: 'committing' });
+      if (!result.success) return;
+      changes.forEach((change) => this.includedShared.delete(change.path));
+    }
     notify({ text: t('committedMessage').replace('{subject}', message.split('\n')[0]), kind: 'success' });
     this.controls.message.value = '';
     this.controls.amend.checked = false;

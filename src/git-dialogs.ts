@@ -180,56 +180,96 @@ export const identityDialog = async (current: GlistGitIdentity): Promise<GlistGi
   return values ? { name: String(values.name), email: String(values.email) } : null;
 };
 
-// What Push would send and where, with the commits listed.
-export const pushDialog = async (outgoing: Awaited<ReturnType<Window['glistAPI']['gitOutgoing']>>, upstream: string | null):
-  Promise<{ remote: string; tags: boolean; force: boolean } | null> => {
+export type Outgoing = Awaited<ReturnType<Window['glistAPI']['gitOutgoing']>>;
+
+// A repository Push can send: the project's, or an engine's or plugin's with its folder.
+export interface PushEntry {
+  name: string;
+  root?: string;
+  outgoing: Outgoing;
+  upstream: string | null;
+}
+
+export interface PushChoice {
+  entries: PushEntry[];
+  // The project's remote, when it has more than one.
+  remote: string | null;
+  tags: boolean;
+  force: boolean;
+}
+
+// What Push would send and where, with the commits listed. With the engine or
+// plugins among them, each repository has a checkbox, as JetBrains' Push has.
+export const pushDialog = async (entries: PushEntry[]): Promise<PushChoice | null> => {
   const body = document.createElement('div');
   body.className = 'push-summary';
-  const target = document.createElement('p');
-  target.className = 'push-target';
-  target.textContent = t('pushTarget').replace('{branch}', outgoing.branch ?? '').replace('{remote}', outgoing.remote ?? '');
-  body.append(target);
-  if (!upstream) {
-    const fresh = document.createElement('p');
-    fresh.className = 'dialog-hint';
-    fresh.textContent = t('pushNewBranch');
-    body.append(fresh);
-  }
-  const list = document.createElement('ul');
-  list.className = 'push-commits';
-  outgoing.commits.forEach((commit) => {
-    const item = document.createElement('li');
-    const hash = document.createElement('span');
-    hash.className = 'push-hash';
-    hash.textContent = commit.short;
-    const subject = document.createElement('span');
-    subject.className = 'push-subject';
-    subject.textContent = commit.subject;
-    const when = document.createElement('span');
-    when.className = 'push-time';
-    when.textContent = relativeTime(commit.date * 1000);
-    item.append(hash, subject, when);
-    list.append(item);
+  const chosen = new Map<PushEntry, HTMLInputElement>();
+  entries.forEach((entry) => {
+    const { outgoing } = entry;
+    const target = document.createElement('p');
+    target.className = 'push-target';
+    const text = t('pushTarget').replace('{branch}', outgoing.branch ?? '').replace('{remote}', outgoing.remote ?? '');
+    if (entries.length > 1) {
+      const label = document.createElement('label');
+      label.className = 'checkbox-row push-repository';
+      const check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = outgoing.commits.length > 0;
+      chosen.set(entry, check);
+      const name = document.createElement('strong');
+      name.textContent = entry.name;
+      label.append(check, name, document.createTextNode(`: ${text}`));
+      target.append(label);
+    } else target.textContent = text;
+    body.append(target);
+    if (!entry.upstream) {
+      const fresh = document.createElement('p');
+      fresh.className = 'dialog-hint';
+      fresh.textContent = t('pushNewBranch');
+      body.append(fresh);
+    }
+    const list = document.createElement('ul');
+    list.className = 'push-commits';
+    outgoing.commits.forEach((commit) => {
+      const item = document.createElement('li');
+      const hash = document.createElement('span');
+      hash.className = 'push-hash';
+      hash.textContent = commit.short;
+      const subject = document.createElement('span');
+      subject.className = 'push-subject';
+      subject.textContent = commit.subject;
+      const when = document.createElement('span');
+      when.className = 'push-time';
+      when.textContent = relativeTime(commit.date * 1000);
+      item.append(hash, subject, when);
+      list.append(item);
+    });
+    if (outgoing.commits.length === 0) {
+      const nothing = document.createElement('li');
+      nothing.className = 'push-nothing';
+      nothing.textContent = t('pushNothing');
+      list.append(nothing);
+    }
+    body.append(list);
   });
-  if (outgoing.commits.length === 0) {
-    const nothing = document.createElement('li');
-    nothing.className = 'push-nothing';
-    nothing.textContent = t('pushNothing');
-    list.append(nothing);
-  }
-  body.append(list);
+  const project = entries.find((entry) => entry.root === undefined);
   const fields: Field[] = [];
-  if (outgoing.remotes.length > 1) {
+  if (project && project.outgoing.remotes.length > 1) {
     fields.push({
-      kind: 'choice', key: 'remote', label: t('remoteLabel'), value: outgoing.remote ?? outgoing.remotes[0],
-      options: outgoing.remotes.map((remote) => ({ value: remote, label: remote })),
+      kind: 'choice', key: 'remote', label: t('remoteLabel'), value: project.outgoing.remote ?? project.outgoing.remotes[0],
+      options: project.outgoing.remotes.map((remote) => ({ value: remote, label: remote })),
     });
   }
   fields.push({ kind: 'checkbox', key: 'tags', label: t('pushTags') });
   fields.push({ kind: 'checkbox', key: 'force', label: t('forcePush'), hint: t('forcePushHint') });
   const values = await formDialog({ title: t('pushCommits'), fields, submit: t('pushButton'), body });
   if (!values) return null;
-  return { remote: String(values.remote ?? outgoing.remote), tags: Boolean(values.tags), force: Boolean(values.force) };
+  return {
+    entries: entries.filter((entry) => chosen.get(entry)?.checked ?? true),
+    remote: typeof values.remote === 'string' ? values.remote : project?.outgoing.remote ?? null,
+    tags: Boolean(values.tags),
+    force: Boolean(values.force),
+  };
 };
 
 // The folder name a repository's address suggests: MyGame for .../MyGame.git.

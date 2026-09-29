@@ -22,10 +22,10 @@ import { isMac, primaryKey, shortcutLabel } from './shortcuts';
 import { setUpGlistInstaller } from './glist-installer';
 import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
-import { cloneDialog, formDialog, identityDialog, pushDialog } from './git-dialogs';
+import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { GitEditor } from './git-editor';
 import { GitPanel, type GitPanelView } from './git-panel';
-import { notify } from './notifications';
+import { notify, type Notice } from './notifications';
 import { setUpProjectPicker } from './project-picker';
 import { StudioTerminal } from './terminal';
 import { terminalTheme } from './themes';
@@ -819,12 +819,12 @@ const readVersion = async (revision: string | null, filePath: string): Promise<G
 const workingVersion = async (filePath: string): Promise<GlistGitFileVersion> => {
   const open = findOpenFile(pathUri(filePath));
   if (open) return { text: open.model.getValue() };
-  try { return { text: await window.glistAPI.readFile(filePath) }; } catch { return { text: null }; }
+  try { return { text: await readContents(filePath) }; } catch { return { text: null }; }
 };
 
-const versionLabel = (revision: string | null, version: GlistGitFileVersion): string => {
+const versionLabel = (revision: string | null, version: GlistGitFileVersion, filePath: string): string => {
   const name = revision === null ? t('diffWorking')
-    : revision === 'HEAD' ? t('diffHead').replace('{hash}', git.repository?.head?.slice(0, 7) ?? '')
+    : revision === 'HEAD' ? t('diffHead').replace('{hash}', git.repositoryOf(filePath)?.head?.slice(0, 7) ?? '')
       : t('diffCommit').replace('{hash}', revision.startsWith('stash@') ? revision : revision.slice(0, 7));
   return version.text === null ? `${name}: ${t('diffMissing')}` : name;
 };
@@ -837,8 +837,8 @@ const fillDiff = async (tab: DiffTab): Promise<void> => {
   if (tab.original.isDisposed()) return;
   if (tab.original.getValue() !== (left.text ?? '')) tab.original.setValue(left.text ?? '');
   if (tab.modified.getValue() !== (right.text ?? '')) tab.modified.setValue(right.text ?? '');
-  tab.leftLabel = tab.base ? versionLabel(tab.base, left) : t('diffMissing');
-  tab.rightLabel = versionLabel(tab.target, right);
+  tab.leftLabel = tab.base ? versionLabel(tab.base, left, tab.file) : t('diffMissing');
+  tab.rightLabel = versionLabel(tab.target, right, tab.file);
   tab.message = [left, right].some((version) => version.binary) ? t('diffBinary')
     : [left, right].some((version) => version.tooLarge) ? t('diffTooLarge') : '';
   if (activeFilePath === tab.path) showDiffTab(tab);
@@ -885,7 +885,7 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
 // A file against its last commit.
 const openWorkingDiff = (filePath: string): Promise<void> => {
   const change = git.changeOf(filePath);
-  return openGitDiff({ file: filePath, from: change?.from, base: git.repository?.head ? 'HEAD' : null, target: null });
+  return openGitDiff({ file: filePath, from: change?.from, base: git.repositoryOf(filePath)?.head ? 'HEAD' : null, target: null });
 };
 
 element<HTMLButtonElement>('#diff-previous').addEventListener('click', () => diffEditor?.goToDiff('previous'));
@@ -905,7 +905,7 @@ diffOpenButton.addEventListener('click', () => {
 diffRollbackButton.addEventListener('click', () => {
   const tab = activeDiff();
   if (!tab || !window.confirm(t('confirmRollbackOne').replace('{name}', tab.name))) return;
-  void git.run({ kind: 'rollback', paths: [tab.file] });
+  void git.run({ kind: 'rollback', paths: [tab.file] }, { root: git.rootOf(tab.file) });
 });
 
 // Git: all of it hidden and silent until it is turned on in Settings.
@@ -980,34 +980,51 @@ const ensureIdentity = async (): Promise<boolean> => {
   return result.success;
 };
 
+// The project's commits, and the engine's and plugins' that have any to send, in one dialog.
 const pushChanges = async (): Promise<void> => {
   const repository = git.repository;
-  if (!repository) return;
-  let outgoing: Awaited<ReturnType<typeof window.glistAPI.gitOutgoing>>;
-  try { outgoing = await window.glistAPI.gitOutgoing(); } catch (error) {
-    notify({ text: t('gitFailed'), detail: errorText(error), kind: 'error' });
+  const entries: PushEntry[] = [];
+  let problem: Notice | null = null;
+  if (repository) {
+    try {
+      const outgoing = await window.glistAPI.gitOutgoing();
+      if (!outgoing.remote) {
+        problem = { text: t('noRemotes'), kind: 'error', actions: [{ label: t('addRemote'), run: () => { showGitPanel('remotes'); void gitPanel.addRemote(); } }] };
+      } else if (!outgoing.branch) {
+        problem = { text: t('detached').replace('{hash}', repository.head?.slice(0, 7) ?? ''), kind: 'error' };
+      } else entries.push({ name: repository.name, outgoing, upstream: repository.upstream });
+    } catch (error) {
+      problem = { text: t('gitFailed'), detail: errorText(error), kind: 'error' };
+    }
+  }
+  for (const dependency of git.dependencies.filter((entry) => entry.branch && entry.ahead > 0)) {
+    try {
+      const outgoing = await window.glistAPI.gitOutgoing(dependency.folder);
+      if (outgoing.remote && outgoing.commits.length > 0) entries.push({ name: dependency.name, root: dependency.folder, outgoing, upstream: dependency.upstream });
+    } catch { /* It is left out; its own Git tab tells why. */ }
+  }
+  if (entries.length === 0) {
+    if (problem) notify(problem);
     return;
   }
-  if (!outgoing.remote) {
-    notify({ text: t('noRemotes'), kind: 'error', actions: [{ label: t('addRemote'), run: () => { showGitPanel('remotes'); void gitPanel.addRemote(); } }] });
-    return;
-  }
-  if (!outgoing.branch) {
-    notify({ text: t('detached').replace('{hash}', repository.head?.slice(0, 7) ?? ''), kind: 'error' });
-    return;
-  }
-  const choice = await pushDialog(outgoing, repository.upstream);
+  const choice = await pushDialog(entries);
   if (!choice) return;
-  await git.run({
-    kind: 'push',
-    remote: choice.remote === outgoing.remote && repository.upstream ? undefined : choice.remote,
-    tags: choice.tags,
-    force: choice.force,
-  }, {
-    busy: 'pushing',
-    success: t('pushedTo').replace('{target}', `${choice.remote}/${outgoing.branch}`),
-    failureActions: (result) => (result.rejected ? [{ label: t('updateProject'), run: () => { void updateProject(); } }] : []),
-  });
+  for (const entry of choice.entries) {
+    const remote = (entry.root === undefined ? choice.remote : null) ?? entry.outgoing.remote ?? undefined;
+    const target = `${remote}/${entry.outgoing.branch}`;
+    await git.run({
+      kind: 'push',
+      // A branch that follows its remote pushes there; otherwise it starts following the one chosen.
+      remote: remote === entry.outgoing.remote && entry.upstream ? undefined : remote,
+      tags: choice.tags,
+      force: choice.force,
+    }, {
+      root: entry.root,
+      busy: 'pushing',
+      success: entries.length > 1 ? t('pushedRepository').replace('{name}', entry.name).replace('{target}', target) : t('pushedTo').replace('{target}', target),
+      failureActions: (result) => (result.rejected && entry.root === undefined ? [{ label: t('updateProject'), run: () => { void updateProject(); } }] : []),
+    });
+  }
 };
 
 const updateProject = async (): Promise<void> => {
@@ -1022,20 +1039,35 @@ const updateProject = async (): Promise<void> => {
 
 const fetchAll = (): Promise<GlistGitResult> => git.run({ kind: 'fetch' }, { busy: 'fetching', success: t('fetched') });
 
-const checkoutRef = async (ref: string): Promise<void> => {
-  const success = t('checkedOut').replace('{name}', ref);
-  const result = await git.run({ kind: 'checkout', ref }, { success, quiet: (outcome) => Boolean(outcome.localChanges) });
-  if (result.localChanges) {
-    notify({
-      text: result.message,
-      kind: 'error',
-      actions: [{ label: t('smartCheckout'), run: () => { void git.run({ kind: 'checkout', ref, smart: true }, { success }); } }],
+// The engine and plugins, from their remotes. They are shared by every project, so
+// this is its own command and asks first, instead of being part of Update Project.
+const updateDependencies = async (): Promise<void> => {
+  const targets = git.dependencies.filter((repository) => repository.upstream);
+  if (targets.length === 0) { notify({ text: t('noDependencyUpstream') }); return; }
+  if (!window.confirm(t('confirmUpdateDependencies').replace('{names}', targets.map((repository) => repository.name).join(', ')))) return;
+  for (const repository of targets) {
+    await git.run({ kind: 'pull', rebase: git.updateByRebase }, {
+      root: repository.folder,
+      busy: 'updating',
+      success: t('updatedRepository').replace('{name}', repository.name).replace('{upstream}', repository.upstream ?? ''),
     });
   }
 };
 
-const newBranch = async (start?: string, label?: string): Promise<void> => {
-  const from = label ?? git.repository?.branch ?? 'HEAD';
+const checkoutRef = async (ref: string, root?: string): Promise<void> => {
+  const success = t('checkedOut').replace('{name}', ref);
+  const result = await git.run({ kind: 'checkout', ref }, { root, success, quiet: (outcome) => Boolean(outcome.localChanges) });
+  if (result.localChanges) {
+    notify({
+      text: result.message,
+      kind: 'error',
+      actions: [{ label: t('smartCheckout'), run: () => { void git.run({ kind: 'checkout', ref, smart: true }, { root, success }); } }],
+    });
+  }
+};
+
+const newBranch = async (start?: string, label?: string, root?: string): Promise<void> => {
+  const from = label ?? git.repositoryAt(root)?.branch ?? 'HEAD';
   const values = await formDialog({
     title: t('newBranchFrom').replace('{start}', from),
     submit: t('create'),
@@ -1045,7 +1077,7 @@ const newBranch = async (start?: string, label?: string): Promise<void> => {
     ],
   });
   if (!values) return;
-  await git.run({ kind: 'create-branch', name: String(values.name), start, checkout: Boolean(values.checkout) });
+  await git.run({ kind: 'create-branch', name: String(values.name), start, checkout: Boolean(values.checkout) }, { root });
 };
 
 const cloneProject = async (): Promise<void> => {
@@ -1086,7 +1118,7 @@ const commitPane = new CommitView({
   push: element<HTMLButtonElement>('#commit-push'),
 }, git, {
   projectRoot: () => activeProject?.root ?? null,
-  openDiff: (change) => { void openGitDiff({ file: change.path, from: change.from, base: git.repository?.head ? 'HEAD' : null, target: null }); },
+  openDiff: (change) => { void openWorkingDiff(change.path); },
   openFile: (filePath) => { void openFile(filePath, baseName(filePath)); },
   openConflict: (filePath) => {
     void openFile(filePath, baseName(filePath)).then((opened) => {
@@ -1109,17 +1141,15 @@ const gitPanel = new GitPanel(gitPanelElement, git, {
   openCommitDiff: (file, base, commit) => { void openGitDiff({ file: file.path, from: file.from, base: file.state === 'added' ? null : base, target: commit }); },
   push: () => { void pushChanges(); },
   update: () => { void updateProject(); },
-  newBranch: (start, label) => { void newBranch(start, label); },
-  checkout: (ref) => { void checkoutRef(ref); },
+  newBranch: (start, label, root) => { void newBranch(start, label, root); },
+  checkout: (ref, root) => { void checkoutRef(ref, root); },
 });
 
 const gitEditor = new GitEditor(editor, git, {
-  pathOf: (model) => {
-    const file = findOpenFile(model.uri);
-    return file && !file.readOnly ? file.path : null;
-  },
+  pathOf: (model) => findOpenFile(model.uri)?.path ?? null,
+  readOnly: (model) => findOpenFile(model.uri)?.readOnly ?? true,
   openDiff: (filePath) => { void openWorkingDiff(filePath); },
-  showCommit: (hash) => { showPanel('git'); void gitPanel.showCommit(hash); },
+  showCommit: (hash, filePath) => { showPanel('git'); void gitPanel.showCommit(hash, git.rootOf(filePath)); },
   markResolved: (filePath) => {
     const file = findOpenFile(pathUri(filePath));
     void (file && isDirty(file) ? saveFile(file) : Promise.resolve()).then(() => git.run({ kind: 'mark-resolved', paths: [filePath] }));
@@ -1281,11 +1311,9 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
   const label = document.createElement('span'); label.className = 'tree-label'; label.textContent = entry.name;
   row.append(arrow, kind, label);
   container.append(row);
-  if (!options.readOnly) {
-    row.dataset.path = entry.path;
-    if (entry.isDirectory) row.dataset.directory = 'true';
-    decorateTreeRow(row);
-  }
+  row.dataset.path = entry.path;
+  if (entry.isDirectory) row.dataset.directory = 'true';
+  decorateTreeRow(row);
   const select = (): void => {
     if (!options.readOnly) { selectTreeEntry(entry, row); return; }
     // Selecting one would aim New File and Delete at the engine.
@@ -1932,12 +1960,14 @@ const configureMenus = (): void => {
     }
     const file = activeFile();
     const change = file ? git.changeOf(file.path) : undefined;
-    const tracked = Boolean(file && !file.readOnly && change?.state !== 'untracked' && !git.isIgnored(file.path));
+    // Engine and plugin files count too, in their own repositories.
+    const tracked = Boolean(file && git.repositoryOf(file.path) && change?.state !== 'untracked' && !git.isIgnored(file.path));
     return [
       item(t('commitMenu'), showCommitView, { shortcut: 'Ctrl+K' }),
       item(t('pushMenu'), () => { void pushChanges(); }, { shortcut: 'Ctrl+Shift+K', disabled: !repository.branch }),
       item(t('updateProject'), () => { void updateProject(); }, { shortcut: 'Ctrl+T', disabled: !repository.upstream }),
       item(t('fetch'), () => { void fetchAll(); }),
+      ...(git.dependencies.length > 0 ? [item(t('updateDependencies'), () => { void updateDependencies(); })] : []),
       { kind: 'separator' },
       item(t('newBranch'), () => { void newBranch(); }),
       item(t('branchesMenu'), () => showGitPanel('branches')),
@@ -1950,7 +1980,9 @@ const configureMenus = (): void => {
       item(t('showHistory'), () => { if (file) showGitHistory(file.path); }, { disabled: !tracked }),
       item(t(gitEditor.isBlaming() ? 'hideAnnotate' : 'annotate'), () => { void gitEditor.toggleBlame(); }, { disabled: !tracked }),
       item(`${t('rollback')}...`, () => {
-        if (file && window.confirm(t('confirmRollbackOne').replace('{name}', file.name))) void git.run({ kind: 'rollback', paths: [file.path] });
+        if (file && window.confirm(t('confirmRollbackOne').replace('{name}', file.name))) {
+          void git.run({ kind: 'rollback', paths: [file.path] }, { root: git.rootOf(file.path) });
+        }
       }, { disabled: !change || change.state === 'untracked' || change.state === 'conflict' }),
     ];
   };
@@ -1964,6 +1996,18 @@ const configureMenus = (): void => {
     });
     const local = branches.filter((branch) => !branch.remote).sort((left, right) => Number(right.current) - Number(left.current));
     const remote = branches.filter((branch) => branch.remote).slice(0, 12);
+    // Each of the engine and plugins with its branch, opening it in the Git tab.
+    const dependencyItem = (dependency: GlistGitRepository): MenuAction => item(dependency.name, () => {
+      showPanel('git');
+      gitPanel.showRepository(dependency.folder, 'branches');
+    }, {
+      hint: [branchName(dependency), dependency.ahead ? `↑${dependency.ahead}` : '', dependency.behind ? `↓${dependency.behind}` : ''].join(' ').trim(),
+    });
+    const dependencies = git.dependencies.length === 0 ? [] : [
+      { kind: 'heading' as const, label: t('engineAndPlugins') },
+      ...git.dependencies.map(dependencyItem),
+      item(t('updateDependencies'), () => { void updateDependencies(); }, { disabled: !git.dependencies.some((dependency) => dependency.upstream) }),
+    ];
     return [
       item(t('updateProject'), () => { void updateProject(); }, { shortcut: 'Ctrl+T', disabled: !repository.upstream }),
       item(t('commitMenu'), showCommitView, { shortcut: 'Ctrl+K' }),
@@ -1972,8 +2016,9 @@ const configureMenus = (): void => {
       item(t('newBranch'), () => { void newBranch(); }),
       ...(local.length > 0 ? [{ kind: 'heading' as const, label: t('localBranches') }, ...local.map(branchItem)] : []),
       ...(remote.length > 0 ? [{ kind: 'heading' as const, label: t('remoteBranches') }, ...remote.map(branchItem)] : []),
+      ...dependencies,
       { kind: 'separator' },
-      item(t('manageBranches'), () => showGitPanel('branches')),
+      item(t('manageBranches'), () => { showPanel('git'); gitPanel.showRepository(undefined, 'branches'); }),
     ];
   };
 

@@ -20,8 +20,13 @@ export interface GitPanelHooks {
   openCommitDiff(file: GlistGitCommitFile, base: string | null, commit: string): void;
   push(): void;
   update(): void;
-  newBranch(start?: string, label?: string): void;
-  checkout(ref: string): void;
+  newBranch(start?: string, label?: string, root?: string): void;
+  checkout(ref: string, root?: string): void;
+}
+
+// The repository the views show: the project's, or an engine's or plugin's by its folder.
+interface Place {
+  root?: string;
 }
 
 const views: Array<[GitPanelView, TranslationKey]> = [
@@ -140,7 +145,7 @@ class LogView {
   private generation = 0;
   private searchTimer = 0;
 
-  constructor(private readonly client: GitClient, private readonly hooks: GitPanelHooks) {
+  constructor(private readonly client: GitClient, private readonly hooks: GitPanelHooks, private readonly place: Place) {
     const toolbar = element('div', 'git-toolbar');
     this.search.type = 'search';
     this.search.placeholder = t('searchCommits');
@@ -157,7 +162,7 @@ class LogView {
     this.pathChip.addEventListener('click', () => { this.path = null; void this.load(); });
     toolbar.append(this.search, this.refSelect, this.pathChip, element('span', 'git-toolbar-space'),
       toolButton('refresh', 'gitRefresh', () => { void this.load(); }),
-      toolButton('repo-fetch', 'fetch', () => { void this.client.run({ kind: 'fetch' }, { busy: 'fetching', success: t('fetched') }).then(() => this.load()); }));
+      toolButton('repo-fetch', 'fetch', () => { void this.client.run({ kind: 'fetch' }, { root: this.place.root, busy: 'fetching', success: t('fetched') }).then(() => this.load()); }));
     this.list.tabIndex = 0;
     this.list.setAttribute('role', 'grid');
     this.list.addEventListener('scroll', () => {
@@ -174,6 +179,14 @@ class LogView {
   showHistory(filePath: string): void {
     this.path = filePath;
     void this.load();
+  }
+
+  // Another repository: a file's history or a branch picked belong to the one before.
+  repositoryChanged(): void {
+    this.path = null;
+    this.pendingRef = null;
+    this.refSelect.value = '';
+    this.selected = null;
   }
 
   // A branch's or tag's own history.
@@ -205,6 +218,8 @@ class LogView {
     this.generation += 1;
     this.commits = [];
     this.complete = false;
+    // A page still coming for the load before is dropped when it arrives.
+    this.loading = false;
     this.pathChip.hidden = !this.path;
     this.pathChip.replaceChildren(icon('history'), t('historyOf').replace('{name}', this.path ? baseName(this.path) : ''), icon('close'));
     await this.fillRefs();
@@ -214,7 +229,7 @@ class LogView {
   private async fillRefs(): Promise<void> {
     const current = this.refSelect.value;
     let branches: GlistGitBranch[] = [];
-    try { branches = await window.glistAPI.gitBranches(); } catch { /* No repository. */ }
+    try { branches = await window.glistAPI.gitBranches(this.place.root); } catch { /* No repository. */ }
     const option = (value: string, label: string): HTMLOptionElement => {
       const node = element('option', undefined, label);
       node.value = value;
@@ -229,8 +244,8 @@ class LogView {
   }
 
   private async more(): Promise<void> {
-    if (this.loading || this.complete || !this.client.repository) {
-      if (!this.client.repository) this.render();
+    if (this.loading || this.complete || !this.client.repositoryAt(this.place.root)) {
+      if (!this.client.repositoryAt(this.place.root)) this.render();
       return;
     }
     this.loading = true;
@@ -238,6 +253,7 @@ class LogView {
     const limit = 300;
     try {
       const page = await window.glistAPI.gitLog({
+        root: this.place.root,
         ref: this.refSelect.value || undefined,
         text: this.search.value.trim() || undefined,
         path: this.path ?? undefined,
@@ -265,7 +281,7 @@ class LogView {
     }
     const rows = graphRows(this.commits);
     const lanes = Math.min(maxLanes, Math.max(1, ...rows.map((row) => row.width)));
-    const current = this.client.repository?.branch ?? null;
+    const current = this.client.repositoryAt(this.place.root)?.branch ?? null;
     this.list.style.setProperty('--graph-width', `${lanes * laneWidth + 6}px`);
     this.list.replaceChildren(...this.commits.map((commit, index) => {
       const row = element('div', 'log-row');
@@ -313,12 +329,12 @@ class LogView {
       return;
     }
     let details: GlistGitCommitDetails;
-    try { details = await window.glistAPI.gitCommitDetails(hash); } catch (error) {
+    try { details = await window.glistAPI.gitCommitDetails(hash, this.place.root); } catch (error) {
       this.details.replaceChildren(element('p', 'git-empty', errorText(error)));
       return;
     }
     if (this.selected !== hash) return;
-    const current = this.client.repository?.branch ?? null;
+    const current = this.client.repositoryAt(this.place.root)?.branch ?? null;
     const heading = element('h3', 'log-details-subject', details.subject);
     const meta = element('p', 'log-details-meta');
     const copy = element('button', 'log-hash');
@@ -337,20 +353,22 @@ class LogView {
     }
     const body = details.message.split('\n').slice(1).join('\n').trim();
     if (body) nodes.push(element('pre', 'log-details-body', body));
-    nodes.push(fileList(details.files, this.hooks.projectRoot() ?? '', (file) => this.hooks.openCommitDiff(file, details.base, details.hash)));
+    nodes.push(fileList(details.files, this.client.repositoryAt(this.place.root)?.folder ?? this.hooks.projectRoot() ?? '',
+      (file) => this.hooks.openCommitDiff(file, details.base, details.hash)));
     this.details.replaceChildren(...nodes);
   }
 
   private menu(commit: GlistGitCommit): MenuEntry[] {
     const run = (action: GlistGitAction, success?: string): void => {
-      void this.client.run(action, { success }).then(() => this.load());
+      void this.client.run(action, { root: this.place.root, success }).then(() => this.load());
     };
-    const branch = this.client.repository?.branch;
+    const { root } = this.place;
+    const branch = this.client.repositoryAt(root)?.branch;
     return [
       { label: t('copyHash'), run: () => { void navigator.clipboard.writeText(commit.hash); } },
       'separator',
-      { label: t('checkoutRevision'), run: () => this.hooks.checkout(commit.hash) },
-      { label: t('newBranch'), run: () => this.hooks.newBranch(commit.hash, commit.short) },
+      { label: t('checkoutRevision'), run: () => this.hooks.checkout(commit.hash, root) },
+      { label: t('newBranch'), run: () => this.hooks.newBranch(commit.hash, commit.short, root) },
       {
         label: t('newTag'),
         run: () => {
@@ -376,7 +394,7 @@ class LogView {
 
   private async reset(commit: GlistGitCommit): Promise<void> {
     const values = await formDialog({
-      title: t('resetTitle').replace('{branch}', this.client.repository?.branch ?? 'HEAD').replace('{hash}', commit.short),
+      title: t('resetTitle').replace('{branch}', this.client.repositoryAt(this.place.root)?.branch ?? 'HEAD').replace('{hash}', commit.short),
       hint: commit.subject,
       submit: t('reset'),
       danger: true,
@@ -394,7 +412,7 @@ class LogView {
     if (!values) return;
     const mode = values.mode === 'soft' || values.mode === 'hard' ? values.mode : 'mixed';
     if (mode === 'hard' && !window.confirm(t('confirmResetHard'))) return;
-    await this.client.run({ kind: 'reset', commit: commit.hash, mode });
+    await this.client.run({ kind: 'reset', commit: commit.hash, mode }, { root: this.place.root });
     await this.load();
   }
 }
@@ -404,22 +422,29 @@ class BranchesView {
   private readonly list = element('div', 'git-list');
   private selected: { kind: 'local' | 'remote' | 'tag'; name: string } | null = null;
 
-  constructor(private readonly client: GitClient, private readonly hooks: GitPanelHooks, private readonly showLog: (ref: string) => void) {
+  constructor(
+    private readonly client: GitClient,
+    private readonly hooks: GitPanelHooks,
+    private readonly place: Place,
+    private readonly showLog: (ref: string) => void,
+  ) {
     const toolbar = element('div', 'git-toolbar');
     toolbar.append(
-      textButton('newBranch', () => hooks.newBranch(), 'add'),
+      textButton('newBranch', () => hooks.newBranch(undefined, undefined, this.place.root), 'add'),
       element('span', 'git-toolbar-space'),
       toolButton('refresh', 'gitRefresh', () => { void this.load(); }),
-      toolButton('repo-fetch', 'fetch', () => { void this.client.run({ kind: 'fetch' }, { busy: 'fetching', success: t('fetched') }).then(() => this.load()); }),
+      toolButton('repo-fetch', 'fetch', () => {
+        void this.client.run({ kind: 'fetch' }, { root: this.place.root, busy: 'fetching', success: t('fetched') }).then(() => this.load());
+      }),
     );
     this.element.append(toolbar, this.list);
   }
 
   async load(): Promise<void> {
-    if (!this.client.repository) { this.list.replaceChildren(); return; }
+    if (!this.client.repositoryAt(this.place.root)) { this.list.replaceChildren(); return; }
     let branches: GlistGitBranch[] = [];
     let tags: GlistGitTag[] = [];
-    try { [branches, tags] = await Promise.all([window.glistAPI.gitBranches(), window.glistAPI.gitTags()]); } catch (error) {
+    try { [branches, tags] = await Promise.all([window.glistAPI.gitBranches(this.place.root), window.glistAPI.gitTags(this.place.root)]); } catch (error) {
       this.list.replaceChildren(element('p', 'git-empty', errorText(error)));
       return;
     }
@@ -470,21 +495,22 @@ class BranchesView {
       this.list.querySelectorAll('.git-row.selected').forEach((other) => other.classList.remove('selected'));
       row.classList.add('selected');
     });
-    row.addEventListener('dblclick', () => { if (!row.classList.contains('current')) this.hooks.checkout(name); });
+    row.addEventListener('dblclick', () => { if (!row.classList.contains('current')) this.hooks.checkout(name, this.place.root); });
     row.addEventListener('contextmenu', (event) => { row.click(); showMenu(event, this.menu(kind, name, row.classList.contains('current'))); });
     return row;
   }
 
   private menu(kind: 'local' | 'remote' | 'tag', name: string, current: boolean): MenuEntry[] {
-    const branch = this.client.repository?.branch ?? 'HEAD';
+    const { root } = this.place;
+    const branch = this.client.repositoryAt(root)?.branch ?? 'HEAD';
     const run = async (action: GlistGitAction, success?: string): Promise<GlistGitResult> => {
-      const result = await this.client.run(action, { success });
+      const result = await this.client.run(action, { root, success });
       await this.load();
       return result;
     };
     const entries: MenuEntry[] = [
-      { label: t('checkout'), run: () => this.hooks.checkout(name), disabled: current },
-      { label: t('newBranch'), run: () => this.hooks.newBranch(name, name) },
+      { label: t('checkout'), run: () => this.hooks.checkout(name, root), disabled: current },
+      { label: t('newBranch'), run: () => this.hooks.newBranch(name, name, root) },
       { label: t('gitLogMenu'), run: () => this.showLog(name) },
     ];
     if (kind !== 'tag') {
@@ -525,9 +551,10 @@ class BranchesView {
   private async deleteBranch(remote: boolean, name: string): Promise<void> {
     const question = remote ? 'confirmDeleteRemoteBranch' : 'confirmDeleteBranch';
     if (!window.confirm(t(question).replace('{name}', name))) return;
-    const result = await this.client.run({ kind: 'delete-branch', name, remote }, { quiet: (outcome) => Boolean(outcome.notMerged) });
+    const { root } = this.place;
+    const result = await this.client.run({ kind: 'delete-branch', name, remote }, { root, quiet: (outcome) => Boolean(outcome.notMerged) });
     if (result.notMerged && window.confirm(t('confirmForceDelete').replace('{name}', name))) {
-      await this.client.run({ kind: 'delete-branch', name, remote, force: true });
+      await this.client.run({ kind: 'delete-branch', name, remote, force: true }, { root });
     }
     await this.load();
   }
@@ -537,21 +564,21 @@ class RemotesView {
   readonly element = element('div', 'git-remotes');
   private readonly list = element('div', 'git-list');
 
-  constructor(private readonly client: GitClient) {
+  constructor(private readonly client: GitClient, private readonly place: Place) {
     const toolbar = element('div', 'git-toolbar');
     toolbar.append(
       textButton('addRemote', () => { void this.add(); }, 'add'),
       element('span', 'git-toolbar-space'),
       toolButton('refresh', 'gitRefresh', () => { void this.load(); }),
-      toolButton('repo-fetch', 'fetch', () => { void this.client.run({ kind: 'fetch' }, { busy: 'fetching', success: t('fetched') }); }),
+      toolButton('repo-fetch', 'fetch', () => { void this.client.run({ kind: 'fetch' }, { root: this.place.root, busy: 'fetching', success: t('fetched') }); }),
     );
     this.element.append(toolbar, this.list);
   }
 
   async load(): Promise<void> {
-    if (!this.client.repository) { this.list.replaceChildren(); return; }
+    if (!this.client.repositoryAt(this.place.root)) { this.list.replaceChildren(); return; }
     let remotes: GlistGitRemote[] = [];
-    try { remotes = await window.glistAPI.gitRemotes(); } catch (error) {
+    try { remotes = await window.glistAPI.gitRemotes(this.place.root); } catch (error) {
       this.list.replaceChildren(element('p', 'git-empty', errorText(error)));
       return;
     }
@@ -565,7 +592,7 @@ class RemotesView {
       name.append(icon('remote'), element('span', undefined, remote.name));
       row.append(name, element('span', 'git-row-detail', remote.push && remote.push !== remote.fetch ? `${remote.fetch}  ↑ ${remote.push}` : remote.fetch));
       const menu = (event: MouseEvent): void => showMenu(event, [
-        { label: t('fetch'), run: () => { void this.client.run({ kind: 'fetch' }, { busy: 'fetching', success: t('fetched') }); } },
+        { label: t('fetch'), run: () => { void this.client.run({ kind: 'fetch' }, { root: this.place.root, busy: 'fetching', success: t('fetched') }); } },
         { label: t('editRemote'), run: () => { void this.edit(remote); } },
         'separator',
         {
@@ -573,7 +600,7 @@ class RemotesView {
           danger: true,
           run: () => {
             if (window.confirm(t('confirmRemoveRemote').replace('{name}', remote.name))) {
-              void this.client.run({ kind: 'remove-remote', name: remote.name }).then(() => this.load());
+              void this.client.run({ kind: 'remove-remote', name: remote.name }, { root: this.place.root }).then(() => this.load());
             }
           },
         },
@@ -586,7 +613,7 @@ class RemotesView {
 
   async add(): Promise<void> {
     let remotes: GlistGitRemote[] = [];
-    try { remotes = await window.glistAPI.gitRemotes(); } catch { /* None yet. */ }
+    try { remotes = await window.glistAPI.gitRemotes(this.place.root); } catch { /* None yet. */ }
     const values = await formDialog({
       title: t('addRemote').replace('...', ''),
       submit: t('create'),
@@ -595,7 +622,7 @@ class RemotesView {
         { kind: 'text', key: 'url', label: t('remoteUrl'), placeholder: 'https://github.com/user/project.git', required: true, autofocus: true },
       ],
       validate: async (entered) => {
-        const result = await window.glistAPI.gitRun({ kind: 'add-remote', name: String(entered.name), url: String(entered.url) });
+        const result = await window.glistAPI.gitRun({ kind: 'add-remote', name: String(entered.name), url: String(entered.url) }, this.place.root);
         return result.success ? null : result.message;
       },
     });
@@ -609,7 +636,7 @@ class RemotesView {
       submit: t('saveButton'),
       fields: [{ kind: 'text', key: 'url', label: t('remoteUrl'), value: remote.fetch, required: true }],
     });
-    if (values) await this.client.run({ kind: 'set-remote-url', name: remote.name, url: String(values.url) });
+    if (values) await this.client.run({ kind: 'set-remote-url', name: remote.name, url: String(values.url) }, { root: this.place.root });
     await this.load();
   }
 }
@@ -620,7 +647,7 @@ class StashesView {
   private readonly details = element('div', 'log-details');
   private selected: string | null = null;
 
-  constructor(private readonly client: GitClient, private readonly hooks: GitPanelHooks) {
+  constructor(private readonly client: GitClient, private readonly hooks: GitPanelHooks, private readonly place: Place) {
     const toolbar = element('div', 'git-toolbar');
     toolbar.append(
       textButton('stashChanges', () => { void this.stash(); }, 'git-stash'),
@@ -642,14 +669,14 @@ class StashesView {
       ],
     });
     if (!values) return;
-    await this.client.run({ kind: 'stash', message: String(values.message), untracked: Boolean(values.untracked) });
+    await this.client.run({ kind: 'stash', message: String(values.message), untracked: Boolean(values.untracked) }, { root: this.place.root });
     await this.load();
   }
 
   async load(): Promise<void> {
-    if (!this.client.repository) { this.list.replaceChildren(); this.details.replaceChildren(); return; }
+    if (!this.client.repositoryAt(this.place.root)) { this.list.replaceChildren(); this.details.replaceChildren(); return; }
     let stashes: GlistGitStash[] = [];
-    try { stashes = await window.glistAPI.gitStashes(); } catch (error) {
+    try { stashes = await window.glistAPI.gitStashes(this.place.root); } catch (error) {
       this.list.replaceChildren(element('p', 'git-empty', errorText(error)));
       return;
     }
@@ -693,11 +720,12 @@ class StashesView {
 
   private async showFiles(name: string): Promise<void> {
     try {
-      const details = await window.glistAPI.gitCommitDetails(name);
+      const details = await window.glistAPI.gitCommitDetails(name, this.place.root);
       if (this.selected !== name) return;
       this.details.replaceChildren(
         element('h3', 'log-details-subject', details.subject),
-        fileList(details.files, this.hooks.projectRoot() ?? '', (file) => this.hooks.openCommitDiff(file, details.base, name)),
+        fileList(details.files, this.client.repositoryAt(this.place.root)?.folder ?? this.hooks.projectRoot() ?? '',
+          (file) => this.hooks.openCommitDiff(file, details.base, name)),
       );
     } catch (error) {
       this.details.replaceChildren(element('p', 'git-empty', errorText(error)));
@@ -705,13 +733,13 @@ class StashesView {
   }
 
   private async unstash(stash: GlistGitStash, pop: boolean): Promise<void> {
-    await this.client.run({ kind: 'unstash', name: stash.name, pop });
+    await this.client.run({ kind: 'unstash', name: stash.name, pop }, { root: this.place.root });
     await this.load();
   }
 
   private async drop(stash: GlistGitStash): Promise<void> {
     if (!window.confirm(t('confirmDropStash').replace('{name}', stash.message))) return;
-    await this.client.run({ kind: 'drop-stash', name: stash.name });
+    await this.client.run({ kind: 'drop-stash', name: stash.name }, { root: this.place.root });
     await this.load();
   }
 }
@@ -753,9 +781,15 @@ class ConsoleView {
   }
 }
 
+// A repository's name in the picker, with what it is: the project, the engine or a plugin.
+const kindText: Record<GlistGitRepository['kind'], TranslationKey> = { project: 'kindProject', engine: 'kindEngine', plugin: 'kindPlugin' };
+
 export class GitPanel {
   private view: GitPanelView = 'log';
   private readonly tabs = new Map<GitPanelView, HTMLButtonElement>();
+  // Which repository the views show; the picker sets it.
+  private readonly place: Place = {};
+  private readonly picker = element('select', 'git-select git-repository-select');
   private readonly log: LogView;
   private readonly branches: BranchesView;
   private readonly remotes: RemotesView;
@@ -768,12 +802,19 @@ export class GitPanel {
   private visible = false;
 
   constructor(host: HTMLElement, private readonly client: GitClient, hooks: GitPanelHooks) {
-    this.log = new LogView(client, hooks);
-    this.branches = new BranchesView(client, hooks, (ref) => { this.show('log', false); this.stale.delete('log'); this.log.showRef(ref); });
-    this.remotes = new RemotesView(client);
-    this.stashes = new StashesView(client, hooks);
+    this.log = new LogView(client, hooks, this.place);
+    this.branches = new BranchesView(client, hooks, this.place, (ref) => { this.show('log', false); this.stale.delete('log'); this.log.showRef(ref); });
+    this.remotes = new RemotesView(client, this.place);
+    this.stashes = new StashesView(client, hooks, this.place);
     const tabs = element('div', 'git-panel-tabs');
     tabs.setAttribute('role', 'tablist');
+    // The engine and plugins the project is built with have repositories of their own.
+    this.picker.title = t('repositoryChoice');
+    this.picker.dataset.i18nTitle = 'repositoryChoice';
+    this.picker.setAttribute('aria-label', t('repositoryChoice'));
+    this.picker.dataset.i18nAriaLabel = 'repositoryChoice';
+    this.picker.addEventListener('change', () => this.showRepository(this.picker.value || undefined));
+    tabs.append(this.picker);
     views.forEach(([view, key]) => {
       const tab = element('button', 'git-panel-tab', t(key));
       tab.dataset.i18n = key;
@@ -785,15 +826,34 @@ export class GitPanel {
     });
     host.append(tabs, this.body);
     client.onStatus((status) => {
-      const repository = status?.repository;
-      const signature = repository ? [repository.root, repository.head, repository.branch, repository.upstream, repository.ahead,
-        repository.behind, repository.stashes, repository.operation].join('|') : '';
+      this.fillPicker();
+      const repositories = [...(status?.repository ? [status.repository] : []), ...(status?.dependencies ?? [])];
+      const signature = repositories.map((repository) => [repository.root, repository.head, repository.branch, repository.upstream,
+        repository.ahead, repository.behind, repository.stashes, repository.operation].join('|')).join('\n');
       if (signature === this.seen) return;
       this.seen = signature;
       views.forEach(([view]) => this.stale.add(view));
       if (this.visible) this.show(this.view);
     });
+    this.fillPicker();
     this.show('log', false);
+  }
+
+  private fillPicker(): void {
+    const repositories = [...(this.client.repository ? [this.client.repository] : []), ...this.client.dependencies];
+    // The engine or plugin shown may not be one this project uses.
+    if (this.place.root !== undefined && !this.client.repositoryAt(this.place.root)) {
+      this.place.root = undefined;
+      this.log.repositoryChanged();
+      views.forEach(([view]) => this.stale.add(view));
+    }
+    this.picker.hidden = this.client.dependencies.length === 0;
+    this.picker.replaceChildren(...repositories.map((repository) => {
+      const option = element('option', undefined, `${repository.name} (${t(kindText[repository.kind])})`);
+      option.value = repository.kind === 'project' ? '' : repository.folder;
+      return option;
+    }));
+    this.picker.value = this.place.root ?? '';
   }
 
   // The panel is on screen or not; views load when they are seen.
@@ -815,19 +875,32 @@ export class GitPanel {
     if (view !== 'console') void (content as { load(): Promise<void> }).load();
   }
 
+  // The views on another repository: the project's, or an engine's or plugin's by its folder.
+  showRepository(root: string | undefined, view?: GitPanelView): void {
+    if (root !== this.place.root) {
+      this.place.root = root;
+      this.picker.value = root ?? '';
+      this.log.repositoryChanged();
+      views.forEach(([key]) => this.stale.add(key));
+    }
+    this.show(view ?? this.view);
+  }
+
+  // One file's history, in the repository it belongs to.
   showHistory(filePath: string): void {
+    this.showRepository(this.client.rootOf(filePath), 'log');
     this.show('log', false);
     this.stale.delete('log');
     this.log.showHistory(filePath);
   }
 
-  async showCommit(hash: string): Promise<void> {
-    this.show('log');
+  async showCommit(hash: string, root?: string): Promise<void> {
+    this.showRepository(root, 'log');
     await this.log.select(hash);
   }
 
   async addRemote(): Promise<void> {
-    this.show('remotes');
+    this.showRepository(undefined, 'remotes');
     await this.remotes.add();
   }
 

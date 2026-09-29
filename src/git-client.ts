@@ -22,6 +22,8 @@ export interface GitClientHooks {
 }
 
 export interface RunOptions {
+  // An engine's or plugin's folder; the project's repository when absent.
+  root?: string;
   // Shown while it runs.
   busy?: TranslationKey;
   // Shown when it worked.
@@ -37,6 +39,9 @@ const keepsFiles = new Set<GlistGitAction['kind']>([
   'commit', 'create-tag', 'delete-tag', 'fetch', 'push', 'add-remote', 'remove-remote', 'set-remote-url', 'identity',
   'drop-stash', 'rename-branch', 'delete-branch',
 ]);
+
+// What changes files every project using an engine or plugin shares, so it is asked about first.
+const sharedChanges = new Set<GlistGitAction['kind']>(['rollback', 'checkout', 'merge', 'rebase', 'reset', 'cherry-pick', 'revert']);
 
 export class GitClient {
   status: GlistGitStatus | null = null;
@@ -56,6 +61,25 @@ export class GitClient {
 
   get repository(): GlistGitRepository | null {
     return this.enabled ? this.status?.repository ?? null : null;
+  }
+
+  // The engine's and plugins' own repositories.
+  get dependencies(): GlistGitRepository[] {
+    return this.enabled ? this.status?.dependencies ?? [] : [];
+  }
+
+  // The repository a file is in: an engine's or plugin's, or else the project's.
+  repositoryOf(filePath: string): GlistGitRepository | null {
+    return this.dependencies.find((repository) => within(filePath, repository.folder)) ?? this.repository;
+  }
+
+  // The root that names a file's repository in calls: an engine's or plugin's folder, or undefined for the project's.
+  rootOf(filePath: string): string | undefined {
+    return this.dependencies.find((repository) => within(filePath, repository.folder))?.folder;
+  }
+
+  repositoryAt(root: string | undefined): GlistGitRepository | null {
+    return root === undefined ? this.repository : this.dependencies.find((repository) => repository.folder === root) ?? null;
   }
 
   // How Update Project brings in commits: merging, or rebasing onto them.
@@ -125,11 +149,15 @@ export class GitClient {
   }
 
   async run(action: GlistGitAction, options: RunOptions = {}): Promise<GlistGitResult> {
+    const shared = options.root === undefined ? null : this.repositoryAt(options.root);
+    if (shared && sharedChanges.has(action.kind) && !window.confirm(t('confirmShared').replace('{name}', shared.name))) {
+      return { success: false, message: '' };
+    }
     if (!(await this.hooks.saveAll())) return { success: false, message: t('saveFailed') };
     this.hooks.busy(options.busy ? t(options.busy) : t('gitWorking'));
     let result: GlistGitResult;
     try {
-      result = await window.glistAPI.gitRun(action);
+      result = await window.glistAPI.gitRun(action, options.root);
     } catch (error) {
       result = { success: false, message: error instanceof Error ? error.message : String(error) };
     } finally {
@@ -156,11 +184,16 @@ export class GitClient {
 
   private publish(status: GlistGitStatus | null): void {
     this.status = status;
-    this.changes = new Map((status?.repository?.changes ?? []).map((change) => [change.path, change]));
-    this.ignored = status?.repository?.ignored ?? [];
+    const repositories = [...(status?.repository ? [status.repository] : []), ...(status?.dependencies ?? [])];
+    this.changes = new Map(repositories.flatMap((repository) => repository.changes).map((change) => [change.path, change]));
+    this.ignored = repositories.flatMap((repository) => repository.ignored);
     this.listeners.forEach((listener) => listener(this.enabled ? status : null));
   }
 }
+
+// Whether a path is a folder or inside it.
+const within = (filePath: string, folder: string): boolean => filePath === folder
+  || filePath.startsWith(folder.endsWith('/') || folder.endsWith('\\') ? folder : `${folder}${folder.includes('\\') ? '\\' : '/'}`);
 
 // A file's state, as a word for tooltips and a letter for lists.
 export const stateText: Record<GlistGitFileState, TranslationKey> = {

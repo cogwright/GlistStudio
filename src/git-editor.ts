@@ -15,10 +15,12 @@ import { fullTime, shortDate } from './time';
 // above conflict markers to keep one side or both.
 
 export interface GitEditorHooks {
-  // The project file a model is the tab of, or null.
+  // The file a model is the tab of, or null.
   pathOf(model: monaco.editor.ITextModel): string | null;
+  // Engine and plugin files open read-only: their marks and blame show, but nothing edits them.
+  readOnly(model: monaco.editor.ITextModel): boolean;
   openDiff(filePath: string): void;
-  showCommit(hash: string): void;
+  showCommit(hash: string, filePath: string): void;
   markResolved(filePath: string): void;
 }
 
@@ -72,8 +74,9 @@ export class GitEditor {
         && (target.element as HTMLElement | null)?.classList.contains('git-gutter') && target.position) {
         this.showPopup(target.position.lineNumber);
       } else if (target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS && target.position) {
-        const line = this.blames.get(this.path() ?? '')?.[target.position.lineNumber - 1];
-        if (line && !line.uncommitted) hooks.showCommit(line.commit);
+        const filePath = this.path();
+        const line = filePath ? this.blames.get(filePath)?.[target.position.lineNumber - 1] : undefined;
+        if (filePath && line && !line.uncommitted) hooks.showCommit(line.commit, filePath);
       }
     });
     document.addEventListener('pointerdown', (event) => {
@@ -98,7 +101,7 @@ export class GitEditor {
   async update(): Promise<void> {
     const model = this.editor.getModel();
     const filePath = this.path();
-    const repository = this.client.repository;
+    const repository = filePath ? this.client.repositoryOf(filePath) : null;
     if (!model || !filePath || !repository || this.client.isIgnored(filePath)) {
       this.changes = [];
       this.markers.clear();
@@ -185,7 +188,7 @@ export class GitEditor {
       label,
       button('arrow-up', t('previousChange'), () => step(-1), index === 0),
       button('arrow-down', t('nextChange'), () => step(1), index === this.changes.length - 1),
-      button('discard', t('rollbackChange'), () => { this.rollback(model, change, before); this.hidePopup(); }),
+      ...(this.hooks.readOnly(model) ? [] : [button('discard', t('rollbackChange'), () => { this.rollback(model, change, before); this.hidePopup(); })]),
       button('diff', t('showDiff'), () => { this.hidePopup(); this.hooks.openDiff(filePath); }),
       button('close', t('close'), () => this.hidePopup()),
     );
@@ -369,7 +372,7 @@ export class GitEditor {
       onDidChange: this.lensChanged.event,
       provideCodeLenses: (model) => {
         const filePath = this.hooks.pathOf(model);
-        if (!this.client.enabled || !filePath || this.client.changeOf(filePath)?.state !== 'conflict') {
+        if (!this.client.enabled || !filePath || this.hooks.readOnly(model) || this.client.changeOf(filePath)?.state !== 'conflict') {
           return { lenses: [], dispose: () => undefined };
         }
         const lenses = conflictBlocks(model.getLinesContent()).flatMap((block) => (['mine', 'theirs', 'both'] as const).map((choice) => ({
