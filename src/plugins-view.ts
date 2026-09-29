@@ -147,13 +147,39 @@ export class PluginsView {
     return paragraph;
   }
 
+  // The name with Install or Update at its right, the description, then where
+  // an installed plugin stands with Add to Project or Remove from Project beside it.
   private row(plugin: GlistPlugin, gitFound: boolean): HTMLElement {
     const row = document.createElement('div');
     row.className = 'plugin-row';
-    const name = document.createElement('div');
+    const busy = this.busy.has(plugin.name);
+    const button = (label: string, className: string, run: () => void): HTMLButtonElement => {
+      const node = document.createElement('button');
+      node.type = 'button';
+      node.className = className;
+      node.textContent = label;
+      node.addEventListener('click', run);
+      return node;
+    };
+    const header = document.createElement('div');
+    header.className = 'plugin-header';
+    const name = document.createElement('span');
     name.className = 'plugin-name';
     name.textContent = plugin.name;
-    row.append(name);
+    name.title = plugin.name;
+    header.append(name);
+    const updatable = plugin.installed && plugin.official && plugin.branch === plugin.defaultBranch && (plugin.behind ?? 0) > 0;
+    if (busy) {
+      const working = document.createElement('span');
+      working.className = 'plugin-working';
+      working.textContent = t('pluginWorking');
+      header.append(working);
+    } else if (!plugin.installed && gitFound && plugin.url) {
+      header.append(button(t('installPlugin'), 'plugin-action', () => { void this.install(plugin); }));
+    } else if (updatable) {
+      header.append(button(t('updatePlugin'), 'plugin-action primary', () => { void this.run(plugin.name, () => updatePlugin(plugin.name)); }));
+    }
+    row.append(header);
     if (plugin.description) {
       const description = document.createElement('div');
       description.className = 'plugin-description';
@@ -162,38 +188,19 @@ export class PluginsView {
       row.append(description);
     }
     const state = this.state(plugin);
-    if (state) {
-      const line = document.createElement('div');
-      line.className = `plugin-state${(plugin.behind ?? 0) > 0 ? ' update' : ''}`;
+    const canUse = plugin.installed && !busy && this.hooks.hasProject();
+    if (state || canUse) {
+      const footer = document.createElement('div');
+      footer.className = 'plugin-footer';
+      const line = document.createElement('span');
+      line.className = `plugin-state${updatable ? ' update' : ''}`;
       line.textContent = state;
-      row.append(line);
-    }
-    const actions = document.createElement('div');
-    actions.className = 'plugin-actions';
-    const button = (label: string, run: () => void, primary = false): void => {
-      const node = document.createElement('button');
-      node.type = 'button';
-      node.className = primary ? 'primary' : '';
-      node.textContent = label;
-      node.disabled = this.busy.has(plugin.name);
-      node.addEventListener('click', run);
-      actions.append(node);
-    };
-    if (this.busy.has(plugin.name)) {
-      const working = document.createElement('span');
-      working.className = 'plugin-working';
-      working.textContent = t('pluginWorking');
-      actions.append(working);
-    } else if (!plugin.installed) {
-      if (gitFound && plugin.url) button(t('installPlugin'), () => { void this.install(plugin); }, true);
-    } else {
-      const updatable = plugin.official && plugin.branch === plugin.defaultBranch && (plugin.behind ?? 0) > 0;
-      if (updatable) button(t('updatePlugin'), () => { void this.run(plugin.name, () => updatePlugin(plugin.name)); }, true);
-      if (this.hooks.hasProject()) {
-        button(plugin.used ? t('removeFromProject') : t('addToProject'), () => { void this.use(plugin, !plugin.used); });
+      footer.append(line);
+      if (canUse) {
+        footer.append(button(plugin.used ? t('removeFromProject') : t('addToProject'), 'plugin-link', () => { void this.use(plugin, !plugin.used); }));
       }
+      row.append(footer);
     }
-    if (actions.childElementCount > 0) row.append(actions);
     return row;
   }
 

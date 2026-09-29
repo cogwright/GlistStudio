@@ -840,14 +840,18 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .plugins-heading { padding: 10px 12px 4px; color: var(--ui-fg-muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .plugins-message { margin: 8px 12px; color: var(--ui-fg-muted); font-size: 12px; line-height: 1.4; }
 .plugin-row { padding: 8px 12px; border-bottom: 1px solid var(--ui-border); }
-.plugin-name { color: var(--ui-fg-strong); font-size: 12px; font-weight: 600; }
+.plugin-header { display: flex; min-height: 22px; align-items: center; gap: 8px; }
+.plugin-name { min-width: 0; flex: 1; overflow: hidden; color: var(--ui-fg-strong); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .plugin-description { display: -webkit-box; margin-top: 2px; overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.plugin-state { margin-top: 3px; color: var(--ui-fg-muted); font-size: 11px; }
+.plugin-footer { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+.plugin-state { min-width: 0; flex: 1; color: var(--ui-fg-muted); font-size: 11px; }
 .plugin-state.update { color: var(--ui-accent); }
-.plugin-actions { display: flex; gap: 6px; margin-top: 6px; }
-.plugin-actions button { height: 24px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); font-size: 11px; cursor: pointer; }
-.plugin-actions button.primary { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
-.plugin-actions button:disabled { cursor: default; opacity: .5; }
+.plugin-action { flex: none; height: 22px; padding: 0 10px; border: 1px solid var(--ui-accent); border-radius: 4px; color: var(--ui-accent); background: transparent; font-size: 11px; cursor: pointer; }
+.plugin-action:hover { background: color-mix(in srgb, var(--ui-accent) 15%, transparent); }
+.plugin-action.primary { color: var(--ui-on-accent); background: var(--ui-accent); }
+.plugin-action.primary:hover { background: color-mix(in srgb, var(--ui-accent) 85%, var(--ui-contrast)); }
+.plugin-link { flex: none; padding: 0; border: 0; color: var(--ui-accent); background: transparent; font-size: 11px; cursor: pointer; }
+.plugin-link:hover { text-decoration: underline; }
 .plugin-working { color: var(--ui-fg-muted); font-size: 11px; }
 .activity-button.has-updates { position: relative; }
 .activity-button.has-updates::after { position: absolute; top: 8px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--ui-accent); content: ''; }
