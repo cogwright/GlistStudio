@@ -14,6 +14,8 @@ export interface DebuggerHost {
   log(text: string, kind?: 'normal' | 'success' | 'error'): void;
   // The session state changed; toolbars and menus follow.
   changed(): void;
+  // There is no debugger, and Settings can install one.
+  missingDebugger?(): void;
   views: { status: HTMLElement; variables: HTMLElement; stack: HTMLElement; breakpoints: HTMLElement };
 }
 
@@ -115,6 +117,7 @@ export class Debugger {
     const started = await window.glistAPI.startDebugging().catch((error: Error) => ({ success: false, message: error.message } as GlistDebugStart));
     if (!started.success || !started.program) {
       this.host.log(`\n${started.message}\n`, 'error');
+      if (started.missingDebugger) this.host.missingDebugger?.();
       this.setState('idle');
       return;
     }

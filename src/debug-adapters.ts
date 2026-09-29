@@ -26,8 +26,9 @@ const onPath = (name: string, env: NodeJS.ProcessEnv): string | null => {
 
 // lldb-dap, which Xcode ships and LLVM installs, was lldb-vscode before
 // LLVM 18, and Linux distributions add the version to either name. GDB speaks
-// DAP itself from version 14.
-export const findDebugAdapter = async (env: NodeJS.ProcessEnv): Promise<DebugAdapter | null> => {
+// DAP itself from version 14. The GDB Settings installs on Windows comes first.
+export const findDebugAdapter = async (env: NodeJS.ProcessEnv, installedGdb?: string | null): Promise<DebugAdapter | null> => {
+  if (installedGdb && existsSync(installedGdb)) return { command: installedGdb, args: ['--interpreter=dap'], flavor: 'gdb' };
   if (process.platform === 'darwin') {
     try {
       const { stdout } = await run('xcrun', ['--find', 'lldb-dap']);
