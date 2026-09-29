@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -92,6 +93,40 @@ try {
   await openProjectAt(linked);
   await studio.buildProject();
   assert.ok(existsSync(path.join(outside, 'Release', 'CMakeCache.txt')), 'the linked folder is kept');
+
+  // Targets, as CMake describes them: the app first, then the rest, each built, run or refused on its own.
+  const multi = path.join(apps, 'Multi');
+  mkdirSync(multi, { recursive: true });
+  writeFileSync(path.join(multi, 'CMakeLists.txt'), `cmake_minimum_required(VERSION 3.14)\nproject(Multi CXX)
+add_executable(Multi main.cpp)\nadd_executable(Tool tool.cpp)\nadd_library(Shapes STATIC shapes.cpp)
+add_custom_target(Step COMMAND \${CMAKE_COMMAND} -E echo step)\n`);
+  writeFileSync(path.join(multi, 'main.cpp'), 'int main() { return 0; }\n');
+  writeFileSync(path.join(multi, 'tool.cpp'), '#include <cstdio>\nint main() { std::puts("the tool ran"); return 0; }\n');
+  writeFileSync(path.join(multi, 'shapes.cpp'), 'int area() { return 4; }\n');
+  // Configured before targets were asked for: the list configures once to have them.
+  execFileSync('cmake', ['-S', multi, '-B', path.join(multi, '_build', 'Release'), '-DCMAKE_BUILD_TYPE=Release'], { stdio: 'ignore' });
+  await openProjectAt(multi);
+  const targets = await studio.listTargets();
+  assert.deepEqual(targets.map((target) => [target.name, target.type, target.group, target.app]), [
+    ['Multi', 'executable', 'project', true], ['Shapes', 'library', 'project', false],
+    ['Step', 'utility', 'project', false], ['Tool', 'executable', 'project', false],
+  ]);
+  assert.equal(targets.find((target) => target.name === 'Tool').artifact, path.join(multi, '_build', 'Release', 'Tool'));
+  // Only the chosen target is built, and Run starts its program.
+  await studio.setTarget('Tool');
+  sent.length = 0;
+  const ran = await studio.runProject();
+  assert.equal(ran.success, true, ran.message);
+  assert.ok(await until(() => sent.some(([channel, text]) => channel === 'run:output' && String(text).includes('the tool ran'))));
+  assert.equal(existsSync(path.join(multi, '_build', 'Release', 'Multi')), false, 'the app was not built');
+  // A library is built, but there is nothing to run.
+  await studio.setTarget('Shapes');
+  assert.equal((await studio.buildProject()).success, true);
+  assert.match((await studio.runProject()).message, /Shapes is not a program/);
+  // A name that could pass for an option is refused, which leaves nothing chosen: everything is built.
+  await studio.setTarget('--target=Tool');
+  assert.equal((await studio.buildProject()).success, true);
+  assert.ok(existsSync(path.join(multi, '_build', 'Release', 'Multi')));
 } finally {
   stopWatchingConfiguration();
   rmSync(root, { recursive: true, force: true });

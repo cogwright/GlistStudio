@@ -20,6 +20,7 @@ import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isMac, primaryKey, shortcutLabel } from './shortcuts';
 import { setUpGlistInstaller } from './glist-installer';
+import { TargetPicker } from './targets';
 import { canUpdate, checkForUpdates, setUpUpdates } from './updates';
 import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
@@ -80,6 +81,8 @@ const buildButton = element<HTMLButtonElement>('#build-project');
 const runButton = element<HTMLButtonElement>('#run-project');
 const stopButton = element<HTMLButtonElement>('#stop-project');
 const debugButton = element<HTMLButtonElement>('#debug-project');
+// Settings > Build > Show all targets: the target Build, Run and Debug use.
+const targetPicker = new TargetPicker(element<HTMLSelectElement>('#target-select'), () => updateButtons());
 const debugControls = element<HTMLElement>('#debug-controls');
 const debugContinueButton = element<HTMLButtonElement>('#debug-continue');
 const debugPauseButton = element<HTMLButtonElement>('#debug-pause');
@@ -450,8 +453,8 @@ const updateButtons = (): void => {
   const hasProject = Boolean(activeProject);
   saveButton.disabled = !activeFile();
   buildButton.disabled = !hasProject || isBuildRunning || isStarting;
-  runButton.disabled = !hasProject || isRunRunning || isBuildRunning || isStarting;
-  debugButton.disabled = !hasProject || isBuildRunning || isStarting || debug.active;
+  runButton.disabled = !hasProject || isRunRunning || isBuildRunning || isStarting || !targetPicker.runnable;
+  debugButton.disabled = !hasProject || isBuildRunning || isStarting || debug.active || !targetPicker.runnable;
   debugStartButton.disabled = debugButton.disabled;
   stopButton.disabled = !isBuildRunning && !isRunRunning && !debug.active;
   debugControls.hidden = !debug.active || debug.state === 'starting';
@@ -1723,6 +1726,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
   void clangd.start(selected.root);
   debug.setProject(selected.root);
+  targetPicker.projectChanged(selected.root);
 };
 
 const openProjectWith = async (open: () => Promise<GlistProjectInfo | null>): Promise<void> => {
@@ -1834,6 +1838,7 @@ const buildProject = async (): Promise<void> => {
     appendOutput('\n── BUILD ────────────────────────────────────────\n');
     const result = await window.glistAPI.buildProject();
     clangd.buildFinished();
+    void targetPicker.refresh();
     appendOutput(result.message, result.success ? 'success' : 'error');
     setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
   });
@@ -1846,6 +1851,7 @@ const runProject = async (): Promise<void> => {
     showPanel('output');
     const result = await window.glistAPI.runProject();
     clangd.buildFinished();
+    void targetPicker.refresh();
     appendOutput(result.message, result.success ? 'success' : 'error');
   });
 };
@@ -1859,6 +1865,7 @@ const debugProject = async (): Promise<void> => {
     appendOutput('\n── DEBUG ────────────────────────────────────────\n');
     await debug.start();
     clangd.buildFinished();
+    void targetPicker.refresh();
   });
 };
 
@@ -1967,10 +1974,10 @@ const configureMenus = (): void => {
           shortcut: 'Ctrl+Shift+B', disabled: !activeProject || isBuildRunning || isStarting,
         }),
         item(t('run'), runProject, {
-          shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning || isStarting,
+          shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning || isStarting || !targetPicker.runnable,
         }),
         item(t('debug'), debugProject, {
-          shortcut: 'F6', disabled: !activeProject || isBuildRunning || isStarting || debug.active,
+          shortcut: 'F6', disabled: !activeProject || isBuildRunning || isStarting || debug.active || !targetPicker.runnable,
         }),
         { kind: 'separator' },
         item(t('stop'), stopProject, { shortcut: 'Shift+F5', disabled: !isRunRunning && !isBuildRunning && !debug.active }),
@@ -2341,9 +2348,13 @@ autoConfigureInput.addEventListener('change', () => {
   void window.glistAPI.setAutoConfigure(autoConfigureInput.checked);
 });
 window.glistAPI.onCompileCommands(() => clangd.compileCommandsChanged());
+const showTargetsInput = element<HTMLInputElement>('#show-targets');
+showTargetsInput.checked = targetPicker.shown;
+showTargetsInput.addEventListener('change', () => { targetPicker.shown = showTargetsInput.checked; });
 // A failure says where to look.
 window.glistAPI.onConfigured((result) => {
   clangd.buildFinished();
+  void targetPicker.refresh();
   appendOutput(result.message, result.success ? 'success' : 'error');
   if (!result.success) notify({ text: result.message, kind: 'error', actions: [{ label: t('showOutput'), run: () => showPanel('output') }] });
 });

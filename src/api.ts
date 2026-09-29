@@ -32,6 +32,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   writeFile: 'project:write-file',
   buildProject: 'project:build',
   runProject: 'project:run',
+  listTargets: 'project:list-targets',
+  setTarget: 'project:set-target',
   stopProject: 'project:stop',
   setLanguage: 'settings:set-language',
   setTheme: 'settings:set-theme',

@@ -192,6 +192,8 @@ html[data-window-controls="right"] .topbar { padding-right: 138px; }
 .run-control-primary:not(:disabled) { color: var(--ui-on-success); background: var(--ui-success); }
 .run-control-primary:hover:not(:disabled) { color: var(--ui-on-success); background: color-mix(in srgb, var(--ui-success) 85%, var(--ui-contrast)); }
 .build-control:not(:disabled) { color: var(--ui-fg-strong); background: var(--ui-hover); }
+.target-select { height: 26px; max-width: 190px; margin-right: 3px; padding: 0 6px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-bg); font: inherit; font-size: 11px; }
+.target-select[hidden] { display: none; }
 .build-control:hover:not(:disabled) { background: var(--ui-hover-strong); }
 .stop-control { width: 31px; padding: 0; }
 .stop-control:not(:disabled) { color: var(--ui-danger); }

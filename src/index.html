@@ -30,6 +30,7 @@
             <i data-icon="save"></i>
           </button>
           <div class="run-controls" role="group" aria-label="Build and run controls" data-i18n-aria-label="buildRunControls">
+            <select id="target-select" class="target-select" title="Target to build and run" data-i18n-title="targetChoice" aria-label="Target to build and run" data-i18n-aria-label="targetChoice" hidden></select>
             <button id="build-project" class="run-control build-control" type="button" disabled title="Build (Ctrl+Shift+B)" data-i18n-title="buildTitle">
               <i data-icon="tools"></i><span data-i18n="build">Build</span>
             </button>
@@ -282,6 +283,8 @@
           <legend data-i18n="buildSettings">Build</legend>
           <label class="checkbox-row"><input id="auto-configure" type="checkbox" /><span data-i18n="autoConfigure">Configure again when CMake files change</span></label>
           <p class="dialog-hint" data-i18n="autoConfigureHint">When CMakeLists.txt or another CMake file of the project, the engine or its plugins changes, CMake configures the project again a moment later, so code completion knows new files without a build.</p>
+          <label class="checkbox-row"><input id="show-targets" type="checkbox" /><span data-i18n="showTargets">Show all targets</span></label>
+          <p class="dialog-hint" data-i18n="showTargetsHint">Adds a list beside Run of every target CMake builds, the engine's and plugins' too, as CLion has. Build, Run and Debug then use the one chosen.</p>
         </fieldset>
         <fieldset class="settings-section agent-settings">
           <legend data-i18n="agents">Agents</legend>
