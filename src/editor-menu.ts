@@ -19,6 +19,8 @@ export interface EditorMenuHooks {
   navigates(): boolean;
   switchSourceHeader(): void;
   commandPalette(): void;
+  // Git's entries for the file, while Git is on and knows it.
+  git(): MenuEntry[];
 }
 
 const isLinux = /Linux/.test(navigator.platform);
@@ -70,6 +72,7 @@ const groups = (editor: monaco.editor.ICodeEditor, hooks: EditorMenuHooks, navig
 
 export const editorMenu = (editor: monaco.editor.ICodeEditor, hooks: EditorMenuHooks, navigation = true): MenuEntry[] => {
   const { navigate, peek, change, clipboard } = groups(editor, hooks, navigation);
+  const git = navigation ? hooks.git() : [];
   return [
     ...navigate,
     ...(peek.length > 0 ? [{ label: t('peek'), children: peek }] : []),
@@ -77,6 +80,7 @@ export const editorMenu = (editor: monaco.editor.ICodeEditor, hooks: EditorMenuH
     ...change,
     'separator',
     ...clipboard,
+    ...(git.length > 0 ? ['separator' as const, { label: t('menuGit'), children: git }] : []),
     'separator',
     { label: t('commandPalette'), shortcut: 'Ctrl+P', run: hooks.commandPalette },
   ];
