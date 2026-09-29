@@ -5,7 +5,7 @@ import { t, type TranslationKey } from './localization';
 
 // The editor's right-click menu, drawn by the studio instead of Monaco, so it
 // looks like the others and its words follow the interface language at once.
-// It holds what Monaco's held.
+// It holds what Monaco's held; the command palette lists the same commands.
 
 export interface EditorCommand {
   id: string;
@@ -78,8 +78,14 @@ export const editorMenu = (editor: monaco.editor.ICodeEditor, hooks: EditorMenuH
     'separator',
     ...clipboard,
     'separator',
-    { label: t('commandPalette'), shortcut: 'F1', run: hooks.commandPalette },
+    { label: t('commandPalette'), shortcut: 'Ctrl+P', run: hooks.commandPalette },
   ];
+};
+
+// The same commands for the command palette, without the palette itself.
+export const editorCommands = (editor: monaco.editor.ICodeEditor, hooks: EditorMenuHooks): EditorCommand[] => {
+  const { navigate, peek, change, clipboard } = groups(editor, hooks, true);
+  return [...navigate, ...peek, ...change, ...clipboard];
 };
 
 // Opens the menu from the keyboard, at the cursor.

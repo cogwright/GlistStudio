@@ -494,6 +494,23 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .context-group:hover > .context-submenu, .context-group:focus-within > .context-submenu, .context-group.expanded > .context-submenu { display: block; }
 .context-menu.submenu-left .context-submenu { right: calc(100% - 2px); left: auto; }
 
+/* The command palette, near the top like the menus it lists. */
+.command-palette { top: 48px; width: min(620px, calc((100vw - 40px) / var(--page-zoom, 1))); max-height: min(470px, calc((100vh - 96px) / var(--page-zoom, 1))); margin: 0 auto; padding: 6px; border: 1px solid var(--ui-border-strong); border-radius: 8px; color: var(--ui-fg); background: var(--ui-raised); box-shadow: 0 12px 40px var(--ui-shadow); }
+.command-palette[open] { display: flex; flex-direction: column; }
+.command-palette::backdrop { background: transparent; }
+.command-palette-input { flex: none; height: 32px; margin-bottom: 6px; padding: 0 10px; border: 1px solid var(--ui-accent); border-radius: 4px; outline: none; color: var(--ui-fg-strong); background: var(--ui-bg); font: inherit; }
+.command-palette-list { min-height: 0; overflow-y: auto; }
+.command-palette-row { display: flex; height: 28px; align-items: center; gap: 10px; padding: 0 10px; border-radius: 3px; cursor: pointer; }
+.command-palette-row:hover { background: var(--ui-hover); }
+.command-palette-row.selected { color: var(--ui-on-accent); background: var(--ui-accent); }
+.command-palette-row.disabled { color: var(--ui-fg-faint); background: transparent; cursor: default; }
+.command-palette-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.command-palette-category { flex: none; color: var(--ui-fg-muted); font-size: 11px; }
+.command-palette-row kbd { flex: none; margin-left: auto; padding: 0; border: 0; color: var(--ui-fg-muted); background: transparent; }
+.command-palette-row.selected .command-palette-category, .command-palette-row.selected kbd { color: inherit; }
+.command-palette-row.disabled .command-palette-category, .command-palette-row.disabled kbd { color: var(--ui-fg-faint); }
+.command-palette-empty { padding: 8px 10px; color: var(--ui-fg-muted); }
+
 .studio-dialog { width: min(440px, calc((100vw - 32px) / var(--page-zoom, 1))); padding: 22px; border: 1px solid var(--ui-border-strong); border-radius: 8px; color: var(--ui-fg); background: var(--ui-raised); box-shadow: 0 16px 50px var(--ui-shadow); }
 .studio-dialog::backdrop { background: #0008; }
 .studio-dialog form { display: flex; flex-direction: column; }

@@ -27,7 +27,8 @@ import { canUpdate, checkForUpdates, setUpUpdates } from './updates';
 import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
 import { showMenu, type MenuEntry } from './context-menu';
-import { editorMenu, editorMenuPoint, type EditorMenuHooks } from './editor-menu';
+import { editorCommands, editorMenu, editorMenuPoint, type EditorMenuHooks } from './editor-menu';
+import { CommandPalette, type PaletteCommand } from './command-palette';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { PluginsView } from './plugins-view';
 import { GitEditor } from './git-editor';
@@ -1240,6 +1241,8 @@ const gitEditor = new GitEditor(editor, git, {
 
 // Opens a menu of the title bar at another button; set up with the menus.
 let showMenuAt: (anchor: HTMLElement, menu: string) => void = () => undefined;
+// The title bar menus' commands, for the command palette; set up with the menus.
+let menuCommands: () => PaletteCommand[] = () => [];
 
 monaco.editor.registerEditorOpener({
   openCodeEditor: (_source, resource, selectionOrPosition) => revealLocation(resource, selectionOrPosition),
@@ -1256,7 +1259,7 @@ editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSo
 const editorMenuHooks: EditorMenuHooks = {
   navigates: () => clangd.navigates,
   switchSourceHeader: () => { void switchSourceHeader(); },
-  commandPalette: () => { editor.focus(); editor.trigger('menu', 'editor.action.quickCommand', null); },
+  commandPalette: () => commandPalette.open(),
 };
 // As Monaco's own menu did: focus, and the cursor at the click unless it is in the selection.
 editor.onContextMenu((event) => {
@@ -2126,6 +2129,10 @@ const configureMenus = (): void => {
     button.setAttribute('aria-expanded', 'true');
   };
   showMenuAt = (target, menu) => { closeMenu(); void openMenu(target, menu); };
+  menuCommands = () => menuButtons.filter((button) => button.dataset.menu && button.dataset.menu !== 'branches' && !button.hidden)
+    .flatMap((button) => menuItems(button.dataset.menu ?? '')
+      .filter((entry): entry is MenuAction => entry.kind === 'item')
+      .map((entry) => ({ label: entry.label, category: button.textContent ?? '', shortcut: entry.shortcut, disabled: entry.disabled, run: entry.action })));
 
   menuButtons.forEach((button) => {
     button.setAttribute('aria-haspopup', 'menu');
@@ -2451,6 +2458,33 @@ window.addEventListener('keydown', (event) => {
   if (key === 'k' && !event.shiftKey) run(showCommitView);
   else if (key === 'k' && event.shiftKey && git.repository) run(() => { void pushChanges(); });
   else if (key === 't' && !event.shiftKey && git.repository) run(() => { void updateProject(); });
+}, { capture: true });
+
+// The command palette: the menus' commands and, with a file open, the editor's,
+// the studio's own first and then the rest of Monaco's, in Monaco's words.
+const commandPalette = new CommandPalette(() => {
+  if (!activeFile()) return menuCommands();
+  const category = t('editorCommands');
+  const own = editorCommands(editor, editorMenuHooks);
+  const listed = new Set([...own.map((command) => command.id), 'editor.action.quickCommand', 'actions.find']);
+  const rest = editor.getSupportedActions()
+    .filter((action) => action.label && !listed.has(action.id))
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .map((action) => ({ label: action.label, category, run: () => { editor.focus(); void action.run(); } }));
+  return [...menuCommands(), ...own.map((command) => ({ ...command, category })), ...rest];
+});
+
+// Ctrl+P, Ctrl+Shift+P or F1 opens it from anywhere, before the editor sees
+// them. In a terminal Ctrl+P recalls the previous line, so it stays there;
+// a Mac's Cmd+P does not clash.
+window.addEventListener('keydown', (event) => {
+  const inTerminal = Boolean(document.activeElement?.closest('.terminal-host'));
+  const wanted = (event.key === 'F1' && !event.shiftKey && !event.altKey && !primaryKey(event))
+    || (primaryKey(event) && !event.altKey && event.key.toLowerCase() === 'p' && (event.shiftKey || isMac || !inTerminal));
+  if (!wanted || (document.querySelector('dialog[open]') && !commandPalette.isOpen)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  commandPalette.toggle();
 }, { capture: true });
 
 // Settings > Git: turning it on, and the name and email commits are signed with.
