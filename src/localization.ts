@@ -5,6 +5,7 @@ export type Language = 'en' | 'tr';
 
 const en = {
   menuFile: 'File', menuEdit: 'Edit', menuView: 'View', menuRun: 'Run', menuHelp: 'Help',
+  appMenu: 'Application menu',
   openProject: 'Open Project', newProject: 'New Project', save: 'Save', build: 'Build', run: 'Run', stop: 'Stop',
   saveTitle: 'Save (Ctrl+S)', buildTitle: 'Build (Ctrl+Shift+B)', runTitle: 'Build and Run (F5)',
   stopTitle: 'Stop (Shift+F5)', settings: 'Settings', explorer: 'EXPLORER',
@@ -297,6 +298,7 @@ export type TranslationKey = keyof typeof en;
 
 const tr: Record<TranslationKey, string> = {
   menuFile: 'Dosya', menuEdit: 'Düzen', menuView: 'Görünüm', menuRun: 'Çalıştır', menuHelp: 'Yardım',
+  appMenu: 'Uygulama menüsü',
   openProject: 'Proje Aç', newProject: 'Yeni Proje', save: 'Kaydet', build: 'Derle', run: 'Çalıştır', stop: 'Durdur',
   saveTitle: 'Kaydet (Ctrl+S)', buildTitle: 'Derle (Ctrl+Shift+B)', runTitle: 'Derle ve Çalıştır (F5)',
   stopTitle: 'Durdur (Shift+F5)', settings: 'Ayarlar', explorer: 'EXPLORER',
