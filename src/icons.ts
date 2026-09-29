@@ -30,6 +30,7 @@ import arrowDown from '@vscode/codicons/src/icons/arrow-down.svg';
 import arrowUp from '@vscode/codicons/src/icons/arrow-up.svg';
 import check from '@vscode/codicons/src/icons/check.svg';
 import cloudDownload from '@vscode/codicons/src/icons/cloud-download.svg';
+import sync from '@vscode/codicons/src/icons/sync.svg';
 import copy from '@vscode/codicons/src/icons/copy.svg';
 import diff from '@vscode/codicons/src/icons/diff.svg';
 import discard from '@vscode/codicons/src/icons/discard.svg';
@@ -108,6 +109,7 @@ const icons = {
   'settings-gear': settingsGear,
   'source-control': sourceControl,
   'split-horizontal': splitHorizontal,
+  sync,
   tag,
   tools,
   trash,
