@@ -306,6 +306,10 @@ const en = {
   buildSettings: 'Build',
   autoConfigure: 'Configure again when CMake files change',
   autoConfigureHint: 'When CMakeLists.txt or another CMake file of the project, the engine or its plugins changes, CMake configures the project again a moment later, so code completion knows new files without a build.',
+  showTargets: 'Show all targets',
+  showTargetsHint: 'Adds a list beside Run of every target CMake builds, the engine\'s and plugins\' too, as CLion has. Build, Run and Debug then use the one chosen.',
+  targetChoice: 'Target to build and run', targetLibrary: 'library', targetStep: 'build step',
+  noTargets: 'No targets yet: build once', otherTargets: 'Other',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -615,6 +619,10 @@ const tr: Record<TranslationKey, string> = {
   buildSettings: 'Derleme',
   autoConfigure: 'CMake dosyaları değişince yeniden yapılandır',
   autoConfigureHint: 'Projede, motorda ya da eklentilerde bir CMake dosyası değişince CMake projeyi kısa süre sonra yeniden yapılandırır; böylece kod tamamlama yeni dosyaları derlemeden tanır.',
+  showTargets: 'Tüm hedefleri göster',
+  showTargetsHint: 'Çalıştır\'ın yanına, motorunkiler ve eklentilerinkiler dahil, CMake\'in derlediği tüm hedeflerin listesini ekler; CLion\'daki gibi. Derle, Çalıştır ve Hata Ayıkla seçilen hedefi kullanır.',
+  targetChoice: 'Derlenip çalıştırılacak hedef', targetLibrary: 'kütüphane', targetStep: 'derleme adımı',
+  noTargets: 'Henüz hedef yok: bir kez derleyin', otherTargets: 'Diğer',
 };
 
 const dictionaries = { en, tr };
