@@ -60,6 +60,7 @@
           <button class="activity-button active" type="button" title="Explorer" data-view="explorer" aria-pressed="true"><i data-icon="files"></i></button>
           <button class="activity-button" type="button" title="Run and Debug" data-view="debug" data-i18n-title="debugView" aria-pressed="false"><i data-icon="debug-alt"></i></button>
           <button id="commit-activity" class="activity-button" type="button" title="Commit (Ctrl+K)" data-view="commit" data-i18n-title="commitViewTitle" aria-pressed="false" hidden><i data-icon="source-control"></i></button>
+          <button id="plugins-activity" class="activity-button" type="button" title="Plugins" data-view="plugins" data-i18n-title="pluginsView" aria-pressed="false"><i data-icon="extensions"></i></button>
           <div class="activity-spacer"></div>
           <button id="open-settings" class="activity-button" type="button" title="Settings" data-i18n-title="settings"><i data-icon="settings-gear"></i></button>
         </nav>
@@ -126,6 +127,16 @@
                 <button id="commit-push-button" type="button" data-i18n="commitAndPush">Commit and Push...</button>
               </div>
             </div>
+          </div>
+          <div id="plugins-view" class="sidebar-view plugins-view" hidden>
+            <div class="panel-heading">
+              <div class="panel-title"><span data-i18n="pluginsTitle">PLUGINS</span></div>
+              <div class="explorer-actions">
+                <button id="plugins-refresh" class="heading-action" type="button" title="Refresh" data-i18n-title="gitRefresh"><i data-icon="refresh"></i></button>
+              </div>
+            </div>
+            <input id="plugins-search" class="plugins-search" type="search" placeholder="Search plugins" data-i18n-placeholder="pluginsSearch" />
+            <div id="plugins-list" class="plugins-list"></div>
           </div>
         </aside>
         <div id="sidebar-resizer" class="vertical-resizer"></div>

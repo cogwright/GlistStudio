@@ -25,6 +25,7 @@ import { canUpdate, checkForUpdates, setUpUpdates } from './updates';
 import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
+import { PluginsView } from './plugins-view';
 import { GitEditor } from './git-editor';
 import { installGdb, setUpDebuggerSettings } from './debugger-settings';
 import { GitPanel, type GitPanelView } from './git-panel';
@@ -108,6 +109,7 @@ const diffMessage = element<HTMLElement>('#diff-message');
 const diffRollbackButton = element<HTMLButtonElement>('#diff-rollback');
 const diffOpenButton = element<HTMLButtonElement>('#diff-open');
 const commitViewElement = element<HTMLElement>('#commit-view');
+const pluginsViewElement = element<HTMLElement>('#plugins-view');
 const commitActivity = element<HTMLButtonElement>('#commit-activity');
 const gitTab = element<HTMLButtonElement>('#git-tab');
 const gitPanelElement = element<HTMLElement>('#git-panel');
@@ -146,7 +148,7 @@ const expandedDirectories = new Set<string>();
 let draggedTabPath: string | null = null;
 let suppressTabClick = false;
 
-type SidebarView = 'explorer' | 'debug' | 'commit';
+type SidebarView = 'explorer' | 'debug' | 'commit' | 'plugins';
 let sidebarView: SidebarView = 'explorer';
 
 const setSidebarVisible = (visible: boolean): void => {
@@ -163,8 +165,10 @@ const showView = (view: SidebarView): void => {
   explorerView.hidden = view !== 'explorer';
   debugView.hidden = view !== 'debug';
   commitViewElement.hidden = view !== 'commit';
+  pluginsViewElement.hidden = view !== 'plugins';
   setSidebarVisible(true);
   if (view === 'commit') void git.refresh();
+  if (view === 'plugins') void pluginsView.load();
 };
 
 // The button of the view already showing hides the side bar.
@@ -643,6 +647,17 @@ const readContents = (filePath: string): Promise<string> => (isProjectPath(fileP
 // here; other files in the Glist folder, such as zbin's, stay read-only.
 let dependencyFolders: string[] = [];
 let dependenciesKnown: Promise<void> = Promise.resolve();
+
+// The Plugins view: GlistPlugins' plugins to install, add to the project and update.
+const pluginsView = new PluginsView(
+  element<HTMLElement>('#plugins-list'), element<HTMLInputElement>('#plugins-search'),
+  element<HTMLButtonElement>('#plugins-refresh'), element<HTMLElement>('#plugins-activity'),
+  {
+    hasProject: () => Boolean(activeProject),
+    projectChanged: () => { void learnDependencies(); void loadProjectTree(); void git.refresh(); },
+  },
+);
+pluginsView.watch();
 
 const learnDependencies = (): Promise<void> => {
   dependenciesKnown = window.glistAPI.listDependencies()
