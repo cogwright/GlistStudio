@@ -7,11 +7,14 @@ import {
   stopGit, stopTerminal, stopWatchingConfiguration, studio, studioHome,
 } from './studio';
 import {
-  checkForUpdates, installOnQuit, installUpdate, openUpdatePage, quitCancelled, restartingToUpdate, setUpdateListener, updateState,
+  checkForUpdates, installOnQuit, installUpdate, openUpdatePage, quitCancelled, restartingToUpdate, setUpdateListener, source, updateState,
 } from './updater';
+import { githubCommitPage } from './repository-head';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
+// The commit the app was built from (webpack.main.config.ts), empty when unknown.
+declare const GLIST_STUDIO_COMMIT: string;
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -59,6 +62,12 @@ initializeStudio({
     ? path.join(process.resourcesPath, 'glistapp-template')
     : path.join(app.getAppPath(), 'glistapp-template'),
   projectsDirectory: defaultProjectsDirectory(),
+  version: app.getVersion(),
+  studioHead: async () => {
+    const commit = typeof GLIST_STUDIO_COMMIT === 'string' && GLIST_STUDIO_COMMIT ? GLIST_STUDIO_COMMIT : null;
+    const commitPage = commit ? githubCommitPage(`${source.site}/${source.repository}`, commit) : undefined;
+    return commit ? { branch: null, commit, ...(commitPage ? { commitPage } : {}) } : null;
+  },
 });
 
 const registerIpcHandlers = (): void => {
@@ -135,7 +144,11 @@ const createWindow = (): void => {
     runtimeMessages.push(detailMessage ?? message);
   });
   createdWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
-  createdWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Only commit pages on GitHub, from Settings > About, open, and in the browser.
+  createdWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/commit\/[0-9a-f]{40}$/.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
   // The renderer blocks unloading while tabs are unsaved; Electron would then
   // silently refuse to close, so ask instead.
   createdWindow.webContents.on('will-prevent-unload', (event) => {

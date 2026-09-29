@@ -160,6 +160,22 @@ interface GlistClangdStatus {
 type GlistTemplate = 'GlistApp' | 'GlistConsoleApp' | 'GlistGUIApp';
 
 type GlistTerminalSession = 'shell' | 'agent' | 'install';
+// Settings > About: which Glist Studio this is, and where the engine and the open
+// project's plugins stand. Branch is null when a commit is checked out.
+interface GlistAboutRepository {
+  name: string;
+  kind: 'engine' | 'plugin';
+  location: string;
+  found: boolean;
+  // Absent when the folder is not a Git checkout.
+  head?: { branch: string | null; commit: string | null; commitPage?: string };
+}
+interface GlistAbout {
+  version: string;
+  head: { branch: string | null; commit: string | null; commitPage?: string } | null;
+  repositories: GlistAboutRepository[];
+  runtime: Array<{ name: string; version: string }>;
+}
 interface GlistInstallStatus {
   installed: boolean;
   // Where the install scripts put Glist: C:\dev\glist or ~/dev/glist.
@@ -447,6 +463,7 @@ interface Window {
     stopTerminal(session: GlistTerminalSession): Promise<void>;
     listAgents(): Promise<GlistAgentStatus[]>;
     glistStatus(): Promise<GlistInstallStatus>;
+    aboutInfo(): Promise<GlistAbout>;
     // The Plugins view; refresh asks GlistPlugins again rather than using the last answer.
     listPlugins(refresh?: boolean): Promise<GlistPluginList>;
     checkPluginUpdates(): Promise<GlistPlugin[]>;

@@ -909,6 +909,17 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .activity-button.has-updates { position: relative; }
 .activity-button.has-updates::after { position: absolute; top: 8px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--ui-accent); content: ''; }
 
+/* Settings > About: a heading per part, names on the left and values beside them. */
+.about-info { display: flex; flex-direction: column; gap: 20px; }
+.about-group h3 { margin: 0 0 8px; color: var(--ui-fg-strong); font-size: 13px; font-weight: 600; }
+.about-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 22px; margin: 0; font-size: 12px; }
+.about-list dt { color: var(--ui-fg-muted); }
+.about-list dd { min-width: 0; margin: 0; color: var(--ui-fg); overflow-wrap: anywhere; user-select: text; }
+.about-list code, .about-commit { font-family: var(--font-code); }
+.about-commit { color: var(--ui-accent); text-decoration: none; }
+.about-commit:hover { text-decoration: underline; }
+.about-copy { margin-top: 20px; }
+
 /* A page of Settings: its sections spaced apart, each headed alike. */
 .settings-page .settings-section + .settings-section { margin-top: 28px; padding-top: 0; border-top: 0; }
 .settings-page legend, .studio-dialog .settings-page > .settings-section > label:first-child { margin: 0 0 8px; padding: 0; color: var(--ui-fg-strong); font-size: 13px; font-weight: 600; }
