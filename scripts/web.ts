@@ -27,6 +27,7 @@ startWebServer({
   templateRoot: path.resolve('glistapp-template'),
   projectsDirectory,
   token,
+  sourceRoot: path.resolve('.'),
 }).then(() => {
   console.log(`Glist Studio: http://127.0.0.1:${port}/?token=${token}`);
 }, (error: Error) => {

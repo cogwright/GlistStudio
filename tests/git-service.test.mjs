@@ -6,6 +6,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { createGitService } from '../src/git-service.ts';
 import { createHostProtection, githubRepository, matchesBranch, protectionFrom } from '../src/git-protection.ts';
+import { githubCommitPage, readRepositoryHead } from '../src/repository-head.ts';
 
 // Protected branches: names and patterns, GitHub addresses, and asking GitHub.
 assert.equal(matchesBranch('main', ['main', 'master']), true);
@@ -340,6 +341,64 @@ try {
 } finally {
   service.stop();
   rmSync(root, { recursive: true, force: true });
+}
+
+// Where a checkout stands, read from its .git folder for Settings > About,
+// against git's own answers.
+{
+  const headRoot = mkdtempSync(path.join(tmpdir(), 'glist-head-'));
+  const headEnv = { ...process.env, GIT_CONFIG_GLOBAL: path.join(headRoot, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
+  writeFileSync(headEnv.GIT_CONFIG_GLOBAL, '[user]\n\tname = Test\n\temail = test@example.com\n[init]\n\tdefaultBranch = main\n');
+  const headGit = (folder, ...args) => execFileSync('git', args, { cwd: folder, env: headEnv, encoding: 'utf8' }).trim();
+
+  try {
+    const repo = path.join(headRoot, 'GlistEngine');
+    mkdirSync(repo);
+    headGit(repo, 'init', '-q');
+    // A branch with no commits yet.
+    assert.deepEqual(await readRepositoryHead(repo), { branch: 'main', commit: null });
+    writeFileSync(path.join(repo, 'a.txt'), 'a\n');
+    headGit(repo, 'add', '.');
+    headGit(repo, 'commit', '-qm', 'first');
+    const first = headGit(repo, 'rev-parse', 'HEAD');
+    headGit(repo, 'remote', 'add', 'origin', 'git@github.com:GlistEngine/GlistEngine.git');
+    assert.deepEqual(await readRepositoryHead(repo), {
+      branch: 'main', commit: first, commitPage: `https://github.com/GlistEngine/GlistEngine/commit/${first}`,
+    });
+
+    // Packed refs, as after git gc or a fresh clone.
+    headGit(repo, 'checkout', '-qb', 'feature/one');
+    writeFileSync(path.join(repo, 'b.txt'), 'b\n');
+    headGit(repo, 'commit', '-qam', 'second', '--allow-empty');
+    const second = headGit(repo, 'rev-parse', 'HEAD');
+    headGit(repo, 'pack-refs', '--all');
+    assert.equal((await readRepositoryHead(repo)).commit, second);
+    assert.equal((await readRepositoryHead(repo)).branch, 'feature/one');
+
+    // A commit checked out rather than a branch.
+    headGit(repo, 'checkout', '-q', first);
+    assert.equal((await readRepositoryHead(repo)).branch, null);
+    assert.equal((await readRepositoryHead(repo)).commit, first);
+
+    // A worktree: a .git file, its own HEAD, the branches shared.
+    headGit(repo, 'checkout', '-q', 'main');
+    const worktree = path.join(headRoot, 'worktree');
+    headGit(repo, 'worktree', 'add', '-q', worktree, 'feature/one');
+    assert.deepEqual(await readRepositoryHead(worktree), {
+      branch: 'feature/one', commit: second, commitPage: `https://github.com/GlistEngine/GlistEngine/commit/${second}`,
+    });
+
+    // Not a checkout.
+    assert.equal(await readRepositoryHead(path.join(headRoot, 'nothing')), null);
+
+    // GitHub's remote forms; others have no page.
+    assert.equal(githubCommitPage('https://github.com/GlistPlugins/gipBox2D', 'abc'), 'https://github.com/GlistPlugins/gipBox2D/commit/abc');
+    assert.equal(githubCommitPage('https://user@github.com/a/b.git/', 'abc'), 'https://github.com/a/b/commit/abc');
+    assert.equal(githubCommitPage('ssh://git@github.com/a/b.c.git', 'abc'), 'https://github.com/a/b.c/commit/abc');
+    assert.equal(githubCommitPage('https://gitlab.com/a/b.git', 'abc'), undefined);
+  } finally {
+    rmSync(headRoot, { recursive: true, force: true });
+  }
 }
 
 console.log('Git service tests passed.');

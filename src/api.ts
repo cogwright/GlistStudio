@@ -58,6 +58,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   stopTerminal: 'terminal:stop',
   listAgents: 'agents:list',
   glistStatus: 'glist:status',
+  aboutInfo: 'app:about',
   listPlugins: 'plugins:list',
   checkPluginUpdates: 'plugins:check',
   installPlugin: 'plugins:install',

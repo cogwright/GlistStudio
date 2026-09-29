@@ -1,10 +1,11 @@
 import { timingSafeEqual } from 'node:crypto';
-import { createReadStream, promises as fs } from 'node:fs';
+import { createReadStream, promises as fs, readFileSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Handler, Handlers } from '../api';
+import { readRepositoryHead } from '../repository-head';
 import {
   initializeStudio, openProjectAt, stopClangd, stopDebugging, stopGit, stopProcesses, stopTerminal, stopWatchingConfiguration, studio,
 } from '../studio';
@@ -16,6 +17,8 @@ export interface WebServerOptions {
   templateRoot: string;
   projectsDirectory: string;
   token: string;
+  // The checkout it runs from, whose version and commit Settings > About shows.
+  sourceRoot: string;
 }
 
 const cookieName = 'glist-studio';
@@ -60,6 +63,9 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     openPath: async () => unavailable(),
     templateRoot: options.templateRoot,
     projectsDirectory: options.projectsDirectory,
+    version: (JSON.parse(readFileSync(path.join(options.sourceRoot, 'package.json'), 'utf8')) as { version: string }).version,
+    // Read each time: the checkout can move while the server runs.
+    studioHead: () => readRepositoryHead(options.sourceRoot),
   });
 
   const handlers: Handlers = {

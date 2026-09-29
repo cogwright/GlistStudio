@@ -11,7 +11,7 @@ import {
 // checksum, then installed when the app quits, or at once with Restart to
 // Update. The renderer decides when to check (updates.ts).
 
-const source = { site: 'https://github.com', api: 'https://api.github.com', repository: 'umttur/GlistStudio' };
+export const source = { site: 'https://github.com', api: 'https://api.github.com', repository: 'umttur/GlistStudio' };
 
 interface Staged {
   version: string;

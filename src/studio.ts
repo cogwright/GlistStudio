@@ -1,7 +1,7 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, promises as fs, readFileSync, watch, type Dirent, type FSWatcher } from 'node:fs';
-import { availableParallelism, homedir, userInfo } from 'node:os';
+import { availableParallelism, homedir, release, type, userInfo } from 'node:os';
 import path from 'node:path';
 import type { IPty } from 'node-pty';
 import { agentLaunch, findAgents, installAgent, isAgentId, type AgentPlaces, type AgentStatus } from './agents';
@@ -13,6 +13,7 @@ import { renderCppClass } from './class-template';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
 import { createGitService } from './git-service';
 import { createPluginService } from './plugins';
+import { readRepositoryHead, type RepositoryHead } from './repository-head';
 
 // What the backend needs from whoever hosts it: the Electron main process or
 // the browser preview server.
@@ -24,6 +25,9 @@ export interface StudioHost {
   templateRoot: string;
   // Where new projects go when no open project points at a workspace.
   projectsDirectory: string;
+  version: string;
+  // The commit Glist Studio was built from, for Settings > About.
+  studioHead(): Promise<RepositoryHead | null>;
 }
 
 // The folder the Glist install scripts set up: the engine, zbin and myglistapps.
@@ -1254,6 +1258,32 @@ const glistStatus = (): GlistInstallStatus => ({
   passwordPrompt: passwordPrompt(),
 });
 
+// Settings > About: this Glist Studio, the engine and the open project's plugins
+// with their branch and commit, and what runs it all.
+const aboutInfo = async (): Promise<GlistAbout> => {
+  const folders = activeProjectRoot ? await listDependencies()
+    : [{ name: 'GlistEngine', kind: 'engine' as const, path: path.join(path.dirname(projectsDirectory()), 'GlistEngine') }]
+      .map((entry) => ({ ...entry, exists: existsSync(entry.path) }));
+  const repositories = await Promise.all(folders.map(async (entry): Promise<GlistAboutRepository> => {
+    const head = entry.exists ? await readRepositoryHead(entry.path) : null;
+    return { name: entry.name, kind: entry.kind, location: shortPath(entry.path), found: entry.exists, ...(head ? { head } : {}) };
+  }));
+  // Electron gives the system's own version, such as macOS 26.0; Node only the kernel's, such as Darwin 25.0.0.
+  const systemVersion = (process as { getSystemVersion?: () => string }).getSystemVersion?.();
+  const system = systemVersion
+    ? ({ win32: 'Windows', darwin: 'macOS', linux: 'Linux' } as Record<string, string>)[process.platform] ?? process.platform : type();
+  return {
+    version: host.version,
+    head: await host.studioHead().catch((): null => null),
+    repositories,
+    runtime: [
+      ...(process.versions.electron ? [{ name: 'Electron', version: process.versions.electron }, { name: 'Chromium', version: process.versions.chrome }] : []),
+      { name: 'Node.js', version: process.versions.node },
+      { name: system, version: `${systemVersion ?? release()} (${process.arch})` },
+    ],
+  };
+};
+
 // Glist Engine's own installer: the current script from GlistEngine/InstallScripts,
 // saved in Glist Studio's folder and run in a terminal, so that a password it
 // asks for can be typed. GLIST_STUDIO_INSTALLER runs a local script instead, for tests.
@@ -1488,6 +1518,7 @@ export const studio: Handlers = {
   stopTerminal: (session: unknown) => stopTerminal(session ?? 'shell'),
   listAgents,
   glistStatus,
+  aboutInfo,
   installAgent: installAgentFromSettings,
   debuggerStatus,
   installDebugger: installDebuggerFromSettings,

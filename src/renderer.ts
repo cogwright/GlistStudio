@@ -36,6 +36,7 @@ import { describeDebugger, installGdb, setUpDebuggerSettings } from './debugger-
 import { GitPanel, type GitPanelView } from './git-panel';
 import { notify, type Notice } from './notifications';
 import { setUpProjectPicker } from './project-picker';
+import { AboutView } from './about-view';
 import { StudioTerminal } from './terminal';
 import { PathSettings } from './path-settings';
 import { EnvironmentSettings } from './environment-settings';
@@ -1960,7 +1961,7 @@ const configureMenus = (): void => {
         }),
         { kind: 'separator' },
         { kind: 'heading', label: t('preferences') },
-        item(t('settings'), () => { settingsDialog.showModal(); void showGitSettings(); void pathSettings.refresh(); }),
+        item(t('settings'), () => openSettings()),
       ],
       run: [
         item(t('build'), buildProject, {
@@ -1989,6 +1990,8 @@ const configureMenus = (): void => {
         ...(glistInstalled ? [] : [item(t('installGlistMenu'), () => { void showGlistInstaller(); })]),
         item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
         ...(canUpdate() ? [item(t('checkForUpdates'), checkForUpdates)] : []),
+        { kind: 'separator' },
+        item(t('aboutMenu'), () => openSettings('about')),
       ],
     };
     return menus[menu] ?? [];
@@ -2246,13 +2249,20 @@ runArguments.projectChanged(null, '');
 
 // Settings > PATH, whose automatic folders depend on the open project.
 const pathSettings = new PathSettings(element<HTMLElement>('#path-entries'), element<HTMLButtonElement>('#path-add'), element<HTMLElement>('#path-error'));
-element<HTMLButtonElement>('#open-settings').addEventListener('click', () => {
+const aboutView = new AboutView(element<HTMLElement>('#about-info'), element<HTMLButtonElement>('#about-copy'));
+// Opens Settings, at the page given or the one seen last.
+const openSettings = (page?: string): void => {
+  if (page) showSettingsPage(page);
   settingsDialog.showModal();
   // An agent may have been installed or removed outside the studio.
   void agentSettings.refresh();
   void showGitSettings();
   void pathSettings.refresh();
-});
+  void aboutView.refresh();
+};
+element<HTMLButtonElement>('#open-settings').addEventListener('click', () => openSettings());
+// Its words, in a language just chosen.
+settingsLanguage.addEventListener('change', () => { void aboutView.refresh(); });
 element<HTMLButtonElement>('#settings-close').addEventListener('click', () => settingsDialog.close());
 settingsLanguage.value = getLanguage();
 settingsLanguage.addEventListener('change', () => {
