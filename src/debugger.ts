@@ -136,9 +136,10 @@ export class Debugger {
         clientID: 'glist-studio', clientName: 'Glist Studio', adapterID: started.flavor ?? 'lldb',
         pathFormat: 'path', linesStartAt1: true, columnsStartAt1: true, supportsVariableType: true,
       }) ?? {};
+      const args = started.args ?? [];
       const launch = started.flavor === 'gdb'
-        ? { program: started.program, cwd: started.cwd, args: [] as string[] }
-        : { program: started.program, cwd: started.cwd, args: [] as string[], stopOnEntry: false };
+        ? { program: started.program, cwd: started.cwd, args }
+        : { program: started.program, cwd: started.cwd, args, stopOnEntry: false };
       const launched = this.request('launch', launch);
       await initialized;
       for (const file of this.breakpoints.values()) await this.sendBreakpoints(file);

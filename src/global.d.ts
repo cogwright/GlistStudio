@@ -128,8 +128,16 @@ interface GlistDebuggerStatus {
   size: number;
 }
 
+// An environment variable set in Settings.
+interface GlistVariable {
+  name: string;
+  value: string;
+}
+
 interface GlistDebugStart {
   success: boolean;
+  // What the program is given, from Settings.
+  args?: string[];
   // On Windows: there is none yet, and Settings can install one.
   missingDebugger?: boolean;
   // The debugger is the GDB Settings installed, which can be installed again if it fails.
@@ -413,6 +421,10 @@ interface Window {
     pathEntries(): Promise<GlistPathEntry[]>;
     // Returns the folders kept: whole absolute folders, each once.
     setCustomPath(folders: string[]): Promise<string[]>;
+    // Returns the variables kept: valid names, PATH left to its own list, each name once.
+    setCustomEnvironment(variables: GlistVariable[]): Promise<GlistVariable[]>;
+    // For the open project; a new project starts without.
+    setRunArguments(args: string[]): Promise<string[]>;
     chooseFolder(): Promise<string | null>;
     setTheme(colors: GlistWindowColors): Promise<void>;
     setZoomFactor(factor: number): Promise<number>;

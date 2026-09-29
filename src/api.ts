@@ -38,6 +38,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   setLanguage: 'settings:set-language',
   pathEntries: 'settings:path-entries',
   setCustomPath: 'settings:set-custom-path',
+  setCustomEnvironment: 'settings:set-custom-environment',
+  setRunArguments: 'settings:set-run-arguments',
   chooseFolder: 'settings:choose-folder',
   setTheme: 'settings:set-theme',
   setZoomFactor: 'view:set-zoom-factor',

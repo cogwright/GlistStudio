@@ -394,6 +394,7 @@ const createProjectFromTemplate = async (
   }
   activeProjectRoot = target;
   chosenTarget = null;
+  runArguments = [];
   await rememberProject(target).catch((): undefined => undefined);
   void git.projectChanged();
   void rememberConfiguration(target);
@@ -509,11 +510,42 @@ const pathFor = (toolchain: Toolchain): GlistPathEntry[] => {
 };
 
 // Windows spells the variable Path, so it is replaced rather than joined by a second one.
+// Settings > Environment: variables set for everything the studio starts, after the computer's own.
+let customEnvironment: GlistVariable[] = [];
+
 const processEnvironment = (toolchain: Toolchain): NodeJS.ProcessEnv => {
   const env: NodeJS.ProcessEnv = {};
   Object.entries(process.env).forEach(([key, value]) => { if (key.toUpperCase() !== 'PATH') env[key] = value; });
   env.PATH = pathFor(toolchain).map((entry) => entry.path).join(path.delimiter);
+  customEnvironment.forEach(({ name, value }) => {
+    // Windows' names are the same in any case, so one spelled otherwise gives way.
+    if (process.platform === 'win32') Object.keys(env).filter((key) => key.toUpperCase() === name.toUpperCase()).forEach((key) => delete env[key]);
+    env[name] = value;
+  });
   return env;
+};
+
+// A name is letters, digits and underscores, not starting with a digit; PATH has
+// a list of its own. A later one of the same name replaces an earlier one. What
+// is kept is returned, for Settings to save.
+const setCustomEnvironment = (variables: unknown): GlistVariable[] => {
+  const kept = new Map<string, GlistVariable>();
+  (Array.isArray(variables) ? variables : []).forEach((variable: Partial<GlistVariable>) => {
+    const name = typeof variable?.name === 'string' ? variable.name.trim() : '';
+    const value = typeof variable?.value === 'string' ? variable.value : '';
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || name.toUpperCase() === 'PATH' || value.includes('\0')) return;
+    kept.set(process.platform === 'win32' ? name.toUpperCase() : name, { name, value });
+  });
+  customEnvironment = [...kept.values()];
+  return customEnvironment;
+};
+
+// Settings > Run and Debug: what the open project's program is given when Run or Debug starts it.
+let runArguments: string[] = [];
+
+const setRunArguments = (args: unknown): string[] => {
+  runArguments = Array.isArray(args) ? args.filter((arg): arg is string => typeof arg === 'string' && !arg.includes('\0')) : [];
+  return runArguments;
 };
 
 // Settings > PATH: the list for the open project, or for the projects folder without one.
@@ -900,7 +932,7 @@ const runProject = async (): Promise<ProcessResult> => {
   const toolchain = resolveToolchain(projectRoot);
   sendToRenderer('run:output', `\n> ${executable}\n`);
   try {
-    const child = spawn(executable, [], {
+    const child = spawn(executable, runArguments, {
       // Glist resolves asset paths relative to the project directory. The
       // executable lives in _build/Release, but it must run from projectRoot.
       cwd: projectRoot,
@@ -992,6 +1024,7 @@ export const openProjectAt = async (projectRoot: string): Promise<GlistProjectIn
   if (!(await fs.stat(root)).isDirectory()) throw new Error(msg('folderRequired'));
   activeProjectRoot = root;
   chosenTarget = null;
+  runArguments = [];
   await rememberProject(root).catch((): undefined => undefined);
   void git.projectChanged();
   void rememberConfiguration(root);
@@ -1123,7 +1156,7 @@ const startDebugging = async (): Promise<GlistDebugStart> => {
   const ours = adapter.command === installedGdb;
   const status = await debugAdapter.start({ command: adapter.command, args: adapter.args, cwd: projectRoot, env });
   if (!status.running) return { success: false, message: `${msg('debuggerFailed')}: ${status.message}`, installedDebugger: ours };
-  return { success: true, message: '', program, cwd: projectRoot, flavor: adapter.flavor, installedDebugger: ours };
+  return { success: true, message: '', program, cwd: projectRoot, args: runArguments, flavor: adapter.flavor, installedDebugger: ours };
 };
 
 export const stopDebugging = (): void => debugAdapter.stop();
@@ -1441,6 +1474,8 @@ export const studio: Handlers = {
   setLanguage,
   pathEntries,
   setCustomPath,
+  setCustomEnvironment,
+  setRunArguments,
   setAutoConfigure,
   startClangd,
   sendClangd: (message: unknown) => clangd.send(message),
