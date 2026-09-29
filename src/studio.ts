@@ -7,7 +7,7 @@ import type { IPty } from 'node-pty';
 import { agentLaunch, findAgents, installAgent, isAgentId, type AgentPlaces, type AgentStatus } from './agents';
 import type { Handlers } from './api';
 import { findDebugAdapter } from './debug-adapters';
-import { debuggerRelease, installDebugger, installedDebugger } from './debugger-download';
+import { debuggerRelease, installDebugger, installedDebugger, removeDebugger } from './debugger-download';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
@@ -1070,15 +1070,18 @@ const startDebugging = async (): Promise<GlistDebugStart> => {
   if (!found.program) return { success: false, message: found.message };
   const { program } = found;
   const env = processEnvironment(resolveToolchain(projectRoot));
-  const adapter = await findDebugAdapter(env, installedDebugger(studioHome()));
+  const installedGdb = installedDebugger(studioHome());
+  const adapter = await findDebugAdapter(env, installedGdb);
   if (!adapter) {
     return process.platform === 'win32'
       ? { success: false, message: msg('debuggerMissingWindows'), missingDebugger: true }
       : { success: false, message: msg('debuggerMissing') };
   }
+  // The GDB Settings installed can be installed again when it fails.
+  const ours = adapter.command === installedGdb;
   const status = await debugAdapter.start({ command: adapter.command, args: adapter.args, cwd: projectRoot, env });
-  if (!status.running) return { success: false, message: `${msg('debuggerFailed')}: ${status.message}` };
-  return { success: true, message: '', program, cwd: projectRoot, flavor: adapter.flavor };
+  if (!status.running) return { success: false, message: `${msg('debuggerFailed')}: ${status.message}`, installedDebugger: ours };
+  return { success: true, message: '', program, cwd: projectRoot, flavor: adapter.flavor, installedDebugger: ours };
 };
 
 export const stopDebugging = (): void => debugAdapter.stop();
@@ -1299,10 +1302,12 @@ const debuggerStatus = (): GlistDebuggerStatus => ({
 
 let installingDebugger = false;
 
-const installDebuggerFromSettings = async (): Promise<ProcessResult> => {
+// Again: the installed one is removed first, for one that does not start.
+const installDebuggerFromSettings = async (again?: unknown): Promise<ProcessResult> => {
   if (installingDebugger) return { success: false, message: msg('debuggerInstallRunning') };
   installingDebugger = true;
   try {
+    if (again === true) await removeDebugger(studioHome());
     await installDebugger(studioHome(), (text) => sendToRenderer('debugger:install-output', text));
     return { success: true, message: msg('debuggerInstalled') };
   } catch (error) {

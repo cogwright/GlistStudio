@@ -6,7 +6,8 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { zstdCompressSync } from 'node:zlib';
-import { debuggerRelease, installDebugger, installedDebugger } from '../src/debugger-download.ts';
+import { debuggerRelease, installDebugger, installedDebugger, removeDebugger } from '../src/debugger-download.ts';
+import { findDebugAdapter } from '../src/debug-adapters.ts';
 
 // Installing the pinned GDB, against a local server serving packages made the
 // way MSYS2 makes them: tar, then zstd. Run with jiti.
@@ -78,6 +79,21 @@ try {
   const asked = requests.length;
   assert.equal(await installDebugger(home, () => undefined, sources, good), program);
   assert.equal(requests.length, asked);
+
+  // On Windows only the installed GDB is used; one on PATH, such as gipDebug's, is not.
+  const elsewhere = path.join(root, 'elsewhere');
+  mkdirSync(elsewhere);
+  writeFileSync(path.join(elsewhere, 'gdb'), '#!/bin/sh\necho "GNU gdb (GDB) 15.2"\n', { mode: 0o755 });
+  const env = { PATH: elsewhere };
+  assert.equal(await findDebugAdapter(env, null, 'win32'), null);
+  assert.deepEqual(await findDebugAdapter(env, program, 'win32'), { command: program, args: ['--interpreter=dap'], flavor: 'gdb' });
+  // Elsewhere, a GDB 14 or newer on PATH still is.
+  if (process.platform !== 'win32') assert.equal((await findDebugAdapter(env, null, 'linux'))?.command, path.join(elsewhere, 'gdb'));
+
+  // Installing again starts from nothing.
+  await removeDebugger(home, good);
+  assert.equal(installedDebugger(home, good), null);
+  assert.equal(await installDebugger(home, () => undefined, sources, good), program);
 } finally {
   server.close();
   rmSync(root, { recursive: true, force: true });

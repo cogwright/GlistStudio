@@ -40,7 +40,7 @@ Glist Studio expects Glist where its install scripts put it: `C:\dev\glist` on W
 - **A debugger** that speaks the Debug Adapter Protocol:
   - macOS: `lldb-dap` from Xcode or its command line tools.
   - Linux: `lldb-dap` from LLVM (also named `lldb-vscode`), or GDB 14 or newer.
-  - Windows: Glist's tools have none, so Settings, under Debugger, installs GDB from MSYS2, the source of Glist's compilers, with every file checked against a checksum pinned in `src/debugger-packages.json`. A GDB 14 or newer on `PATH`, such as the gipDebug plugin's, works too.
+  - Windows: Glist's tools have none, so Settings, under Debugger, installs GDB from MSYS2, the source of Glist's compilers, with every file checked against a checksum pinned in `src/debugger-packages.json`. It is the only debugger used on Windows: others found there, such as the gipDebug plugin's, cannot find their own files. If it does not start, the studio offers to install it again.
 - **Git**, only once it is turned on: Xcode's command line tools on macOS, the `git` package on Linux, and [Git for Windows](https://git-scm.com/).
 
 On Windows, the DLL folders of the plugins a project uses, `libs\bin` and `prebuilts\bin`, are added to the end of `PATH` for builds, runs, the debugger and the terminal, as those plugins' READMEs ask Eclipse users to do by hand. Settings, under PATH, lists every folder in the order they are searched, and takes more folders, which go last.
