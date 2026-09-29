@@ -1256,11 +1256,27 @@ const switchSourceHeader = async (): Promise<void> => {
 };
 editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
 
+// The file in front, if Git knows it. Engine and plugin files count too, in
+// their own repositories.
+const trackedFile = (): OpenFile | undefined => {
+  const file = activeFile();
+  const change = file ? git.changeOf(file.path) : undefined;
+  return file && git.repositoryOf(file.path) && change?.state !== 'untracked' && !git.isIgnored(file.path) ? file : undefined;
+};
+
 // The right-click menu, and the same from the keyboard at the cursor.
 const editorMenuHooks: EditorMenuHooks = {
   navigates: () => clangd.navigates,
   switchSourceHeader: () => { void switchSourceHeader(); },
   commandPalette: () => commandPalette.open(),
+  git: () => {
+    const file = git.enabled && git.repository ? trackedFile() : undefined;
+    return file ? [
+      { label: t('showDiff'), run: () => { void openWorkingDiff(file.path); } },
+      { label: t('showHistory'), run: () => showGitHistory(file.path) },
+      { label: t(gitEditor.isBlaming() ? 'hideAnnotate' : 'annotate'), run: () => { void gitEditor.toggleBlame(); } },
+    ] : [];
+  },
 };
 // As Monaco's own menu did: focus, and the cursor at the click unless it is in the selection.
 editor.onContextMenu((event) => {
@@ -2008,8 +2024,7 @@ const configureMenus = (): void => {
     }
     const file = activeFile();
     const change = file ? git.changeOf(file.path) : undefined;
-    // Engine and plugin files count too, in their own repositories.
-    const tracked = Boolean(file && git.repositoryOf(file.path) && change?.state !== 'untracked' && !git.isIgnored(file.path));
+    const tracked = Boolean(trackedFile());
     return [
       item(t('commitMenu'), showCommitView, { shortcut: 'Ctrl+K' }),
       item(t('pushMenu'), () => { void pushChanges(); }, { shortcut: 'Ctrl+Shift+K', disabled: !repository.branch }),
@@ -2274,7 +2289,6 @@ settingsLanguage.addEventListener('change', () => {
   agentSettings.render();
   commitPane.render();
   gitPanel.reload();
-  setGitActions(git.enabled);
   void window.glistAPI.setLanguage(next);
 });
 setUpFontSettings(editor, {
@@ -2400,25 +2414,6 @@ window.glistAPI.onRunStatus((status) => {
   updateButtons();
 });
 
-// Git's pieces of the studio show while it is turned on in Settings.
-let gitActions: monaco.IDisposable[] = [];
-const setGitActions = (enabled: boolean): void => {
-  gitActions.forEach((action) => action.dispose());
-  gitActions = [];
-  if (!enabled) return;
-  const action = (id: string, label: TranslationKey, run: (file: OpenFile) => void): monaco.IDisposable => editor.addAction({
-    id: `glist.git.${id}`,
-    label: `Git: ${t(label)}`,
-    contextMenuGroupId: '9_git',
-    run: () => { const file = activeFile(); if (file && git.repository) run(file); },
-  });
-  gitActions = [
-    action('diff', 'showDiff', (file) => { void openWorkingDiff(file.path); }),
-    action('history', 'showHistory', (file) => showGitHistory(file.path)),
-    action('annotate', 'annotate', () => { void gitEditor.toggleBlame(); }),
-  ];
-};
-
 const renderBranchChip = (repository: GlistGitRepository | null): void => {
   branchChip.hidden = !repository;
   if (!repository) return;
@@ -2442,7 +2437,6 @@ const applyGitEnabled = (enabled: boolean): void => {
     if (sidebarView === 'commit') showView('explorer');
     if (panelView === 'git') showPanel('output');
   }
-  setGitActions(enabled);
 };
 
 git.onEnabled(applyGitEnabled);
