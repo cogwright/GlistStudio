@@ -589,7 +589,7 @@ const tr: Record<TranslationKey, string> = {
   sharedEdit: '{name}, onu kullanan tüm projelerce paylaşılıyor; kaydetmek hepsi için değiştirir.',
   buildSettings: 'Derleme',
   autoConfigure: 'CMake dosyaları değişince yeniden yapılandır',
-  autoConfigureHint: 'Projenin, motorun veya eklentilerinin CMakeLists.txt ya da başka bir CMake dosyası değişince, CMake projeyi kısa süre sonra yeniden yapılandırır; böylece kod tamamlama yeni dosyaları derlemeden tanır.',
+  autoConfigureHint: 'Projede, motorda ya da eklentilerde bir CMake dosyası değişince CMake projeyi kısa süre sonra yeniden yapılandırır; böylece kod tamamlama yeni dosyaları derlemeden tanır.',
   tookTheirs: '{name}: onların sürümü alındı.',
 };
 
