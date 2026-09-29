@@ -88,6 +88,12 @@ const registerIpcHandlers = (): void => {
     return openProjectAt(result.filePaths[0]);
   });
   ipcMain.handle(invokeChannels.openEngineSite, () => shell.openExternal('https://www.glistengine.com/'));
+  ipcMain.handle(invokeChannels.chooseFolder, async (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const options = { title: msg('pathFolderTitle'), properties: ['openDirectory' as const] };
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+    return result.canceled ? null : result.filePaths[0] ?? null;
+  });
   ipcMain.handle(invokeChannels.updateState, () => updateState());
   ipcMain.handle(invokeChannels.checkForUpdates, () => checkForUpdates());
   ipcMain.handle(invokeChannels.installUpdate, () => installUpdate());

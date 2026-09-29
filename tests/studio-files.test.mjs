@@ -58,6 +58,21 @@ try {
   write('myglistapps/App/CMakeLists.txt', 'set(PLUGINS)\n');
   assert.deepEqual(pluginDllFolders(at('myglistapps/App')), []);
   assert.deepEqual(pluginDllFolders(at('myglistapps/Missing')), []);
+
+  // Settings > PATH: this computer's folders, then the ones added, which must be whole folders.
+  const kept = await studio.setCustomPath([at('tools'), 'relative/tools', `${at('a')}${path.delimiter}${at('b')}`, at('tools/'), at('tools/../tools'), 7]);
+  assert.deepEqual(kept, [at('tools')], 'only absolute folders without the separator, each once');
+  write('tools/tool.txt', '');
+  const entries = await studio.pathEntries();
+  const system = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  assert.deepEqual(entries.filter((entry) => entry.source === 'system').map((entry) => entry.path), system);
+  assert.deepEqual(entries.slice(-1).map((entry) => [entry.path, entry.source, entry.exists]), [[at('tools'), 'custom', true]]);
+  const top = path.parse(root).root;
+  assert.deepEqual(await studio.setCustomPath([top]), [top], 'a root stays as it is');
+  await studio.setCustomPath([at('missing')]);
+  assert.deepEqual((await studio.pathEntries()).slice(-1).map((entry) => [entry.source, entry.exists]), [['custom', false]]);
+  await studio.setCustomPath([]);
+  assert.equal((await studio.pathEntries()).some((entry) => entry.source === 'custom'), false);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

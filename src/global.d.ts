@@ -33,6 +33,16 @@ interface GlistProjectSummary {
   lastOpened?: number;
 }
 
+// A folder on PATH for the programs the studio starts, and where it comes from:
+// Glist's compilers and tools, CMake's folder, this computer's own PATH, a
+// plugin's DLLs (owner names it), or one added in Settings.
+interface GlistPathEntry {
+  path: string;
+  source: 'glist' | 'cmake' | 'system' | 'plugin' | 'custom';
+  owner: string;
+  exists?: boolean;
+}
+
 interface GlistProjectInfo {
   root: string;
   name: string;
@@ -347,6 +357,11 @@ interface Window {
     setTarget(name: string | null): Promise<void>;
     stopProject(): Promise<GlistProcessResult>;
     setLanguage(language: GlistLanguage): Promise<GlistLanguage>;
+    // Settings > PATH: the folders programs started from the studio look in, in order.
+    pathEntries(): Promise<GlistPathEntry[]>;
+    // Returns the folders kept: whole absolute folders, each once.
+    setCustomPath(folders: string[]): Promise<string[]>;
+    chooseFolder(): Promise<string | null>;
     setTheme(colors: GlistWindowColors): Promise<void>;
     setZoomFactor(factor: number): Promise<number>;
     // Whether CMake configures again when its files change.
