@@ -31,18 +31,6 @@ Opening a project starts [clangd](https://clangd.llvm.org/). It is looked up on 
 
 clangd reads the compile flags from `_build/Release/compile_commands.json`, which the build writes. Until a project has been built once, clangd cannot find the engine headers; it restarts on its own after that first build. Definitions in GlistEngine and the plugins the project uses open for editing, as their files do from the explorer: neither builds on its own, so work on them happens from an app. The first change to one in a session says that every project shares it. Other files in the Glist folder, such as zbin's, open read-only, and a rename or fix that clangd offers only ever changes the project's own files.
 
-## Configuring
-
-When CMakeLists.txt or another CMake file the project uses changes, whether the project's, the engine's or a plugin's, CMake configures the project again a moment later, the way CLion reloads a CMake project.
-
-- The files watched are the ones CMake itself read the last time it configured.
-- Changes that come quickly after each other are configured once, and a save that changes nothing configures nothing.
-- When the compile commands change, clangd restarts to read them; during a build, once the build is done. Adding a plugin to `PLUGINS` makes its headers known without a build.
-- Configuring shows in Output. A failure says so in a message with the way to Output.
-- It can be turned off in Settings, under Build.
-
-A build folder remembers the project folder it was made for, and CMake will not use it for another. A project that was moved or copied since its last build gets a new build folder, so its first build takes longer.
-
 ## Debugging
 
 Click to the left of a line number to put a breakpoint there, then press Debug (F6). The studio builds a Debug configuration into `_build/Debug`, starts the program under a debugger, and stops at the breakpoint with the line highlighted. The Run and Debug view shows the variables and the call stack; hovering a variable in the editor shows its value. Continue (F5), Step Over (F10), Step Into (F11) and Step Out (Shift+F11) sit in the toolbar while debugging, and Stop (Shift+F5) ends it.
