@@ -9,6 +9,7 @@ import { findDebugAdapter } from './debug-adapters';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
+import { createGitService } from './git-service';
 
 // What the backend needs from whoever hosts it: the Electron main process or
 // the browser preview server.
@@ -374,6 +375,7 @@ const createProjectFromTemplate = async (
   }
   activeProjectRoot = target;
   await rememberProject(target).catch((): undefined => undefined);
+  void git.projectChanged();
   return { root: target, name: projectName, hasCMakeProject: true };
 };
 
@@ -652,6 +654,7 @@ export const openProjectAt = async (projectRoot: string): Promise<GlistProjectIn
   if (!(await fs.stat(root)).isDirectory()) throw new Error(msg('folderRequired'));
   activeProjectRoot = root;
   await rememberProject(root).catch((): undefined => undefined);
+  void git.projectChanged();
   return {
     root,
     name: path.basename(root),
@@ -979,6 +982,19 @@ const installAgentFromSettings = async (agent: unknown): Promise<ProcessResult> 
   }
 };
 
+// Git, for the Commit view and the Git panel (see git-service.ts).
+const git = createGitService({
+  projectRoot: () => activeProjectRoot,
+  environment: (directory) => processEnvironment(resolveToolchain(directory)),
+  send: (channel, payload) => sendToRenderer(channel, payload),
+  trash: (entryPath) => host.trashItem(entryPath),
+  home: studioHome,
+  projectsDirectory,
+  language: () => language,
+});
+
+export const stopGit = (): void => git.stop();
+
 const setLanguage = (nextLanguage: AppLanguage): AppLanguage => {
   language = nextLanguage === 'tr' ? 'tr' : 'en';
   return language;
@@ -1024,4 +1040,5 @@ export const studio: Handlers = {
   listAgents,
   glistStatus,
   installAgent: installAgentFromSettings,
+  ...git.handlers,
 };
