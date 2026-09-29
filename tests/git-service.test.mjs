@@ -250,7 +250,8 @@ try {
   await run({ kind: 'commit', message: 'Draft', paths: [inProject('protected.txt')], amend: false });
   assert.equal((await git.gitStatus()).repository.headPushed, false);
   await run({ kind: 'commit', message: 'Draft, amended', paths: [], amend: true });
-  assert.equal((await git.gitLog({}))[0].subject, 'Draft, amended');
+  // HEAD itself: the log of every branch can put a stash made in the same second first.
+  assert.equal(execFileSync('git', ['-C', project, 'log', '-1', '--format=%s']).toString().trim(), 'Draft, amended');
   // Branches not listed are not protected, and turned off nothing is.
   await git.gitProtection({ on: true, branches: ['release/*'] });
   assert.equal((await git.gitOutgoing()).protected, false);
