@@ -9,6 +9,7 @@ import { findDebugAdapter } from './debug-adapters';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
+import { createGitService } from './git-service';
 
 // What the backend needs from whoever hosts it: the Electron main process or
 // the browser preview server.
@@ -374,6 +375,7 @@ const createProjectFromTemplate = async (
   }
   activeProjectRoot = target;
   await rememberProject(target).catch((): undefined => undefined);
+  void git.projectChanged();
   return { root: target, name: projectName, hasCMakeProject: true };
 };
 
@@ -652,6 +654,7 @@ export const openProjectAt = async (projectRoot: string): Promise<GlistProjectIn
   if (!(await fs.stat(root)).isDirectory()) throw new Error(msg('folderRequired'));
   activeProjectRoot = root;
   await rememberProject(root).catch((): undefined => undefined);
+  void git.projectChanged();
   return {
     root,
     name: path.basename(root),
@@ -702,7 +705,27 @@ const listWorkspaceDirectory = async (directoryPath: string): Promise<FileEntry[
   return listEntries(realDirectory, directoryPath);
 };
 
+// A file in the engine or a plugin the open project names. Neither builds on its
+// own, so their work happens from an app; other workspace files stay read-only.
+const dependencyFile = async (filePath: string): Promise<string> => {
+  const target = path.resolve(filePath);
+  const directory = path.dirname(target);
+  if (existsSync(directory)) {
+    const real = existsSync(target) ? await fs.realpath(target) : path.join(await fs.realpath(directory), path.basename(target));
+    for (const dependency of await listDependencies()) {
+      if (!dependency.exists) continue;
+      const folder = await fs.realpath(dependency.path);
+      if (real !== folder && isInside(folder, real)) return real;
+    }
+  }
+  throw new Error(msg('outsideProject'));
+};
+
 const writeProjectFile = async (filePath: string, contents: string): Promise<boolean> => {
+  if (!isInside(path.resolve(requireProjectRoot()), path.resolve(filePath))) {
+    await fs.writeFile(await dependencyFile(filePath), contents, 'utf8');
+    return true;
+  }
   // A file deleted behind the editor's back is written again, into a folder that still exists.
   const target = existsSync(filePath)
     ? await assertExistingPathInProject(filePath)
@@ -979,6 +1002,20 @@ const installAgentFromSettings = async (agent: unknown): Promise<ProcessResult> 
   }
 };
 
+// Git, for the Commit view and the Git panel (see git-service.ts).
+const git = createGitService({
+  projectRoot: () => activeProjectRoot,
+  dependencies: () => listDependencies(),
+  environment: (directory) => processEnvironment(resolveToolchain(directory)),
+  send: (channel, payload) => sendToRenderer(channel, payload),
+  trash: (entryPath) => host.trashItem(entryPath),
+  home: studioHome,
+  projectsDirectory,
+  language: () => language,
+});
+
+export const stopGit = (): void => git.stop();
+
 const setLanguage = (nextLanguage: AppLanguage): AppLanguage => {
   language = nextLanguage === 'tr' ? 'tr' : 'en';
   return language;
@@ -1024,4 +1061,5 @@ export const studio: Handlers = {
   listAgents,
   glistStatus,
   installAgent: installAgentFromSettings,
+  ...git.handlers,
 };

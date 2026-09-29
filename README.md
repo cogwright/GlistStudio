@@ -8,13 +8,14 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 
 ## Features
 
-- Project explorer with file and folder operations, context menus, and copy/paste, and the engine and plugins the project uses listed below it, to browse and read
+- Project explorer with file and folder operations, context menus, and copy/paste, and the engine and plugins the project uses listed below it, to browse and edit
 - Tabbed C/C++ editor powered by Monaco, which also highlights CMake files
 - C++ code intelligence from clangd: diagnostics, completion, hover, signature help, go to definition, references, rename, quick fixes, formatting, outline, and header/source switching (Alt+O)
 - Save, build, run, and stop commands with live output, colored as the compiler colors it, where file locations open the file at that line
 - A debugger: breakpoints, stepping, variables, the call stack, and values on hover, through lldb-dap or GDB
 - A terminal next to the output, in the project folder, with the same tools on `PATH` as builds
 - Coding agents (Claude Code, Codex, Gemini CLI, Antigravity) in an Agent tab, off until turned on, and installable into the Glist folder
+- Git, off until turned on: a Commit view, changes shown as diffs in the editor area, a Git tab with the log and its graph, branches, remotes and stashes, changed lines and blame in the editor, help with conflicts, and the engine's and plugins' own repositories
 - Automatic CMake source-list updates when files are created, renamed, or removed
 - C++ class generation with matching header and source files
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
@@ -27,7 +28,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 
 Opening a project starts [clangd](https://clangd.llvm.org/). It is looked up on `PATH`; on Windows the Glist `clang64\bin` folder is searched first. Without clangd the editor still works, with syntax highlighting only.
 
-clangd reads the compile flags from `_build/Release/compile_commands.json`, which the build writes. Until a project has been built once, clangd cannot find the engine headers; it restarts on its own after that first build. Definitions in GlistEngine and its plugins open read-only.
+clangd reads the compile flags from `_build/Release/compile_commands.json`, which the build writes. Until a project has been built once, clangd cannot find the engine headers; it restarts on its own after that first build. Definitions in GlistEngine and the plugins the project uses open for editing, as their files do from the explorer: neither builds on its own, so work on them happens from an app. The first change to one in a session says that every project shares it. Other files in the Glist folder, such as zbin's, open read-only, and a rename or fix that clangd offers only ever changes the project's own files.
 
 ## Debugging
 
@@ -64,6 +65,36 @@ The studio finds an agent installed from Settings, then the Gemini CLI in Glist'
 - An agent installed this way keeps its settings and sign-in in `GlistStudio/agents/config`.
 
 Antigravity's own installer sets it up for the whole computer, so the studio only finds it.
+
+## Git
+
+Git is off until Show Git tools is turned on in Settings, under Git. While it is off the studio shows nothing of it and runs no git commands. It needs Git itself: Xcode's command line tools on macOS, the `git` package on Linux, and [Git for Windows](https://git-scm.com/) on Windows, where the Glist installer only uses a copy it removes afterwards.
+
+![The Commit view with a changed file and a new one, the change shown as a diff in the editor area, and the Git tab with the log, its graph and a commit's details](docs/images/git.png)
+
+Turned on, it works like it does in JetBrains IDEs:
+
+- **The Commit view**, beside the explorer (Ctrl+K), lists what changed since the last commit: Changes, Unversioned Files and Merge Conflicts, each file with a checkbox. Only the checked files are committed, as they are on disk; files are saved first. Clicking a file shows its changes as a diff tab in the editor area, and double-clicking opens it. Below are the commit message, Amend the last commit, Commit, and Commit and Push. Rollback puts checked files back as they were in the last commit, and files that were new go to the trash. A project that is not a repository yet gets Create Git Repository, which also makes a `.gitignore` for `_build/`.
+- **The Git tab**, under the editor, has the Log of every branch with its graph, a search by message or hash, and a branch filter. A commit shows its message and the files it changed, each opening its diff, and its menu copies its revision number, checks it out, makes a branch or tag there, cherry-picks or reverts it, or resets the branch to it. Beside the Log are Branches (local, remote and tags: check out, new branch, merge, rebase, rename, delete), Remotes (add, edit, remove, fetch), Stashes (stash with or without unversioned files, apply, apply and delete, see what one holds), and the Console with every git command the studio ran and what it printed.
+- **In the editor**, a bar beside the line numbers marks lines added or changed since the last commit, and a small triangle marks lines removed. Clicking one shows the lines as they were, with Rollback for that change alone, which Undo takes back. Annotate with Git Blame, in the Git menu and the editor's menu, shows who last changed each line and when; clicking an annotation shows its commit in the Log. A file with conflicts has Keep Mine, Take Theirs and Keep Both above each one, and says when all are resolved.
+- **The title bar** shows the branch and how many commits there are to push and to pull. Clicking it offers Update Project, Commit, Push, New Branch and the branches to switch to. The Git menu has all of this, and the explorer colors files by what changed: blue for changed, green for added, orange for unversioned, red for conflicts, and dimmed for ignored.
+
+Update Project (Ctrl+T) brings in the remote's commits by merging, or by rebasing if Settings says so, and puts changes not committed yet aside while it runs; merging and rebasing a branch do the same. Push (Ctrl+Shift+K) lists the commits it sends, and a branch pushed for the first time follows the remote branch of its name from then on. Checking out a branch over local changes offers to stash them and bring them back. Get from Git, in the File menu and in Open Project, clones a repository into the projects folder and opens it. A conflict resolved with one click can be undone from the message that says so.
+
+**The engine and plugins** a project is built with, GlistEngine and the plugins its CMakeLists.txt names, are repositories of their own, and the studio manages them too:
+
+- The Git tab has a picker that shows any of them in the Log, Branches, Remotes and Stashes.
+- The branch menu lists each with its branch and the commits it is ahead or behind.
+- Their changes appear in the Commit view, each in a group of its own, closed and unchecked. Checked files are committed to their own repository with the same message; Amend only ever changes the project's last commit.
+- Push offers each one that has commits to send, with a checkbox.
+
+Update Engine and Plugins, in the Git menu and the branch menu, brings in their remotes' commits. It is separate from Update Project, because every project shares them. For the same reason, the studio asks before rolling back, checking out, merging, rebasing or resetting one. Their files can be edited like the project's, with their changed lines marked.
+
+A remote that asks for a password is answered through the system, never through the studio: git and ssh ask a system dialog on macOS, and the desktop's password dialog on Linux (zenity, kdialog or ssh-askpass), through `GIT_ASKPASS` and `SSH_ASKPASS`. Git's own credential helper, such as the macOS keychain or Git Credential Manager on Windows, remembers it. GitHub takes a personal access token instead of the account password.
+
+Commits are signed with the name and email git already has. Without them the first commit asks, offering the computer account's name, and Settings can change them; they are saved in git's global settings, for every project.
+
+Ctrl+K, Ctrl+Shift+K and Ctrl+T (Cmd on macOS) are JetBrains' keys. While Git is on they take the place of the editor's own Ctrl+K key pairs and Ctrl+Shift+K (delete line), but not in the terminal, where they edit the command line.
 
 ## Glist Studio's folder
 
@@ -142,6 +173,10 @@ Pushing a tag such as `v0.2.0` runs `.github/workflows/release.yml`, which build
 - `src/fonts.ts`: Font settings
 - `src/terminal.ts`: The Terminal and Agent tabs (xterm.js); the programs behind them run through node-pty in `src/studio.ts`
 - `src/agents.ts` and `src/agent-settings.ts`: Finding and installing agents, and their rows in Settings
+- `src/git-service.ts`: Runs git for the studio: the status, the history, branches, remotes and stashes, and every change, one at a time
+- `src/git.ts`, `src/git-graph.ts`, `src/line-diff.ts` and `src/conflicts.ts`: Reading git's output, the log's graph, changed lines, and conflict markers
+- `src/git-client.ts`, `src/git-commit-view.ts`, `src/git-panel.ts`, `src/git-editor.ts` and `src/git-dialogs.ts`: Git in the interface
+- `src/notifications.ts` and `src/context-menu.ts`: Balloons for what finished in the background, and the menus of the Git views
 - `src/icons.ts` and `src/file-icons.ts`: Interface icons (Codicons) and file icons (Seti); see `THIRD_PARTY_NOTICES.md`
 - `src/renderer.ts`: Editor and interface behavior
 - `src/index.html` and `src/index.css`: Interface structure and styling

@@ -1,5 +1,6 @@
 import { icon } from './icons';
-import { getLanguage, t } from './localization';
+import { t } from './localization';
+import { relativeTime } from './time';
 
 // Open Project: the projects in myglistapps and the ones opened before, most
 // recently opened first, with a search box. Browse picks any other folder.
@@ -20,16 +21,7 @@ export interface ProjectPickerActions {
   create: () => void;
 }
 
-const opened = (time: number | undefined): string => {
-  if (!time) return t('neverOpened');
-  const minutes = Math.round((time - Date.now()) / 60000);
-  const format = new Intl.RelativeTimeFormat(getLanguage(), { numeric: 'auto' });
-  const [value, unit]: [number, Intl.RelativeTimeFormatUnit] = Math.abs(minutes) < 60 ? [minutes, 'minute']
-    : Math.abs(minutes) < 60 * 24 ? [Math.round(minutes / 60), 'hour']
-      : Math.abs(minutes) < 60 * 24 * 30 ? [Math.round(minutes / (60 * 24)), 'day']
-        : [Math.round(minutes / (60 * 24 * 30)), 'month'];
-  return t('lastOpened').replace('{time}', format.format(value, unit));
-};
+const opened = (time: number | undefined): string => (time ? t('lastOpened').replace('{time}', relativeTime(time)) : t('neverOpened'));
 
 export const setUpProjectPicker = (controls: ProjectPickerControls, actions: ProjectPickerActions): (() => Promise<void>) => {
   let projects: GlistProjectSummary[] = [];

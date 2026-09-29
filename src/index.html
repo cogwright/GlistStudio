@@ -16,10 +16,12 @@
             <button class="menu-button" type="button" data-menu="edit" data-i18n="menuEdit">Edit</button>
             <button class="menu-button" type="button" data-menu="view" data-i18n="menuView">View</button>
             <button class="menu-button" type="button" data-menu="run" data-i18n="menuRun">Run</button>
+            <button id="git-menu-button" class="menu-button" type="button" data-menu="git" data-i18n="menuGit" hidden>Git</button>
             <button class="menu-button" type="button" data-menu="help" data-i18n="menuHelp">Help</button>
           </nav>
         </div>
         <div class="toolbar-actions">
+          <button id="git-branch-chip" class="title-action git-branch-chip" type="button" data-menu="branches" hidden></button>
           <button id="zoom-indicator" class="title-action zoom-indicator" type="button" title="Back to 100% (Ctrl+0)" data-i18n-title="resetZoomTitle" hidden></button>
           <button id="open-project" class="title-action" type="button" title="Open Project" data-i18n-title="openProject">
             <i data-icon="folder-opened"></i>
@@ -56,6 +58,7 @@
         <nav class="activity-bar" aria-label="Main tools">
           <button class="activity-button active" type="button" title="Explorer" data-view="explorer" aria-pressed="true"><i data-icon="files"></i></button>
           <button class="activity-button" type="button" title="Run and Debug" data-view="debug" data-i18n-title="debugView" aria-pressed="false"><i data-icon="debug-alt"></i></button>
+          <button id="commit-activity" class="activity-button" type="button" title="Commit (Ctrl+K)" data-view="commit" data-i18n-title="commitViewTitle" aria-pressed="false" hidden><i data-icon="source-control"></i></button>
           <div class="activity-spacer"></div>
           <button id="open-settings" class="activity-button" type="button" title="Settings" data-i18n-title="settings"><i data-icon="settings-gear"></i></button>
         </nav>
@@ -101,6 +104,28 @@
             <details class="debug-section" open><summary><i data-icon="chevron-right"></i><span data-i18n="callStack">CALL STACK</span></summary><div id="debug-stack"></div></details>
             <details class="debug-section" open><summary><i data-icon="chevron-right"></i><span data-i18n="breakpoints">BREAKPOINTS</span></summary><div id="debug-breakpoints"></div></details>
           </div>
+          <div id="commit-view" class="sidebar-view commit-view" hidden>
+            <div class="panel-heading">
+              <div class="panel-title"><span data-i18n="commitView">COMMIT</span></div>
+              <div class="explorer-actions">
+                <button id="commit-refresh" class="heading-action" type="button" title="Refresh" data-i18n-title="gitRefresh"><i data-icon="refresh"></i></button>
+                <button id="commit-rollback" class="heading-action" type="button" title="Rollback Checked Files" data-i18n-title="rollbackTitle"><i data-icon="discard"></i></button>
+                <button id="commit-update" class="heading-action" type="button" title="Update Project (Ctrl+T)" data-i18n-title="updateProjectTitle"><i data-icon="repo-pull"></i></button>
+                <button id="commit-push" class="heading-action" type="button" title="Push (Ctrl+Shift+K)" data-i18n-title="pushTitle"><i data-icon="repo-push"></i></button>
+              </div>
+            </div>
+            <div id="commit-branch" class="commit-branch" hidden></div>
+            <div id="commit-banner" class="commit-banner" hidden></div>
+            <div id="commit-changes" class="commit-changes" role="tree"></div>
+            <div id="commit-box" class="commit-box" hidden>
+              <textarea id="commit-message" rows="4" placeholder="What changed, and why (Ctrl+Enter commits)" data-i18n-placeholder="commitMessageHint" aria-label="Commit message" data-i18n-aria-label="commitMessage"></textarea>
+              <label class="commit-amend"><input id="commit-amend" type="checkbox" /><span data-i18n="amend">Amend the last commit</span></label>
+              <div class="commit-buttons">
+                <button id="commit-button" type="button" class="primary" data-i18n="commit">Commit</button>
+                <button id="commit-push-button" type="button" data-i18n="commitAndPush">Commit and Push...</button>
+              </div>
+            </div>
+          </div>
         </aside>
         <div id="sidebar-resizer" class="vertical-resizer"></div>
 
@@ -108,6 +133,21 @@
           <div id="editor-tabs" class="editor-tabs"></div>
           <div class="editor-stage">
             <div id="editor-host" class="editor-host"></div>
+            <div id="diff-view" class="diff-view" hidden>
+              <div class="diff-toolbar">
+                <span id="diff-left" class="diff-label"></span>
+                <i data-icon="git-compare"></i>
+                <span id="diff-right" class="diff-label"></span>
+                <span class="diff-toolbar-space"></span>
+                <button id="diff-previous" class="heading-action" type="button" title="Previous Change" data-i18n-title="previousChange"><i data-icon="arrow-up"></i></button>
+                <button id="diff-next" class="heading-action" type="button" title="Next Change" data-i18n-title="nextChange"><i data-icon="arrow-down"></i></button>
+                <button id="diff-layout" class="heading-action" type="button" title="Side by Side or One Column" data-i18n-title="toggleSideBySide"><i data-icon="split-horizontal"></i></button>
+                <button id="diff-open" class="heading-action" type="button" title="Open File" data-i18n-title="openFile"><i data-icon="go-to-file"></i></button>
+                <button id="diff-rollback" class="heading-action danger" type="button" title="Rollback" data-i18n-title="rollback"><i data-icon="discard"></i></button>
+              </div>
+              <p id="diff-message" class="diff-message" hidden></p>
+              <div id="diff-host" class="diff-host"></div>
+            </div>
             <div id="welcome" class="welcome">
               <img id="welcome-icon" class="welcome-logo" alt="Glist Engine" />
               <h1>Glist Studio</h1>
@@ -126,12 +166,14 @@
                 <button class="output-tab active" type="button" data-panel="output" data-i18n="output">OUTPUT</button>
                 <button class="output-tab" type="button" data-panel="terminal" data-i18n="terminal">TERMINAL</button>
                 <button id="agent-tab" class="output-tab" type="button" data-panel="agent" data-i18n="agentTab" hidden>AGENT</button>
+                <button id="git-tab" class="output-tab" type="button" data-panel="git" data-i18n="gitTab" hidden>GIT</button>
               </div>
               <div class="output-tools"><span id="clangd-status" class="process-status" hidden><i></i><span></span></span><span id="process-status" class="process-status"><i></i><span>Ready</span></span><select id="agent-select" class="agent-select" aria-label="Agent" data-i18n-aria-label="agentChoice" hidden></select><button id="new-terminal" class="heading-action" type="button" title="New Terminal" data-i18n-title="newTerminal" hidden><i data-icon="add"></i></button><button id="clear-output" class="heading-action" type="button" title="Clear Output" data-i18n-title="clearOutput"><i data-icon="clear-all"></i></button><button id="close-output" class="panel-close" type="button" title="Close Output" data-i18n-title="closeOutput" aria-label="Close Output" data-i18n-aria-label="closeOutput"><i data-icon="close"></i></button></div>
             </div>
             <pre id="output" class="output">Glist Studio is ready. Open a project to get started.</pre>
             <div id="terminal" class="terminal-host" hidden></div>
             <div id="agent-terminal" class="terminal-host" hidden></div>
+            <div id="git-panel" class="git-panel" hidden></div>
           </section>
         </section>
       </main>
@@ -174,6 +216,7 @@
         <p id="project-list-empty" class="dialog-hint" data-i18n="noProjects" hidden>No projects here yet. Make one with New Project, or browse for a folder.</p>
         <div class="dialog-actions">
           <button type="button" id="project-picker-browse" class="dialog-action-left" data-i18n="browse">Browse...</button>
+          <button type="button" id="project-picker-clone" data-i18n="cloneMenu" hidden>Get from Git...</button>
           <button type="button" id="project-picker-new" data-i18n="newProject">New Project</button>
           <button type="button" id="project-picker-cancel" data-i18n="cancel">Cancel</button>
         </div>
@@ -240,6 +283,25 @@
           <p class="dialog-hint" data-i18n="agentsHint">Coding assistants that work in the Agent tab, in the open project.</p>
           <div id="agent-options" class="agent-options"></div>
           <p id="agent-error" class="dialog-error" role="alert"></p>
+        </fieldset>
+        <fieldset class="settings-section git-settings">
+          <legend data-i18n="gitSettings">Git</legend>
+          <label class="checkbox-row git-toggle"><input id="git-enabled" type="checkbox" role="switch" /><span data-i18n="gitEnable">Show Git tools</span></label>
+          <p class="dialog-hint" data-i18n="gitHint">Adds a Commit view beside the explorer, a Git tab below the editor and the current branch to the title bar, and marks changed lines beside the line numbers. Projects stay as they are until you use them.</p>
+          <p id="git-version" class="dialog-hint git-version"></p>
+          <div id="git-options" class="git-options" hidden>
+            <div class="font-grid">
+              <label for="git-name" data-i18n="gitName">Your name</label>
+              <input id="git-name" type="text" autocomplete="name" />
+              <label for="git-email" data-i18n="gitEmail">Email</label>
+              <input id="git-email" type="email" autocomplete="email" />
+            </div>
+            <p class="dialog-hint" data-i18n="gitIdentityHint">Commits are signed with these, in every project on this computer.</p>
+            <p class="git-update-label" data-i18n="gitUpdateMethod">Update Project brings in commits from the remote by</p>
+            <label class="checkbox-row"><input id="git-update-merge" type="radio" name="git-update" value="merge" /><span data-i18n="gitUpdateMerge">Merging them into the branch</span></label>
+            <label class="checkbox-row"><input id="git-update-rebase" type="radio" name="git-update" value="rebase" /><span data-i18n="gitUpdateRebase">Putting the branch's own commits after them (rebase)</span></label>
+            <p id="git-settings-error" class="dialog-error" role="alert"></p>
+          </div>
         </fieldset>
         <div class="dialog-actions"><button type="button" id="settings-close" class="primary" data-i18n="close">Close</button></div>
       </dialog>
