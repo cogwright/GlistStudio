@@ -108,7 +108,7 @@ export class CommitView {
     controls.update.disabled = !repository;
     controls.push.disabled = !repository && this.client.dependencies.length === 0;
     this.renderBranch(repository);
-    this.renderBanner(repository);
+    this.renderBanners(repository);
     this.rows = [];
     if (!status?.version) { controls.changes.replaceChildren(this.empty(t(status ? 'gitMissing' : 'gitNoProject'))); return; }
     if (!this.hooks.projectRoot()) { controls.changes.replaceChildren(this.empty(t('gitNoProject'))); return; }
@@ -170,7 +170,8 @@ export class CommitView {
     this.includedShared.forEach((entry) => { if (!known.has(entry)) this.includedShared.delete(entry); });
     return this.client.dependencies.filter((dependency) => dependency.changes.length > 0).flatMap((dependency) => {
       const changes = [...dependency.changes].sort(byPath);
-      const open = this.openShared.has(dependency.folder);
+      // Conflicts there need resolving, so their group opens by itself.
+      const open = this.openShared.has(dependency.folder) || changes.some((change) => change.state === 'conflict');
       const header = this.groupRow(dependency.name, changes, {
         open,
         toggle: () => { if (open) this.openShared.delete(dependency.folder); else this.openShared.add(dependency.folder); },
@@ -200,11 +201,14 @@ export class CommitView {
   }
 
   private isIncluded(change: GlistGitChange): boolean {
+    if (change.state === 'conflict') return false;
     if (this.isShared(change)) return this.includedShared.has(change.path);
     return change.state === 'untracked' ? this.addedUnversioned.has(change.path) : !this.excluded.has(change.path);
   }
 
   private setIncluded(change: GlistGitChange, on: boolean): void {
+    // A conflict is resolved first; committing it now would keep its markers.
+    if (change.state === 'conflict') return;
     if (this.isShared(change)) {
       if (on) this.includedShared.add(change.path); else this.includedShared.delete(change.path);
     } else if (change.state === 'untracked') {
@@ -258,30 +262,49 @@ export class CommitView {
     branch.replaceChildren(...nodes);
   }
 
-  private renderBanner(repository: GlistGitRepository | null): void {
+  // A merge, rebase, cherry-pick or revert that stopped, in the project or in the
+  // engine or a plugin, each with what finishes it or takes it back.
+  private renderBanners(repository: GlistGitRepository | null): void {
     const { banner } = this.controls;
-    banner.hidden = !repository?.operation;
-    if (!repository?.operation) return;
+    const stopped = [...(repository?.operation ? [repository] : []), ...this.client.dependencies.filter((dependency) => dependency.operation)];
+    banner.hidden = stopped.length === 0;
+    banner.replaceChildren(...stopped.map((entry) => this.bannerFor(entry)));
+  }
+
+  private bannerFor(repository: GlistGitRepository): HTMLElement {
+    const operation = repository.operation as GlistGitOperation;
+    const root = repository.kind === 'project' ? undefined : repository.folder;
+    const item = document.createElement('div');
+    item.className = 'commit-banner-item';
     const title = document.createElement('p');
     title.className = 'commit-banner-title';
-    title.textContent = t(operationText[repository.operation]).replace('{subject}', repository.operationSubject ?? '');
+    const what = t(operationText[operation]).replace('{subject}', repository.operationSubject ?? '');
+    title.textContent = root === undefined ? what : `${repository.name}: ${what}`;
     const hint = document.createElement('p');
     hint.className = 'commit-banner-hint';
-    hint.textContent = t(repository.operation === 'merge' ? 'resolveThenCommit' : 'resolveThenContinue');
+    hint.textContent = t(operation === 'merge' ? 'resolveThenCommit' : 'resolveThenContinue');
     const buttons = document.createElement('div');
     buttons.className = 'commit-banner-actions';
-    const button = (key: TranslationKey, action: 'abort' | 'continue' | 'skip', primary = false): HTMLButtonElement => {
+    const button = (key: TranslationKey, run: () => void, primary = false): HTMLButtonElement => {
       const element = document.createElement('button');
       element.type = 'button';
       element.textContent = t(key);
       if (primary) element.className = 'primary';
-      element.addEventListener('click', () => { void this.client.run({ kind: action }); });
+      element.addEventListener('click', run);
       return element;
     };
-    if (repository.operation !== 'merge') buttons.append(button('continue', 'continue', true));
-    if (repository.operation === 'rebase') buttons.append(button('skip', 'skip'));
-    buttons.append(button('abort', 'abort'));
-    banner.replaceChildren(title, hint, buttons);
+    const step = (action: 'abort' | 'continue' | 'skip') => () => { void this.client.run({ kind: action }, { root }); };
+    // The project's merge is committed with the message box; an engine's or plugin's with git's own message.
+    if (operation === 'merge' && root !== undefined) {
+      buttons.append(button('commit', () => {
+        void this.client.run({ kind: 'commit', message: repository.operationSubject || 'Merge', paths: [], amend: false }, { root, busy: 'committing' });
+      }, true));
+    }
+    if (operation !== 'merge') buttons.append(button('continue', step('continue'), true));
+    if (operation === 'rebase') buttons.append(button('skip', step('skip')));
+    buttons.append(button('abort', step('abort')));
+    item.append(title, hint, buttons);
+    return item;
   }
 
   private groupRow(label: string, changes: GlistGitChange[], options: {
@@ -299,9 +322,10 @@ export class CommitView {
     if (options.checkbox) {
       const check = document.createElement('input');
       check.type = 'checkbox';
-      const included = changes.filter((change) => this.isIncluded(change)).length;
-      check.checked = included === changes.length;
-      check.indeterminate = included > 0 && included < changes.length;
+      const eligible = changes.filter((change) => change.state !== 'conflict');
+      const included = eligible.filter((change) => this.isIncluded(change)).length;
+      check.checked = eligible.length > 0 && included === eligible.length;
+      check.indeterminate = included > 0 && included < eligible.length;
       check.addEventListener('click', (event) => event.stopPropagation());
       check.addEventListener('change', () => {
         changes.forEach((change) => this.setIncluded(change, check.checked));
@@ -340,7 +364,8 @@ export class CommitView {
     const relative = change.path.startsWith(root) ? change.path.slice(root.length + 1) : change.path;
     const directory = relative.slice(0, Math.max(0, relative.length - baseName(relative).length - 1));
     row.title = `${relative}\n${t(stateText[change.state])}${change.from ? `: ${change.from.startsWith(root) ? change.from.slice(root.length + 1) : change.from}` : ''}`;
-    if (group !== 'conflicts') {
+    const conflict = change.state === 'conflict';
+    if (!conflict) {
       const check = document.createElement('input');
       check.type = 'checkbox';
       check.tabIndex = -1;
@@ -356,7 +381,7 @@ export class CommitView {
     folder.className = 'change-dir';
     folder.textContent = directory;
     row.append(fileIconElement(baseName(change.path)), name, folder);
-    if (group === 'conflicts') {
+    if (conflict) {
       const side = (key: TranslationKey, value: 'mine' | 'theirs'): HTMLButtonElement => {
         const button = document.createElement('button');
         button.type = 'button';
@@ -364,7 +389,7 @@ export class CommitView {
         button.textContent = t(key);
         button.addEventListener('click', (event) => {
           event.stopPropagation();
-          void this.resolve(change.path, value);
+          void this.resolve(change.path, value, shared?.folder);
         });
         return button;
       };
@@ -382,7 +407,7 @@ export class CommitView {
     }
     row.addEventListener('click', () => {
       this.select(change.path);
-      if (group === 'conflicts') this.hooks.openConflict(change.path);
+      if (conflict) this.hooks.openConflict(change.path);
       else this.hooks.openDiff(change);
     });
     row.addEventListener('dblclick', () => { if (change.state !== 'deleted') this.hooks.openFile(change.path); });
@@ -402,13 +427,13 @@ export class CommitView {
   }
 
   private menu(event: MouseEvent, group: Group, change: GlistGitChange, root?: string): void {
-    if (group === 'conflicts') {
+    if (change.state === 'conflict') {
       showMenu(event, [
         { label: t('openFile'), run: () => this.hooks.openConflict(change.path) },
         'separator',
-        { label: t('keepMine'), run: () => { void this.resolve(change.path, 'mine'); } },
-        { label: t('takeTheirs'), run: () => { void this.resolve(change.path, 'theirs'); } },
-        { label: t('markResolved'), run: () => { void this.client.run({ kind: 'mark-resolved', paths: [change.path] }); } },
+        { label: t('keepMine'), run: () => { void this.resolve(change.path, 'mine', root); } },
+        { label: t('takeTheirs'), run: () => { void this.resolve(change.path, 'theirs', root); } },
+        { label: t('markResolved'), run: () => { void this.client.run({ kind: 'mark-resolved', paths: [change.path] }, { root }); } },
       ]);
       return;
     }
@@ -429,13 +454,13 @@ export class CommitView {
   }
 
   // A whole file in one click is easy to do by mistake, so it can be taken back.
-  private async resolve(filePath: string, side: 'mine' | 'theirs'): Promise<void> {
-    const result = await this.client.run({ kind: 'resolve', path: filePath, side });
+  private async resolve(filePath: string, side: 'mine' | 'theirs', root?: string): Promise<void> {
+    const result = await this.client.run({ kind: 'resolve', path: filePath, side }, { root });
     if (!result.success) return;
     notify({
       text: t(side === 'mine' ? 'keptMine' : 'tookTheirs').replace('{name}', baseName(filePath)),
       kind: 'success',
-      actions: [{ label: t('undo'), run: () => { void this.client.run({ kind: 'unresolve', path: filePath }); } }],
+      actions: [{ label: t('undo'), run: () => { void this.client.run({ kind: 'unresolve', path: filePath }, { root }); } }],
     });
   }
 

@@ -611,7 +611,8 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .commit-branch-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-branch-button svg.icon { width: 14px; height: 14px; }
 .commit-location { min-width: 0; overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.commit-banner { margin: 0 10px 8px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--ui-warning) 55%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-chrome)); }
+.commit-banner { display: grid; gap: 6px; margin: 0 10px 8px; }
+.commit-banner-item { padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--ui-warning) 55%, transparent); border-radius: 5px; background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-chrome)); }
 .commit-banner[hidden] { display: none; }
 .commit-banner-title { margin: 0; overflow-wrap: anywhere; color: var(--ui-fg-strong); font-size: 12px; font-weight: 600; }
 .commit-banner-hint { margin: 3px 0 8px; color: var(--ui-fg-muted); font-size: 11px; }

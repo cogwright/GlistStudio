@@ -322,7 +322,7 @@ export class GitEditor {
           ...(label ? { after: { content: `  ${label}`, inlineClassName: 'git-conflict-label' } } : {}),
         },
       }]);
-    const [upper, lower] = this.mineIsUpper() ? ['mine', 'theirs'] as const : ['theirs', 'mine'] as const;
+    const [upper, lower] = this.mineIsUpper(filePath) ? ['mine', 'theirs'] as const : ['theirs', 'mine'] as const;
     this.conflictLines.set(blocks.flatMap((block) => [
       ...decoration(block.start, block.start, `git-conflict-marker ${upper}`, t(upper)),
       ...decoration(block.start + 1, (block.base ?? block.separator) - 1, `git-conflict-${upper}`),
@@ -335,9 +335,10 @@ export class GitEditor {
   private lenses: monaco.languages.CodeLensProvider = { provideCodeLenses: () => ({ lenses: [], dispose: () => undefined }) };
 
   // Which part of a conflict is the person's own: above the ======= line in a
-  // merge, cherry-pick or revert, and below it in a rebase or a stash brought back.
-  private mineIsUpper(): boolean {
-    const operation = this.client.repository?.operation;
+  // merge, cherry-pick or revert, and below it in a rebase or a stash brought back,
+  // by what the file's own repository is doing: the project's, the engine's or a plugin's.
+  private mineIsUpper(filePath: string): boolean {
+    const operation = this.client.repositoryOf(filePath)?.operation;
     return operation === 'merge' || operation === 'cherry-pick' || operation === 'revert';
   }
 
@@ -349,7 +350,9 @@ export class GitEditor {
       const lines = model.getLinesContent();
       const block = conflictBlocks(lines).find((entry) => entry.start === start);
       if (!block) return;
-      const part: ConflictChoice = choice === 'both' ? 'both' : (choice === 'mine') === this.mineIsUpper() ? 'upper' : 'lower';
+      const filePath = this.hooks.pathOf(model);
+      if (!filePath) return;
+      const part: ConflictChoice = choice === 'both' ? 'both' : (choice === 'mine') === this.mineIsUpper(filePath) ? 'upper' : 'lower';
       const replacement = resolvedLines(lines, block, part);
       const last = (line: number): number => model.getLineMaxColumn(line);
       // A part that is empty takes its line break with it.
@@ -360,8 +363,7 @@ export class GitEditor {
       model.pushStackElement();
       model.pushEditOperations([], [{ range, text: replacement.join(model.getEOL()) }], () => null);
       model.pushStackElement();
-      const filePath = this.hooks.pathOf(model);
-      if (filePath && conflictBlocks(model.getLinesContent()).length === 0) {
+      if (conflictBlocks(model.getLinesContent()).length === 0) {
         notify({
           text: t('conflictsResolvedIn').replace('{name}', baseName(filePath)),
           actions: [{ label: t('markResolved'), run: () => this.hooks.markResolved(filePath) }],

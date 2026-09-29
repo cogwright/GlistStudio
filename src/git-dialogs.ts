@@ -214,7 +214,8 @@ export const pushDialog = async (entries: PushEntry[]): Promise<PushChoice | nul
       label.className = 'checkbox-row push-repository';
       const check = document.createElement('input');
       check.type = 'checkbox';
-      check.checked = outgoing.commits.length > 0;
+      // The engine and plugins are shared, so pushing one is chosen, never assumed.
+      check.checked = entry.root === undefined && outgoing.commits.length > 0;
       chosen.set(entry, check);
       const name = document.createElement('strong');
       name.textContent = entry.name;

@@ -1188,7 +1188,8 @@ const gitEditor = new GitEditor(editor, git, {
   showCommit: (hash, filePath) => { showPanel('git'); void gitPanel.showCommit(hash, git.rootOf(filePath)); },
   markResolved: (filePath) => {
     const file = findOpenFile(pathUri(filePath));
-    void (file && isDirty(file) ? saveFile(file) : Promise.resolve()).then(() => git.run({ kind: 'mark-resolved', paths: [filePath] }));
+    void (file && isDirty(file) ? saveFile(file) : Promise.resolve())
+      .then(() => git.run({ kind: 'mark-resolved', paths: [filePath] }, { root: git.rootOf(filePath) }));
   },
 });
 
