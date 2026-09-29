@@ -142,32 +142,36 @@
         <div id="sidebar-resizer" class="vertical-resizer"></div>
 
         <section class="editor-column">
-          <div id="editor-tabs" class="editor-tabs"></div>
-          <div class="editor-stage">
-            <div id="editor-host" class="editor-host"></div>
-            <div id="diff-view" class="diff-view" hidden>
-              <div class="diff-toolbar">
-                <span id="diff-left" class="diff-label"></span>
-                <i data-icon="git-compare"></i>
-                <span id="diff-right" class="diff-label"></span>
-                <span class="diff-toolbar-space"></span>
-                <button id="diff-previous" class="heading-action" type="button" title="Previous Change" data-i18n-title="previousChange"><i data-icon="arrow-up"></i></button>
-                <button id="diff-next" class="heading-action" type="button" title="Next Change" data-i18n-title="nextChange"><i data-icon="arrow-down"></i></button>
-                <button id="diff-layout" class="heading-action" type="button" title="Side by Side or One Column" data-i18n-title="toggleSideBySide"><i data-icon="split-horizontal"></i></button>
-                <button id="diff-open" class="heading-action" type="button" title="Open File" data-i18n-title="openFile"><i data-icon="go-to-file"></i></button>
-                <button id="diff-rollback" class="heading-action danger" type="button" title="Rollback" data-i18n-title="rollback"><i data-icon="discard"></i></button>
-              </div>
-              <p id="diff-message" class="diff-message" hidden></p>
-              <div id="diff-host" class="diff-host"></div>
-            </div>
-            <div id="welcome" class="welcome">
-              <img id="welcome-icon" class="welcome-logo" alt="Glist Engine" />
-              <h1>Glist Studio</h1>
-              <p data-i18n="tagline">A focused development environment for Glist Engine.</p>
-              <div class="shortcut-list"><span><span data-i18n="save">Save</span> <kbd>Ctrl S</kbd></span><span><span data-i18n="build">Build</span> <kbd>Ctrl ⇧ B</kbd></span><span><span data-i18n="run">Run</span> <kbd>F5</kbd></span></div>
-              <div id="glist-missing" class="glist-missing" hidden>
-                <p data-i18n="glistMissing">Glist Engine is not installed on this computer yet.</p>
-                <button id="install-glist" type="button" class="empty-tree-action primary" data-i18n="installGlist">Install Glist Engine</button>
+          <div id="editor-groups" class="editor-groups">
+            <div class="editor-group focused">
+              <div id="editor-tabs" class="editor-tabs"></div>
+              <div class="editor-stage">
+                <div id="editor-host" class="editor-host"></div>
+                <div id="diff-view" class="diff-view" hidden>
+                  <div class="diff-toolbar">
+                    <span id="diff-left" class="diff-label" data-diff="left"></span>
+                    <i data-icon="git-compare"></i>
+                    <span id="diff-right" class="diff-label" data-diff="right"></span>
+                    <span class="diff-toolbar-space"></span>
+                    <button id="diff-previous" data-diff="previous" class="heading-action" type="button" title="Previous Change" data-i18n-title="previousChange"><i data-icon="arrow-up"></i></button>
+                    <button id="diff-next" data-diff="next" class="heading-action" type="button" title="Next Change" data-i18n-title="nextChange"><i data-icon="arrow-down"></i></button>
+                    <button id="diff-layout" data-diff="layout" class="heading-action" type="button" title="Side by Side or One Column" data-i18n-title="toggleSideBySide"><i data-icon="split-horizontal"></i></button>
+                    <button id="diff-open" data-diff="open" class="heading-action" type="button" title="Open File" data-i18n-title="openFile"><i data-icon="go-to-file"></i></button>
+                    <button id="diff-rollback" data-diff="rollback" class="heading-action danger" type="button" title="Rollback" data-i18n-title="rollback"><i data-icon="discard"></i></button>
+                  </div>
+                  <p id="diff-message" class="diff-message" data-diff="message" hidden></p>
+                  <div id="diff-host" class="diff-host" data-diff="host"></div>
+                </div>
+                <div id="welcome" class="welcome">
+                  <img id="welcome-icon" class="welcome-logo" alt="Glist Engine" />
+                  <h1>Glist Studio</h1>
+                  <p data-i18n="tagline">A focused development environment for Glist Engine.</p>
+                  <div class="shortcut-list"><span><span data-i18n="save">Save</span> <kbd>Ctrl S</kbd></span><span><span data-i18n="build">Build</span> <kbd>Ctrl ⇧ B</kbd></span><span><span data-i18n="run">Run</span> <kbd>F5</kbd></span></div>
+                  <div id="glist-missing" class="glist-missing" hidden>
+                    <p data-i18n="glistMissing">Glist Engine is not installed on this computer yet.</p>
+                    <button id="install-glist" type="button" class="empty-tree-action primary" data-i18n="installGlist">Install Glist Engine</button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
