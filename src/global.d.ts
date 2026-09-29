@@ -47,8 +47,10 @@ interface GlistPathEntry {
 interface GlistPlugin {
   name: string;
   description: string;
-  // Its page on GitHub; empty for one GlistPlugins does not publish.
+  // Its page on GitHub; empty for one the list does not have.
   url: string;
+  // Where it is installed and updated from: GlistPlugins, or owner/name for one listed from elsewhere.
+  source?: string;
   installed: boolean;
   folder?: string;
   // Named in the open project's PLUGINS.

@@ -19,8 +19,9 @@ const workspace = path.join(root, 'glist');
 const project = path.join(workspace, 'myglistapps', 'App');
 mkdirSync(project, { recursive: true });
 writeFileSync(path.join(project, 'CMakeLists.txt'), 'set(PLUGINS)\n');
-// Not published by GlistPlugins, and not a repository.
+// Not published by GlistPlugins, and not a repository; and gipDebug, which is never listed.
 mkdirSync(path.join(workspace, 'glistplugins', 'gipMine'), { recursive: true });
+mkdirSync(path.join(workspace, 'glistplugins', 'gipDebug'), { recursive: true });
 
 // GlistPlugins' gipDemo, and a clone of it where "GlistPlugins" makes new commits.
 const site = path.join(root, 'remotes');
@@ -36,12 +37,31 @@ const publish = (text, message) => {
 };
 publish('// one\n', 'One');
 
+// A plugin published by someone else, listed with GlistPlugins' own.
+const extraUpstream = path.join(site, 'someone', 'Extra.git');
+execFileSync('git', ['init', '-q', '--bare', extraUpstream]);
+const extraAuthor = path.join(root, 'extra-author');
+execFileSync('git', ['clone', '-q', extraUpstream, extraAuthor], { stdio: 'ignore' });
+const publishExtra = (text, message) => {
+  writeFileSync(path.join(extraAuthor, 'Extra.h'), text);
+  git(extraAuthor, 'add', '.');
+  git(extraAuthor, 'commit', '-q', '-m', message);
+  git(extraAuthor, 'push', '-q', 'origin', 'HEAD:main');
+};
+publishExtra('// extra one\n', 'Extra one');
+
 const server = http.createServer((request, response) => {
-  response.writeHead(200, { 'Content-Type': 'application/json' });
-  response.end(JSON.stringify(request.url.startsWith('/orgs/GlistPlugins/repos') ? [
-    { name: 'gipDemo', description: 'A demo', html_url: 'https://github.com/GlistPlugins/gipDemo', default_branch: 'main', archived: false },
-    { name: 'gipOld', description: 'Retired', html_url: 'https://github.com/GlistPlugins/gipOld', default_branch: 'main', archived: true },
-  ] : []));
+  const answers = {
+    '/orgs/GlistPlugins/repos': [
+      { name: 'gipDemo', full_name: 'GlistPlugins/gipDemo', description: 'A demo', html_url: 'https://github.com/GlistPlugins/gipDemo', default_branch: 'main', archived: false },
+      { name: 'gipOld', full_name: 'GlistPlugins/gipOld', description: 'Retired', html_url: 'https://github.com/GlistPlugins/gipOld', default_branch: 'main', archived: true },
+      { name: 'gipDebug', full_name: 'GlistPlugins/gipDebug', description: 'GDB for Eclipse', html_url: 'https://github.com/GlistPlugins/gipDebug', default_branch: 'main', archived: false },
+    ],
+    '/repos/someone/Extra': { name: 'Extra', full_name: 'someone/Extra', description: 'From elsewhere', html_url: 'https://github.com/someone/Extra', default_branch: 'main', archived: false },
+  };
+  const answer = answers[request.url.split('?')[0]];
+  response.writeHead(answer ? 200 : 404, { 'Content-Type': 'application/json' });
+  response.end(JSON.stringify(answer ?? { message: 'Not Found' }));
 });
 await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
 const service = createPluginService({
@@ -50,6 +70,7 @@ const service = createPluginService({
   environment: () => ({ ...process.env }),
   api: `http://127.0.0.1:${server.address().port}`,
   site,
+  extras: ['someone/Extra', 'someone/Missing'],
   language: () => 'en',
 });
 const find = async (name) => (await service.listPlugins()).plugins.find((plugin) => plugin.name === name);
@@ -59,12 +80,16 @@ try {
   // Listed: GlistPlugins' own, not archived ones, and what is installed already.
   let list = await service.listPlugins();
   assert.equal(list.gitFound, true);
-  assert.deepEqual(list.plugins.map((entry) => [entry.name, entry.installed]), [['gipDemo', false], ['gipMine', true]]);
+  assert.deepEqual(list.plugins.map((entry) => [entry.name, entry.installed, entry.source]), [
+    ['Extra', false, 'someone/Extra'], ['gipDemo', false, 'GlistPlugins'], ['gipMine', true, 'GlistPlugins'],
+  ], 'gipDebug is never listed, and a listed one that cannot be read is only left out');
+  assert.equal((await find('Extra')).description, 'From elsewhere');
+  assert.match((await service.installPlugin('gipDebug')).message, /not in the plugin list/);
   assert.equal((await find('gipMine')).official, false);
 
   // Installing clones into glistplugins; names are checked first.
   assert.match((await service.installPlugin('../escape')).message, /not a plugin name/);
-  assert.match((await service.installPlugin('gipOther')).message, /not one of GlistPlugins/);
+  assert.match((await service.installPlugin('gipOther')).message, /not in the plugin list/);
   assert.equal((await service.installPlugin('gipDemo')).success, true);
   assert.equal(readFileSync(path.join(plugin, 'gipDemo.h'), 'utf8'), '// one\n');
   let demo = await find('gipDemo');
@@ -103,6 +128,20 @@ try {
   assert.equal(git(plugin, 'show', 'stash@{0}:gipDemo.h'), '// edited', 'the edit is in the stash');
   demo = await find('gipDemo');
   assert.deepEqual([demo.behind, demo.ahead, demo.changed], [0, 0, 0]);
+
+  // One from elsewhere installs and updates from its own repository.
+  assert.equal((await service.installPlugin('Extra')).success, true);
+  const extra = path.join(workspace, 'glistplugins', 'Extra');
+  assert.equal(readFileSync(path.join(extra, 'Extra.h'), 'utf8'), '// extra one\n');
+  assert.deepEqual([(await find('Extra')).official, (await find('Extra')).behind], [true, 0]);
+  publishExtra('// extra two\n', 'Extra two');
+  assert.deepEqual((await service.checkPluginUpdates()).map((entry) => entry.name), ['Extra']);
+  assert.equal((await service.updatePlugin('Extra')).success, true);
+  assert.equal(readFileSync(path.join(extra, 'Extra.h'), 'utf8'), '// extra two\n');
+  // Its source is that repository alone, not its owner's others.
+  git(extra, 'remote', 'set-url', 'origin', path.join(site, 'someone', 'Other.git'));
+  assert.equal((await find('Extra')).official, false);
+  assert.match((await service.updatePlugin('Extra')).message, /not installed from someone\/Extra/);
 
   // Only a plugin on its main branch, from GlistPlugins, is updated.
   git(plugin, 'checkout', '-q', '-b', 'experiment');
