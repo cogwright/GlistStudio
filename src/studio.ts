@@ -82,6 +82,7 @@ const messages = {
     buildSucceeded: 'Build completed successfully.', buildStartFailed: 'Could not start build',
     buildFolderMoved: 'This build folder was made for {folder}, so it is made again for this project. The first build takes longer.',
     configured: 'CMake configured.',
+    notRunnable: '{name} is not a program, so it can be built but not run.',
     appRunning: 'The application is already running.', runCancelled: 'Run cancelled',
     executableMissing: 'Build completed, but no executable was found.', launched: 'launched',
     debugCancelled: 'Debugging cancelled',
@@ -119,6 +120,7 @@ const messages = {
     buildSucceeded: 'Derleme başarıyla tamamlandı.', buildStartFailed: 'Derleme başlatılamadı',
     buildFolderMoved: 'Bu derleme klasörü {folder} için oluşturulmuştu; bu proje için yeniden oluşturuluyor. İlk derleme daha uzun sürer.',
     configured: 'CMake yapılandırıldı.',
+    notRunnable: '{name} bir program olmadığı için derlenebilir ama çalıştırılamaz.',
     appRunning: 'Uygulama zaten çalışıyor.', runCancelled: 'Çalıştırma iptal edildi',
     executableMissing: 'Derleme tamamlandı ancak çalıştırılabilir dosya bulunamadı.', launched: 'başlatıldı',
     debugCancelled: 'Hata ayıklama iptal edildi',
@@ -379,6 +381,7 @@ const createProjectFromTemplate = async (
     await fs.writeFile(eclipsePath, eclipse.replace(/<name>[^<]+<\/name>/, `<name>${projectName}</name>`), 'utf8');
   }
   activeProjectRoot = target;
+  chosenTarget = null;
   await rememberProject(target).catch((): undefined => undefined);
   void git.projectChanged();
   void rememberConfiguration(target);
@@ -517,12 +520,93 @@ const configure = async (projectRoot: string, buildType: BuildType, toolchain: T
 
 const configureIn = async (projectRoot: string, buildDirectory: string, buildType: BuildType, toolchain: Toolchain): Promise<number> => {
   await replaceMovedBuildDirectory(projectRoot, buildDirectory);
+  await askForTargets(buildDirectory);
   const args = [
     '-S', projectRoot, '-B', buildDirectory,
     `-DCMAKE_BUILD_TYPE=${buildType}`, '-DCMAKE_EXPORT_COMPILE_COMMANDS=ON',
   ];
   if (!existsSync(path.join(buildDirectory, 'CMakeCache.txt')) && toolchain.generator) args.push('-G', toolchain.generator);
   return runBuildCommand(toolchain.cmake, args, projectRoot, toolchain);
+};
+
+// The targets of a build, as CLion lists them: CMake describes them through its
+// file API when asked before configuring, so every configure asks.
+const targetReply = (buildDirectory: string): string => path.join(buildDirectory, '.cmake', 'api', 'v1', 'reply');
+
+const askForTargets = async (buildDirectory: string): Promise<void> => {
+  const query = path.join(buildDirectory, '.cmake', 'api', 'v1', 'query', 'client-gliststudio', 'codemodel-v2');
+  await fs.mkdir(path.dirname(query), { recursive: true }).then(() => fs.writeFile(query, '')).catch((): undefined => undefined);
+};
+
+const targetTypes: Record<string, GlistTarget['type']> = {
+  EXECUTABLE: 'executable', STATIC_LIBRARY: 'library', SHARED_LIBRARY: 'library', MODULE_LIBRARY: 'library', UTILITY: 'utility',
+};
+
+const readTargets = async (projectRoot: string, buildType: BuildType): Promise<GlistTarget[]> => {
+  const reply = targetReply(buildDirectoryFor(projectRoot, buildType));
+  const json = async (file: string): Promise<any> => JSON.parse(await fs.readFile(path.join(reply, file), 'utf8')); // eslint-disable-line @typescript-eslint/no-explicit-any
+  try {
+    const indexes = (await fs.readdir(reply)).filter((name) => /^index-.*\.json$/.test(name)).sort();
+    if (indexes.length === 0) return [];
+    const index = await json(indexes[indexes.length - 1]);
+    const codemodel = await json(index.reply['client-gliststudio']['codemodel-v2'].jsonFile);
+    const { source: sourceRoot, build: buildRoot } = codemodel.paths as { source: string; build: string };
+    const workspaceRoot = findAncestorWith(projectRoot, path.join('GlistEngine', 'engine')) ?? path.resolve(projectRoot, '..', '..');
+    const plugins = path.join(workspaceRoot, 'glistplugins');
+    const appName = await readAppName(projectRoot);
+    const targets: GlistTarget[] = [];
+    for (const entry of codemodel.configurations?.[0]?.targets ?? []) {
+      const target = await json(entry.jsonFile);
+      const type = targetTypes[target.type as string];
+      if (!type) continue;
+      const source = path.resolve(sourceRoot, target.paths?.source ?? '.');
+      const plugin = isInside(plugins, source) ? path.relative(plugins, source).split(path.sep)[0] : '';
+      const group: GlistTarget['group'] = isInside(projectRoot, source) ? 'project'
+        : isInside(path.join(workspaceRoot, 'GlistEngine'), source) ? 'engine' : plugin ? 'plugin' : 'other';
+      const artifact = type === 'executable' && target.artifacts?.[0]?.path ? path.resolve(buildRoot, target.artifacts[0].path) : undefined;
+      targets.push({ name: target.name, type, group, owner: group === 'plugin' ? plugin : '', app: group === 'project' && target.name === appName, ...(artifact ? { artifact } : {}) });
+    }
+    // The app first, then the project's other targets, the engine's, and each plugin's.
+    const order: Record<GlistTarget['group'], number> = { project: 0, engine: 1, plugin: 2, other: 3 };
+    return targets.sort((a, b) => Number(b.app) - Number(a.app) || order[a.group] - order[b.group]
+      || a.owner.localeCompare(b.owner) || a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+};
+
+// The target Build, Run and Debug use, from the list beside Run; null for the
+// app, built with everything, as without Settings > Build > Show all targets.
+let chosenTarget: string | null = null;
+
+const setTarget = (name: unknown): void => {
+  chosenTarget = typeof name === 'string' && /^[\w.+][\w.+-]*$/.test(name) ? name : null;
+};
+
+// Projects configured to list their targets, once each, so a configure that
+// fails is not tried again every time the list is asked for.
+const configuredForTargets = new Set<string>();
+
+const listTargets = async (): Promise<GlistTarget[]> => {
+  const projectRoot = requireProjectRoot();
+  const targets = await readTargets(projectRoot, 'Release');
+  // A build folder configured before targets were asked for tells after one configure.
+  if (targets.length > 0 || building || configuredForTargets.has(projectRoot) || !existsSync(path.join(projectRoot, 'CMakeLists.txt'))) return targets;
+  configuredForTargets.add(projectRoot);
+  await configureNow(projectRoot);
+  return projectRoot === activeProjectRoot ? readTargets(projectRoot, 'Release') : [];
+};
+
+// The program the chosen target makes, or the app's.
+const programFor = async (projectRoot: string, buildType: BuildType): Promise<ProcessResult & { program?: string }> => {
+  if (!chosenTarget) {
+    const program = await findRunnable(projectRoot, buildType);
+    return program ? { success: true, message: '', program } : { success: false, message: msg('executableMissing') };
+  }
+  const target = (await readTargets(projectRoot, buildType)).find((entry) => entry.name === chosenTarget);
+  if (target && target.type !== 'executable') return { success: false, message: msg('notRunnable').replace('{name}', target.name) };
+  return target?.artifact && existsSync(target.artifact)
+    ? { success: true, message: '', program: target.artifact } : { success: false, message: msg('executableMissing') };
 };
 
 const configureAndBuild = async (buildType: BuildType = 'Release'): Promise<ProcessResult> => {
@@ -546,7 +630,8 @@ const configureAndBuild = async (buildType: BuildType = 'Release'): Promise<Proc
     sendToRenderer('build:status', { running: true, label: msg('building') });
     const buildCode = await runBuildCommand(
       // A bare --parallel lets make start every job at once.
-      toolchain.cmake, ['--build', buildDirectory, '--parallel', String(availableParallelism())], projectRoot, toolchain,
+      toolchain.cmake, ['--build', buildDirectory, ...(chosenTarget ? ['--target', chosenTarget] : []), '--parallel', String(availableParallelism())],
+      projectRoot, toolchain,
     );
     return buildCode === 0
       ? { success: true, message: msg('buildSucceeded') }
@@ -635,6 +720,11 @@ const configureOnChange = async (): Promise<void> => {
   if (!autoConfigure || !projectRoot || !existsSync(path.join(projectRoot, 'CMakeLists.txt')) || !(await configurationChanged())) return;
   // A build configures on its own first; after it, this looks again.
   if (building) { scheduleConfigure(); return; }
+  await configureNow(projectRoot);
+};
+
+// Configures outside a build, showing it as a build does, and says how it went.
+const configureNow = async (projectRoot: string): Promise<void> => {
   building = true;
   buildGeneration += 1;
   const generation = buildGeneration;
@@ -702,10 +792,9 @@ const runProject = async (): Promise<ProcessResult> => {
   if (!buildResult.success) {
     return { success: false, message: `${msg('runCancelled')}: ${buildResult.message}` };
   }
-  const executable = await findRunnable(projectRoot);
-  if (!executable) {
-    return { success: false, message: msg('executableMissing') };
-  }
+  const found = await programFor(projectRoot, 'Release');
+  if (!found.program) return found;
+  const executable = found.program;
   const toolchain = resolveToolchain(projectRoot);
   sendToRenderer('run:output', `\n> ${executable}\n`);
   try {
@@ -800,6 +889,7 @@ export const openProjectAt = async (projectRoot: string): Promise<GlistProjectIn
   const root = path.resolve(projectRoot);
   if (!(await fs.stat(root)).isDirectory()) throw new Error(msg('folderRequired'));
   activeProjectRoot = root;
+  chosenTarget = null;
   await rememberProject(root).catch((): undefined => undefined);
   void git.projectChanged();
   void rememberConfiguration(root);
@@ -916,8 +1006,9 @@ const startDebugging = async (): Promise<GlistDebugStart> => {
   const projectRoot = requireProjectRoot();
   const build = await configureAndBuild('Debug');
   if (!build.success) return { success: false, message: `${msg('debugCancelled')}: ${build.message}` };
-  const program = await findRunnable(projectRoot, 'Debug');
-  if (!program) return { success: false, message: msg('executableMissing') };
+  const found = await programFor(projectRoot, 'Debug');
+  if (!found.program) return { success: false, message: found.message };
+  const { program } = found;
   const env = processEnvironment(resolveToolchain(projectRoot));
   const adapter = await findDebugAdapter(env);
   if (!adapter) return { success: false, message: msg('debuggerMissing') };
@@ -1195,6 +1286,8 @@ export const studio: Handlers = {
   writeFile: writeProjectFile,
   buildProject: () => configureAndBuild('Release'),
   runProject,
+  listTargets,
+  setTarget,
   stopProject: stopProcesses,
   setLanguage,
   setAutoConfigure,

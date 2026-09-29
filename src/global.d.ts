@@ -56,6 +56,20 @@ interface GlistUpdateState {
   message?: string;
 }
 
+// A target of the project's build, as CMake describes it.
+interface GlistTarget {
+  name: string;
+  // Only executables run; libraries and utility targets are built.
+  type: 'executable' | 'library' | 'utility';
+  // Whose it is: the project's, the engine's, a plugin's, or from elsewhere.
+  group: 'project' | 'engine' | 'plugin' | 'other';
+  // The plugin's name, for a plugin's target.
+  owner: string;
+  // The project's app, which Build and Run use without a choice.
+  app: boolean;
+  artifact?: string;
+}
+
 interface GlistDebugStart {
   success: boolean;
   message: string;
@@ -327,6 +341,10 @@ interface Window {
     writeFile(filePath: string, contents: string): Promise<boolean>;
     buildProject(): Promise<GlistProcessResult>;
     runProject(): Promise<GlistProcessResult>;
+    // The build's targets, configuring once if the build folder does not describe them yet.
+    listTargets(): Promise<GlistTarget[]>;
+    // The target Build, Run and Debug use; null for the app, built with everything.
+    setTarget(name: string | null): Promise<void>;
     stopProject(): Promise<GlistProcessResult>;
     setLanguage(language: GlistLanguage): Promise<GlistLanguage>;
     setTheme(colors: GlistWindowColors): Promise<void>;
