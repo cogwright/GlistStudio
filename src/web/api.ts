@@ -73,6 +73,8 @@ Object.assign(api, {
     return project;
   },
   openEngineSite: async () => { window.open('https://www.glistengine.com/', '_blank', 'noopener'); },
+  // There is no folder picker for the server's disk, so ask for a path.
+  chooseFolder: async (): Promise<string | null> => window.prompt('Folder on the host') || null,
   // The browser version runs from source, which updates through git.
   updateState: async (): Promise<GlistUpdateState> => ({ state: 'unavailable' }),
   checkForUpdates: async (): Promise<GlistUpdateState> => ({ state: 'unavailable' }),

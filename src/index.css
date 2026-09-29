@@ -565,6 +565,19 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .agent-settings legend, .update-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .update-settings[hidden] { display: none; }
 .agent-options { display: grid; gap: 6px; margin-top: 12px; }
+.path-settings { min-width: 0; padding: 0; border: 0; }
+.path-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
+.path-entries { max-height: 220px; margin: 10px 0 0; padding: 0; overflow: auto; border: 1px solid var(--ui-border); border-radius: 4px; list-style: none; }
+.path-entry { display: flex; min-height: 26px; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid var(--ui-border); font-size: 12px; }
+.path-entry:last-child { border-bottom: 0; }
+.path-folder { min-width: 0; flex: 1; overflow: hidden; color: var(--ui-fg-muted); font-family: var(--font-code); text-overflow: ellipsis; white-space: nowrap; }
+.path-entry.custom .path-folder { color: var(--ui-fg-strong); }
+.path-entry.missing .path-folder { text-decoration: line-through; opacity: .6; }
+.path-source { flex: none; color: var(--ui-fg-muted); font-size: 11px; }
+.path-remove { display: flex; width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; color: var(--ui-fg); background: transparent; cursor: pointer; }
+.path-remove:hover { background: var(--ui-hover-strong); }
+.path-add { height: 28px; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.path-add:hover { background: var(--ui-hover-strong); }
 .agent-option { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 34px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: var(--ui-bg); }
 .studio-dialog .agent-toggle { display: flex; min-width: 0; align-items: center; gap: 10px; margin: 0; font-size: 13px; cursor: pointer; }
 .studio-dialog .agent-toggle input { width: auto; height: auto; flex: 0 0 auto; margin: 0; padding: 0; accent-color: var(--ui-accent); cursor: pointer; }

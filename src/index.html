@@ -297,6 +297,13 @@
           <div id="agent-options" class="agent-options"></div>
           <p id="agent-error" class="dialog-error" role="alert"></p>
         </fieldset>
+        <fieldset class="settings-section path-settings">
+          <legend data-i18n="pathSettings">PATH</legend>
+          <p class="dialog-hint" data-i18n="pathHint">The folders builds, runs, the debugger and the terminal look in for programs and DLLs, in this order.</p>
+          <ol id="path-entries" class="path-entries"></ol>
+          <button id="path-add" class="path-add" type="button" data-i18n="addPathFolder">Add Folder...</button>
+          <p id="path-error" class="dialog-error" role="alert"></p>
+        </fieldset>
         <fieldset class="settings-section git-settings">
           <legend data-i18n="gitSettings">Git</legend>
           <label class="checkbox-row git-toggle"><input id="git-enabled" type="checkbox" role="switch" /><span data-i18n="gitEnable">Show Git tools</span></label>

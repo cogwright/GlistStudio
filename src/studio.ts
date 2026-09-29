@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, promises as fs, watch, type Dirent, type FSWatcher } from 'node:fs';
+import { existsSync, promises as fs, readFileSync, watch, type Dirent, type FSWatcher } from 'node:fs';
 import { availableParallelism, homedir, userInfo } from 'node:os';
 import path from 'node:path';
 import type { IPty } from 'node-pty';
@@ -53,6 +53,8 @@ interface Toolchain {
   cmake: string;
   toolBin?: string;
   generator?: string;
+  // Where the project's plugins keep their DLLs, for Windows to find them.
+  pluginBins?: string[];
 }
 
 interface ProcessResult {
@@ -106,6 +108,7 @@ const messages = {
     agentInstallRunning: 'An agent is already being installed.',
     agentInstalled: 'Installed.', agentInstallFailed: 'The installation stopped',
     installerMissing: 'Glist Engine\'s installer could not be downloaded',
+    pathFolderTitle: 'Add a folder to PATH',
     askpassPrompt: 'Glist Engine\'s installer needs your password to install the tools it uses.',
   },
   tr: {
@@ -147,6 +150,7 @@ const messages = {
     agentInstallRunning: 'Zaten bir ajan kuruluyor.',
     agentInstalled: 'Kuruldu.', agentInstallFailed: 'Kurulum durdu',
     installerMissing: 'Glist Engine’in kurulum programı indirilemedi',
+    pathFolderTitle: 'PATH’e klasör ekle',
     askpassPrompt: 'Glist Engine’in kurulum programı, kullandığı araçları kurmak için parolanızı istiyor.',
   },
 } as const;
@@ -413,30 +417,78 @@ export const projectsDirectory = (): string => {
   return workspaceRoot ? path.join(workspaceRoot, 'myglistapps') : host.projectsDirectory;
 };
 
+// The folders the plugins a project names keep their DLLs in: libs\bin and
+// prebuilts\bin. Plugins that do not copy their DLLs next to the app ask, in
+// their READMEs, for these to go on the app's PATH in Eclipse; here that is done
+// for them.
+export const pluginDllFolders = (projectRoot: string): string[] => {
+  let cmake = '';
+  try { cmake = readFileSync(path.join(projectRoot, 'CMakeLists.txt'), 'utf8'); } catch { return []; }
+  const workspaceRoot = findAncestorWith(projectRoot, path.join('GlistEngine', 'engine')) ?? path.resolve(projectRoot, '..', '..');
+  return pluginsInCmake(cmake).flatMap((name) => ['libs', 'prebuilts']
+    .map((folder) => path.join(workspaceRoot, 'glistplugins', name, folder, 'bin'))
+    .filter((folder) => existsSync(folder)));
+};
+
 const resolveToolchain = (projectRoot: string): Toolchain => {
   if (process.platform !== 'win32') return { cmake: 'cmake' };
+  const pluginBins = pluginDllFolders(projectRoot);
   const workspaceRoot = findAncestorWith(projectRoot, path.join('zbin', 'glistzbin-win64', 'CMake', 'bin', 'cmake.exe'));
-  if (!workspaceRoot) return { cmake: 'cmake', generator: 'MinGW Makefiles' };
+  if (!workspaceRoot) return { cmake: 'cmake', generator: 'MinGW Makefiles', pluginBins };
   const distributionRoot = path.join(workspaceRoot, 'zbin', 'glistzbin-win64');
   return {
     cmake: path.join(distributionRoot, 'CMake', 'bin', 'cmake.exe'),
     toolBin: path.join(distributionRoot, 'clang64', 'bin'),
     generator: 'MinGW Makefiles',
+    pluginBins,
   };
 };
 
-// Builds, clangd, the debugger, the app and the terminal all get this. Windows
-// spells the variable Path, so it is replaced rather than joined by a second one.
+// Folders added in Settings > PATH.
+let customPath: string[] = [];
+
+// PATH for builds, clangd, the debugger, the app and the terminal, entry by
+// entry with where each comes from; Settings > PATH shows the same list. Plugin
+// folders go after this computer's own, as their READMEs say: some carry their
+// own copies of the compiler's runtime DLLs, such as gipDebug's libstdc++, which
+// must not come before Glist's. Folders added in Settings come last of all.
+const pathFor = (toolchain: Toolchain): GlistPathEntry[] => {
+  const systemPath = Object.entries(process.env).find(([key]) => key.toUpperCase() === 'PATH')?.[1] ?? '';
+  const cmakeBin = path.isAbsolute(toolchain.cmake) ? path.dirname(toolchain.cmake) : undefined;
+  const entry = (folder: string, source: GlistPathEntry['source'], owner = ''): GlistPathEntry => ({ path: folder, source, owner });
+  return [
+    ...(toolchain.toolBin ? [entry(toolchain.toolBin, 'glist')] : []),
+    ...(cmakeBin ? [entry(cmakeBin, 'cmake')] : []),
+    ...systemPath.split(path.delimiter).filter(Boolean).map((folder) => entry(folder, 'system')),
+    ...(toolchain.pluginBins ?? []).map((folder) => entry(folder, 'plugin', path.basename(path.dirname(path.dirname(folder))))),
+    ...customPath.map((folder) => entry(folder, 'custom')),
+  ];
+};
+
+// Windows spells the variable Path, so it is replaced rather than joined by a second one.
 const processEnvironment = (toolchain: Toolchain): NodeJS.ProcessEnv => {
   const env: NodeJS.ProcessEnv = {};
-  let searchPath = '';
-  Object.entries(process.env).forEach(([key, value]) => {
-    if (key.toUpperCase() === 'PATH') searchPath = value ?? '';
-    else env[key] = value;
-  });
-  const cmakeBin = path.isAbsolute(toolchain.cmake) ? path.dirname(toolchain.cmake) : undefined;
-  env.PATH = [toolchain.toolBin, cmakeBin, searchPath].filter(Boolean).join(path.delimiter);
+  Object.entries(process.env).forEach(([key, value]) => { if (key.toUpperCase() !== 'PATH') env[key] = value; });
+  env.PATH = pathFor(toolchain).map((entry) => entry.path).join(path.delimiter);
   return env;
+};
+
+// Settings > PATH: the list for the open project, or for the projects folder without one.
+const pathEntries = (): GlistPathEntry[] => pathFor(resolveToolchain(activeProjectRoot ?? projectsDirectory()))
+  .map((entry) => ({ ...entry, exists: existsSync(entry.path) }));
+
+// Only whole folders: one with the separator in it would add others with it.
+// What is kept is returned, for Settings to save.
+const setCustomPath = (folders: unknown): string[] => {
+  customPath = [...new Set((Array.isArray(folders) ? folders : [])
+    .filter((folder): folder is string => typeof folder === 'string' && path.isAbsolute(folder)
+      && !folder.includes(path.delimiter) && !folder.includes('\0'))
+    .map((folder) => {
+      // Without a trailing separator, so tools and tools/ are one folder; a root keeps its own.
+      const clean = path.normalize(folder);
+      return clean.length > path.parse(clean).root.length ? clean.replace(/[\\/]+$/, '') : clean;
+    }))];
+  return customPath;
 };
 
 // Release for Build and Run; Debug, with symbols and no optimization, for the debugger.
@@ -1325,6 +1377,8 @@ export const studio: Handlers = {
   setTarget,
   stopProject: stopProcesses,
   setLanguage,
+  pathEntries,
+  setCustomPath,
   setAutoConfigure,
   startClangd,
   sendClangd: (message: unknown) => clangd.send(message),

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { initializeStudio, openProjectAt, studio } from '../src/studio.ts';
+import { initializeStudio, openProjectAt, pluginDllFolders, studio } from '../src/studio.ts';
 
 // What the studio may write: the project, and the engine and the plugins the
 // project names, which only build from an app. Run with jiti.
@@ -45,6 +45,34 @@ try {
   await assert.rejects(studio.writeFile(at('glistplugins/gipDemo/missing/new.h'), 'x'));
   assert.equal(readFileSync(at('zbin/include/tool.h'), 'utf8'), '// tool\n');
   assert.equal(readFileSync(at('glistplugins/gipOther/src/gipOther.h'), 'utf8'), '// other\n');
+
+  // The DLL folders of the plugins the project names, the ones that exist, in the order named.
+  write('glistplugins/gipDemo/libs/bin/demo.dll', '');
+  write('glistplugins/gipDemo/prebuilts/bin/extra.dll', '');
+  write('glistplugins/gipOther/libs/bin/other.dll', '');
+  write('glistplugins/gipCairo/prebuilts/bin/cairo.dll', '');
+  write('myglistapps/App/CMakeLists.txt', 'set(PLUGINS gipCairo gipDemo gipMissing)\n');
+  assert.deepEqual(pluginDllFolders(at('myglistapps/App')), [
+    at('glistplugins/gipCairo/prebuilts/bin'), at('glistplugins/gipDemo/libs/bin'), at('glistplugins/gipDemo/prebuilts/bin'),
+  ]);
+  write('myglistapps/App/CMakeLists.txt', 'set(PLUGINS)\n');
+  assert.deepEqual(pluginDllFolders(at('myglistapps/App')), []);
+  assert.deepEqual(pluginDllFolders(at('myglistapps/Missing')), []);
+
+  // Settings > PATH: this computer's folders, then the ones added, which must be whole folders.
+  const kept = await studio.setCustomPath([at('tools'), 'relative/tools', `${at('a')}${path.delimiter}${at('b')}`, at('tools/'), at('tools/../tools'), 7]);
+  assert.deepEqual(kept, [at('tools')], 'only absolute folders without the separator, each once');
+  write('tools/tool.txt', '');
+  const entries = await studio.pathEntries();
+  const system = (process.env.PATH ?? '').split(path.delimiter).filter(Boolean);
+  assert.deepEqual(entries.filter((entry) => entry.source === 'system').map((entry) => entry.path), system);
+  assert.deepEqual(entries.slice(-1).map((entry) => [entry.path, entry.source, entry.exists]), [[at('tools'), 'custom', true]]);
+  const top = path.parse(root).root;
+  assert.deepEqual(await studio.setCustomPath([top]), [top], 'a root stays as it is');
+  await studio.setCustomPath([at('missing')]);
+  assert.deepEqual((await studio.pathEntries()).slice(-1).map((entry) => [entry.source, entry.exists]), [['custom', false]]);
+  await studio.setCustomPath([]);
+  assert.equal((await studio.pathEntries()).some((entry) => entry.source === 'custom'), false);
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

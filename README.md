@@ -42,6 +42,8 @@ Glist Studio expects Glist where its install scripts put it: `C:\dev\glist` on W
   - Windows: Glist's tools have none, so Settings, under Debugger, installs GDB from MSYS2, the source of Glist's compilers, with every file checked against a checksum pinned in `src/debugger-packages.json`. A GDB 14 or newer on `PATH`, such as the gipDebug plugin's, works too.
 - **Git**, only once it is turned on: Xcode's command line tools on macOS, the `git` package on Linux, and [Git for Windows](https://git-scm.com/).
 
+On Windows, the DLL folders of the plugins a project uses, `libs\bin` and `prebuilts\bin`, are added to the end of `PATH` for builds, runs, the debugger and the terminal, as those plugins' READMEs ask Eclipse users to do by hand. Settings, under PATH, lists every folder in the order they are searched, and takes more folders, which go last.
+
 Passwords, for the Glist installer or a git remote, are asked for by the system's own password dialog, never by the studio. On Linux that dialog is zenity, kdialog or ssh-askpass; without one, the installer asks in its terminal instead. GitHub takes a personal access token, not the account password.
 
 ## Development
