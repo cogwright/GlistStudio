@@ -1,4 +1,5 @@
 import { formDialog } from './git-dialogs';
+import { icon, type IconName } from './icons';
 import { t, type TranslationKey } from './localization';
 import { notify } from './notifications';
 
@@ -148,17 +149,21 @@ export class PluginsView {
     return paragraph;
   }
 
-  // The name with Install or Update at its right, the description, then where
-  // an installed plugin stands with Add to Project or Remove from Project beside it.
+  // The name with the plugin's buttons at its right, each an icon and a word:
+  // Install, Update, and Add to the project or, once added, Remove from it.
+  // They move under the name when both do not fit beside it.
   private row(plugin: GlistPlugin, gitFound: boolean): HTMLElement {
     const row = document.createElement('div');
     row.className = 'plugin-row';
     const busy = this.busy.has(plugin.name);
-    const button = (label: string, className: string, run: () => void): HTMLButtonElement => {
+    const button = (iconName: IconName, label: string, title: string, className: string, run: () => void): HTMLButtonElement => {
       const node = document.createElement('button');
       node.type = 'button';
-      node.className = className;
-      node.textContent = label;
+      node.className = `plugin-action ${className}`;
+      node.title = title;
+      const text = document.createElement('span');
+      text.textContent = label;
+      node.append(icon(iconName), text);
       node.addEventListener('click', run);
       return node;
     };
@@ -168,17 +173,40 @@ export class PluginsView {
     name.className = 'plugin-name';
     name.textContent = plugin.name;
     name.title = plugin.name;
-    header.append(name);
+    const actions = document.createElement('span');
+    actions.className = 'plugin-actions';
+    header.append(name, actions);
+    const source = plugin.source ?? 'GlistPlugins';
     const updatable = plugin.installed && plugin.official && plugin.branch === plugin.defaultBranch && (plugin.behind ?? 0) > 0;
     if (busy) {
       const working = document.createElement('span');
       working.className = 'plugin-working';
       working.textContent = t('pluginWorking');
-      header.append(working);
-    } else if (!plugin.installed && gitFound && plugin.url) {
-      header.append(button(t('installPlugin'), 'plugin-action', () => { void this.install(plugin); }));
-    } else if (updatable) {
-      header.append(button(t('updatePlugin'), 'plugin-action primary', () => { void this.run(plugin.name, () => updatePlugin(plugin)); }));
+      actions.append(working);
+    } else if (!plugin.installed) {
+      if (gitFound && plugin.url) {
+        actions.append(button('cloud-download', t('installPlugin'), t('installPluginTitle'), '', () => { void this.install(plugin); }));
+      }
+    } else {
+      if (updatable) {
+        actions.append(button('sync', t('updatePlugin'), t('updatePluginTitle').replace('{source}', source), 'primary', () => { void this.run(plugin.name, () => updatePlugin(plugin)); }));
+      }
+      if (this.hooks.hasProject()) {
+        if (plugin.used) {
+          // Added; pointing at it shows what a click does.
+          const added = button('check', t('pluginAdded'), t('removeFromProject'), 'added', () => { void this.use(plugin, false); });
+          const swap = (hover: boolean): void => {
+            added.replaceChildren(icon(hover ? 'close' : 'check'), Object.assign(document.createElement('span'), { textContent: hover ? t('pluginRemove') : t('pluginAdded') }));
+          };
+          added.addEventListener('pointerenter', () => swap(true));
+          added.addEventListener('pointerleave', () => swap(false));
+          added.addEventListener('focus', () => swap(true));
+          added.addEventListener('blur', () => swap(false));
+          actions.append(added);
+        } else {
+          actions.append(button('add', t('pluginAdd'), t('addToProject'), '', () => { void this.use(plugin, true); }));
+        }
+      }
     }
     row.append(header);
     if (plugin.description) {
@@ -189,18 +217,11 @@ export class PluginsView {
       row.append(description);
     }
     const state = this.state(plugin);
-    const canUse = plugin.installed && !busy && this.hooks.hasProject();
-    if (state || canUse) {
-      const footer = document.createElement('div');
-      footer.className = 'plugin-footer';
-      const line = document.createElement('span');
+    if (state) {
+      const line = document.createElement('div');
       line.className = `plugin-state${updatable ? ' update' : ''}`;
       line.textContent = state;
-      footer.append(line);
-      if (canUse) {
-        footer.append(button(plugin.used ? t('removeFromProject') : t('addToProject'), 'plugin-link', () => { void this.use(plugin, !plugin.used); }));
-      }
-      row.append(footer);
+      row.append(line);
     }
     return row;
   }
@@ -210,7 +231,6 @@ export class PluginsView {
     const source = plugin.source ?? 'GlistPlugins';
     if (!plugin.installed) return source.includes('/') ? t('pluginFrom').replace('{source}', source) : '';
     const parts: string[] = [];
-    if (plugin.used) parts.push(t('pluginInProject'));
     if (!plugin.official) parts.push(t('pluginNotOfficial').replace('{source}', source));
     else if (plugin.branch !== plugin.defaultBranch) parts.push(t('pluginOtherBranch').replace('{branch}', plugin.branch ?? 'HEAD'));
     else if ((plugin.behind ?? 0) > 0) parts.push(t('pluginBehind').replace('{count}', String(plugin.behind)).replace('{source}', source));
