@@ -8,7 +8,7 @@ import { t, type TranslationKey } from './localization';
 const storageKey = 'glist-studio-custom-path';
 
 const sourceLabel: Record<GlistPathEntry['source'], TranslationKey> = {
-  glist: 'pathGlist', cmake: 'pathCmake', system: 'pathSystem', plugin: 'pathPlugin', custom: 'pathCustom',
+  glist: 'pathGlist', cmake: 'pathCmake', system: 'pathSystem', git: 'pathGit', plugin: 'pathPlugin', custom: 'pathCustom',
 };
 
 const saved = (): string[] => {

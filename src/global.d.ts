@@ -34,11 +34,11 @@ interface GlistProjectSummary {
 }
 
 // A folder on PATH for the programs the studio starts, and where it comes from:
-// Glist's compilers and tools, CMake's folder, this computer's own PATH, a
-// plugin's DLLs (owner names it), or one added in Settings.
+// Glist's compilers and tools, CMake's folder, this computer's system folders,
+// Git for Windows, a plugin's DLLs (owner names it), or one added in Settings.
 interface GlistPathEntry {
   path: string;
-  source: 'glist' | 'cmake' | 'system' | 'plugin' | 'custom';
+  source: 'glist' | 'cmake' | 'system' | 'git' | 'plugin' | 'custom';
   owner: string;
   exists?: boolean;
 }
