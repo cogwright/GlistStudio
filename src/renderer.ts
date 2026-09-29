@@ -424,6 +424,9 @@ const setProcessStatus = (label: string, active: boolean, error = false): void =
   const labelNode = processStatus.querySelector('span');
   if (labelNode) labelNode.textContent = label;
 };
+// The page starts with the English words.
+setProcessStatus(t('ready'), false);
+projectRootLabel.textContent = t('projectPlaceholder');
 
 const languageForFile = (filePath: string): { id: string; label: string } => {
   if (filePath.endsWith('CMakeLists.txt')) return { id: 'cmake', label: 'CMake' };
