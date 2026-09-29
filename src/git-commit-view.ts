@@ -219,6 +219,15 @@ export class CommitView {
 
   private updateButtons(): void {
     const repository = this.client.repository;
+    // A commit already pushed is not amended while protection is on (Settings > Git).
+    const pushed = Boolean(repository?.headPushed);
+    this.controls.amend.disabled = pushed;
+    this.controls.amend.closest('label')?.setAttribute('title', pushed ? t('amendLocked') : '');
+    if (pushed && this.controls.amend.checked) {
+      this.controls.amend.checked = false;
+      void this.amendChanged();
+      return;
+    }
     const merging = Boolean(repository?.operation && repository.operation !== 'rebase');
     const shared = this.sharedIncluded();
     const hasFiles = this.included().length > 0 || shared.length > 0 || merging || this.controls.amend.checked;

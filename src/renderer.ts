@@ -2440,12 +2440,17 @@ const gitEmail = element<HTMLInputElement>('#git-email');
 const gitSettingsError = element<HTMLElement>('#git-settings-error');
 const gitUpdateMerge = element<HTMLInputElement>('#git-update-merge');
 const gitUpdateRebase = element<HTMLInputElement>('#git-update-rebase');
+const gitProtect = element<HTMLInputElement>('#git-protect');
+const gitProtectedBranches = element<HTMLInputElement>('#git-protected-branches');
 const showGitSettings = async (): Promise<void> => {
   gitEnabledInput.checked = git.enabled;
   gitOptions.hidden = !git.enabled;
   gitVersion.hidden = !git.enabled;
   gitUpdateMerge.checked = !git.updateByRebase;
   gitUpdateRebase.checked = git.updateByRebase;
+  gitProtect.checked = git.protection.on;
+  gitProtectedBranches.value = git.protection.branches.join(', ');
+  gitProtectedBranches.disabled = !git.protection.on;
   gitSettingsError.textContent = '';
   // Off, it runs nothing, not even to see whether git is there.
   if (!git.enabled) return;
@@ -2461,6 +2466,12 @@ gitEnabledInput.addEventListener('change', () => {
   git.setEnabled(gitEnabledInput.checked);
   void showGitSettings();
 });
+const saveProtection = (): void => {
+  git.protection = { on: gitProtect.checked, branches: gitProtectedBranches.value.split(',').map((name) => name.trim()).filter(Boolean) };
+  gitProtectedBranches.disabled = !gitProtect.checked;
+};
+gitProtect.addEventListener('change', saveProtection);
+gitProtectedBranches.addEventListener('change', saveProtection);
 [gitName, gitEmail].forEach((input) => input.addEventListener('change', async () => {
   const result = await window.glistAPI.gitRun({ kind: 'identity', name: gitName.value, email: gitEmail.value });
   gitSettingsError.textContent = result.success ? '' : result.message;

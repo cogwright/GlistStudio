@@ -67,6 +67,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   gitIdentity: 'git:identity',
   gitLastMessage: 'git:last-message',
   gitOutgoing: 'git:outgoing',
+  gitProtection: 'git:protection',
   gitRun: 'git:run',
   gitClone: 'git:clone',
 };

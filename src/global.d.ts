@@ -133,6 +133,14 @@ interface GlistGitRepository {
   // Ignored files and folders within the project; folders end in a separator.
   ignored: string[];
   stashes: number;
+  // The project's, with protection on: HEAD's commit is on a remote branch already.
+  headPushed?: boolean;
+}
+// Settings > Git: pushed commits are not amended, and these branches are not force pushed.
+interface GlistGitProtection {
+  on: boolean;
+  // Names, or patterns such as release/*; GitHub's protected branches are added.
+  branches: string[];
 }
 interface GlistGitStatus {
   // git's version, or null when git was not found.
@@ -356,7 +364,9 @@ interface Window {
     gitBlame(filePath: string, contents: string): Promise<GlistGitBlameLine[]>;
     gitIdentity(): Promise<GlistGitIdentity>;
     gitLastMessage(root?: string): Promise<string>;
-    gitOutgoing(root?: string): Promise<{ remote: string | null; branch: string | null; remotes: string[]; commits: GlistGitCommit[] }>;
+    // protected: the branch it goes to is protected, so it is never force pushed.
+    gitOutgoing(root?: string): Promise<{ remote: string | null; branch: string | null; remotes: string[]; commits: GlistGitCommit[]; protected: boolean }>;
+    gitProtection(protection: GlistGitProtection): Promise<void>;
     gitRun(action: GlistGitAction, root?: string): Promise<GlistGitResult>;
     gitClone(url: string, name: string): Promise<GlistProcessResult & { root?: string }>;
     onBuildOutput(callback: (text: string) => void): () => void;
