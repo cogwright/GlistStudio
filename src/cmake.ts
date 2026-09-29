@@ -108,3 +108,27 @@ export const cmakeInputs = (makefile: string): string[] => {
   const block = /set\(CMAKE_MAKEFILE_DEPENDS\s*([\s\S]*?)\)/.exec(makefile);
   return block ? [...block[1].matchAll(/"([^"]*)"/g)].map((match) => match[1]) : [];
 };
+
+// PLUGINS with a plugin added or taken out: added to the first set(PLUGINS ...)
+// as it is written, taken out of every one; null when there is none to add to.
+export const setPluginUsed = (cmake: string, name: string, use: boolean): string | null => {
+  const statements = [...cmake.matchAll(/\b(set\s*\(\s*PLUGINS|list\s*\(\s*APPEND\s+PLUGINS)\b([^)]*)\)/gi)]
+    .filter((match) => !cmake.slice(cmake.lastIndexOf('\n', match.index ?? 0) + 1, match.index).includes('#'));
+  const named = (body: string): boolean => body.split(/[\s;"]+/).some((entry) => entry.toLowerCase() === name.toLowerCase());
+  if (use) {
+    if (statements.some((match) => named(match[2]))) return cmake;
+    const first = statements.find((match) => /^set/i.test(match[1]));
+    if (!first || first.index === undefined) return null;
+    const body = first[2].replace(/\s+$/, '');
+    const end = first.index + first[1].length + first[2].length;
+    return `${cmake.slice(0, first.index + first[1].length)}${body} ${name}${first[2].slice(body.length)}${cmake.slice(end)}`;
+  }
+  let result = cmake;
+  [...statements].reverse().forEach((match) => {
+    if (match.index === undefined || !named(match[2])) return;
+    const start = match.index + match[1].length;
+    const body = match[2].replace(new RegExp(`(^|[\\s;"])${name.replace(/[.]/g, '\\.')}(?=[\\s;")]|$)`, 'gi'), '$1').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+$/, '');
+    result = `${result.slice(0, start)}${body}${result.slice(start + match[2].length)}`;
+  });
+  return result;
+};
