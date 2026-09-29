@@ -1,19 +1,51 @@
 name: Release builds
 
-# Builds the installers for every platform on a version tag, or by hand from
-# the Actions tab. A tag also drafts a GitHub release carrying them, which a
-# maintainer checks and publishes.
+# Builds the installers for every platform: on a version tag, into a draft
+# GitHub release that a maintainer checks and publishes; on every push to main,
+# into a prerelease published at once and numbered after the last release, such
+# as 0.0.4-dev.12; and by hand from the Actions tab.
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    # Prerelease tags come from this workflow and are not built again.
+    tags: ['v*', '!v*-dev.*']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Every commit and tag, to count main's commits since the last release.
+          fetch-depth: 0
+      - id: version
+        name: Choose the version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            # The next patch after the last release, then main's commits since it.
+            tag=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' 2>/dev/null || true)
+            IFS=. read -r major minor patch <<< "${tag:-v0.0.0}"
+            count=$(git rev-list --count ${tag:+"$tag.."}HEAD)
+            version="${major#v}.$minor.$((patch + 1))-dev.$count"
+          else
+            version=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version $version"
+
   build:
     name: ${{ matrix.name }}
+    needs: version
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -61,10 +93,11 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y squashfs-tools
       - run: npm ci
-      - name: Take the version from the tag
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Set the version
         shell: bash
-        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: npm version --no-git-tag-version --allow-same-version "$VERSION"
       - name: Make
         run: npx electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} --targets=${{ matrix.maker }}
       - name: Name the installer
@@ -100,3 +133,42 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Glist Studio ${GITHUB_REF_NAME#v}"
+
+  prerelease:
+    name: Prerelease
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    # Writes like the release job: it publishes the prerelease and its tag, and
+    # removes the oldest ones.
+    permissions:
+      contents: write
+    # One at a time, so removing old prereleases never races a newer one.
+    concurrency:
+      group: prerelease
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.version.outputs.version }}
+      # Older prereleases are removed with their tags; any commit can be built again.
+      KEEP: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the prerelease
+        run: |
+          message=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.message)
+          printf '%s\n\nBuilt from %s on main, to try changes before they are released. Glist Studio does not update itself to prereleases.\n' \
+            "$message" "$GITHUB_SHA" > notes.md
+          gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --latest=false --title "Glist Studio $VERSION" --notes-file notes.md
+      - name: Remove old prereleases
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("^v[0-9]+[.][0-9]+[.][0-9]+-dev[.][0-9]+$")))]
+              | sort_by(.createdAt) | reverse | .['"$KEEP"':][] | .tagName' |
+          while read -r tag; do
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          done
