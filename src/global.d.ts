@@ -44,6 +44,18 @@ interface GlistProcessResult {
   message: string;
 }
 
+// Where updating Glist Studio stands. "unavailable": this copy cannot update
+// itself, being built from source or the browser version. "available": a newer
+// version this copy cannot install in place, so only its page can help.
+interface GlistUpdateState {
+  state: 'unavailable' | 'idle' | 'checking' | 'up-to-date' | 'downloading' | 'ready' | 'available' | 'failed';
+  // The running version, and the new one.
+  current?: string;
+  version?: string;
+  page?: string;
+  message?: string;
+}
+
 interface GlistDebugStart {
   success: boolean;
   message: string;
@@ -325,6 +337,11 @@ interface Window {
     stopTerminal(session: GlistTerminalSession): Promise<void>;
     listAgents(): Promise<GlistAgentStatus[]>;
     glistStatus(): Promise<GlistInstallStatus>;
+    updateState(): Promise<GlistUpdateState>;
+    checkForUpdates(): Promise<GlistUpdateState>;
+    // Quits, asking about unsaved files as usual, and installs the downloaded update.
+    installUpdate(): Promise<void>;
+    openUpdatePage(): Promise<void>;
     installAgent(agent: GlistAgentId): Promise<GlistProcessResult>;
     gitStatus(): Promise<GlistGitStatus>;
     gitWatch(on: boolean): Promise<void>;
@@ -357,6 +374,7 @@ interface Window {
     onTerminalData(callback: (event: { session: GlistTerminalSession; data: string }) => void): () => void;
     onTerminalExit(callback: (event: { session: GlistTerminalSession; exitCode: number }) => void): () => void;
     onAgentInstall(callback: (text: string) => void): () => void;
+    onUpdateState(callback: (update: GlistUpdateState) => void): () => void;
     onGitChanged(callback: () => void): () => void;
     onGitConsole(callback: (entry: GlistGitConsoleEntry) => void): () => void;
   };

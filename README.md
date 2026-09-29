@@ -28,6 +28,8 @@ Each release carries a universal `.dmg` for macOS, a setup `.exe` for Windows on
 - Windows: SmartScreen shows "Windows protected your PC"; choose More info, then Run anyway.
 - Linux: make the AppImage executable (`chmod +x`) and run it. It runs natively on Wayland when the session sets `XDG_SESSION_TYPE=wayland`, as Hyprland does; elsewhere pass `--ozone-platform=wayland`. On tiling compositors such as Hyprland, sway and i3 the window has no buttons of its own.
 
+After that, Glist Studio updates itself from the published releases: it downloads a new version in the background, checks it against GitHub's checksum, and installs it when it restarts. Settings, under Updates, turns this off. Where it cannot replace itself, such as an app in a folder this user cannot write to, it links to the release instead.
+
 Glist Studio expects Glist where its install scripts put it: `C:\dev\glist` on Windows, with the toolchain in `zbin`, and `~/dev/glist` on macOS and Linux. When it is not there, the studio offers to run the current installer from [GlistEngine/InstallScripts](https://github.com/GlistEngine/InstallScripts). The studio keeps its settings in `GlistStudio` in that folder. Agents installed from Settings go there too, with their own Node.js, and change nothing else on the computer.
 
 ## Other tools it uses
