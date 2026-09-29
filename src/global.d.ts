@@ -96,8 +96,14 @@ interface GlistGitChange {
 // A merge, rebase, cherry-pick or revert that stopped to have conflicts resolved.
 type GlistGitOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert';
 interface GlistGitRepository {
+  // The project's own repository, or the engine's or a plugin's the project is built with.
+  kind: 'project' | 'engine' | 'plugin';
+  // The project's, engine's or plugin's folder name.
+  name: string;
   // The repository's top folder, which can be above the project's.
   root: string;
+  // The folder the studio knows it by. An engine's or plugin's names its repository in calls.
+  folder: string;
   location: string;
   aboveProject: boolean;
   // null while HEAD is detached.
@@ -121,6 +127,8 @@ interface GlistGitStatus {
   version: string | null;
   // null when the project is not in a repository.
   repository: GlistGitRepository | null;
+  // The engine's and plugins' own repositories.
+  dependencies: GlistGitRepository[];
   // Why git could not read the repository, such as a folder owned by another user.
   error?: string;
 }
@@ -150,6 +158,8 @@ interface GlistGitCommitDetails extends GlistGitCommit {
   files: GlistGitCommitFile[];
 }
 interface GlistGitLogQuery {
+  // An engine's or plugin's folder; the project's repository when absent.
+  root?: string;
   // A branch, tag or HEAD; every branch when absent.
   ref?: string;
   // Words from the message, or the start of a commit hash.
@@ -317,17 +327,18 @@ interface Window {
     gitStatus(): Promise<GlistGitStatus>;
     gitWatch(on: boolean): Promise<void>;
     gitLog(query: GlistGitLogQuery): Promise<GlistGitCommit[]>;
-    gitCommitDetails(revision: string): Promise<GlistGitCommitDetails>;
-    gitBranches(): Promise<GlistGitBranch[]>;
-    gitTags(): Promise<GlistGitTag[]>;
-    gitRemotes(): Promise<GlistGitRemote[]>;
-    gitStashes(): Promise<GlistGitStash[]>;
+    // root: an engine's or plugin's folder, or the project's repository when absent.
+    gitCommitDetails(revision: string, root?: string): Promise<GlistGitCommitDetails>;
+    gitBranches(root?: string): Promise<GlistGitBranch[]>;
+    gitTags(root?: string): Promise<GlistGitTag[]>;
+    gitRemotes(root?: string): Promise<GlistGitRemote[]>;
+    gitStashes(root?: string): Promise<GlistGitStash[]>;
     gitFileAt(revision: string, filePath: string): Promise<GlistGitFileVersion>;
     gitBlame(filePath: string, contents: string): Promise<GlistGitBlameLine[]>;
     gitIdentity(): Promise<GlistGitIdentity>;
-    gitLastMessage(): Promise<string>;
-    gitOutgoing(): Promise<{ remote: string | null; branch: string | null; remotes: string[]; commits: GlistGitCommit[] }>;
-    gitRun(action: GlistGitAction): Promise<GlistGitResult>;
+    gitLastMessage(root?: string): Promise<string>;
+    gitOutgoing(root?: string): Promise<{ remote: string | null; branch: string | null; remotes: string[]; commits: GlistGitCommit[] }>;
+    gitRun(action: GlistGitAction, root?: string): Promise<GlistGitResult>;
     gitClone(url: string, name: string): Promise<GlistProcessResult & { root?: string }>;
     onBuildOutput(callback: (text: string) => void): () => void;
     onBuildStatus(callback: (status: { running: boolean; label: string }) => void): () => void;

@@ -985,6 +985,7 @@ const installAgentFromSettings = async (agent: unknown): Promise<ProcessResult> 
 // Git, for the Commit view and the Git panel (see git-service.ts).
 const git = createGitService({
   projectRoot: () => activeProjectRoot,
+  dependencies: () => listDependencies(),
   environment: (directory) => processEnvironment(resolveToolchain(directory)),
   send: (channel, payload) => sendToRenderer(channel, payload),
   trash: (entryPath) => host.trashItem(entryPath),

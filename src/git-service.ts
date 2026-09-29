@@ -16,6 +16,8 @@ import {
 export interface GitContext {
   // The open project's folder, or null.
   projectRoot(): string | null;
+  // The engine and the plugins the open project is built with, which can be repositories of their own.
+  dependencies(): Promise<Array<{ name: string; kind: 'engine' | 'plugin'; path: string; exists: boolean }>>;
   // What builds get, with Glist's tools on PATH.
   environment(directory: string): NodeJS.ProcessEnv;
   send(channel: string, payload: unknown): void;
@@ -91,9 +93,10 @@ const messages = {
 type MessageKey = keyof typeof messages.en;
 
 interface Repository {
-  projectRoot: string;
-  // The project folder with links resolved, as git spells it.
-  realProjectRoot: string;
+  // The folder the studio knows it by: the project's, or the engine's or a plugin's.
+  folder: string;
+  // That folder with links resolved, as git spells it.
+  realFolder: string;
   top: string;
   gitDir: string;
   commonDir: string;
@@ -245,8 +248,7 @@ exit 1
 
   const projectRoot = (): string => context.projectRoot() ?? fail('noProject');
 
-  const openRepository = async (): Promise<Repository | null> => {
-    const root = projectRoot();
+  const openRepository = async (root: string = projectRoot()): Promise<Repository | null> => {
     const result = await run(['rev-parse', '--show-toplevel', '--absolute-git-dir', '--git-common-dir'], { cwd: root });
     if (result.code !== 0) {
       if (/not a git repository/i.test(result.stderr)) return null;
@@ -254,24 +256,50 @@ exit 1
     }
     const [top, gitDir, commonDir] = text(result).trim().split('\n');
     return {
-      projectRoot: root,
-      realProjectRoot: await fs.realpath(root),
+      folder: root,
+      realFolder: await fs.realpath(root),
       top: path.resolve(top),
       gitDir: path.resolve(gitDir),
       commonDir: path.resolve(root, commonDir),
     };
   };
 
-  const repository = async (): Promise<Repository> => (await openRepository()) ?? fail('notRepository');
+  const isInside = (folder: string, target: string): boolean => {
+    const relative = path.relative(path.resolve(folder), path.resolve(target));
+    return relative === '' || (relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+  };
+
+  // The engine's and plugins' folders the open project is built with. They are
+  // the only repositories besides the project's that the studio can be asked about.
+  const dependencyFolders = async (): Promise<Array<{ name: string; kind: 'engine' | 'plugin'; path: string }>> => {
+    if (!context.projectRoot()) return [];
+    try { return (await context.dependencies()).filter((entry) => entry.exists); } catch { return []; }
+  };
+
+  // The project's repository, or with a root, the engine's or a plugin's.
+  const repository = async (root?: unknown): Promise<Repository> => {
+    if (root === undefined || root === null) return (await openRepository()) ?? fail('notRepository');
+    if (typeof root !== 'string') return fail('outsideRepository');
+    const match = (await dependencyFolders()).find((entry) => path.resolve(entry.path) === path.resolve(root));
+    if (!match) return fail('outsideRepository');
+    return (await openRepository(match.path)) ?? fail('notRepository');
+  };
+
+  // The repository a file is in: an engine's or plugin's, or else the project's.
+  const repositoryOf = async (filePath: unknown): Promise<Repository> => {
+    if (typeof filePath !== 'string' || !filePath) return fail('outsideRepository');
+    const match = (await dependencyFolders()).find((entry) => isInside(entry.path, filePath));
+    return repository(match?.path);
+  };
 
   // A path git prints, relative to the top folder, as the project spells it.
   const fromGit = (repo: Repository, relative: string): string =>
-    path.join(repo.projectRoot, path.relative(repo.realProjectRoot, path.join(repo.top, relative)));
+    path.join(repo.folder, path.relative(repo.realFolder, path.join(repo.top, relative)));
 
   // A path from the studio, as git takes it: relative to the top folder, with /.
   const toGit = (repo: Repository, filePath: unknown): string => {
     if (typeof filePath !== 'string' || !filePath) return fail('outsideRepository');
-    const real = path.join(repo.realProjectRoot, path.relative(repo.projectRoot, path.resolve(filePath)));
+    const real = path.join(repo.realFolder, path.relative(repo.folder, path.resolve(filePath)));
     const relative = path.relative(repo.top, real);
     if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) fail('outsideRepository');
     return relative.split(path.sep).join('/');
@@ -313,7 +341,7 @@ exit 1
     for (const [file, kind] of [['CHERRY_PICK_HEAD', 'cherry-pick'], ['REVERT_HEAD', 'revert']] as const) {
       if (!existsSync(inGitDir(file))) continue;
       const commit = (await readFileIfThere(inGitDir(file))).trim();
-      const subject = revisionPattern.test(commit) ? text(await run(['show', '-s', '--format=%h %s', commit], { cwd: repo.projectRoot })).trim() : '';
+      const subject = revisionPattern.test(commit) ? text(await run(['show', '-s', '--format=%h %s', commit], { cwd: repo.folder })).trim() : '';
       return { operation: kind, subject: subject || undefined };
     }
     return { operation: null };
@@ -322,51 +350,68 @@ exit 1
   const readStatus = async (repo: Repository) => {
     // fsmonitor would run a program named in the repository's own settings.
     const result = await run(['-c', 'core.fsmonitor=false', 'status', '--porcelain=v2', '--branch', '-z',
-      '--untracked-files=all', '--ignored=matching', '--', '.'], { cwd: repo.projectRoot });
+      '--untracked-files=all', '--ignored=matching', '--', '.'], { cwd: repo.folder });
     if (result.code !== 0) throw new Error(result.stderr.trim());
     return parseStatus(text(result));
   };
 
+  const describe = async (repo: Repository, kind: GlistGitRepository['kind'], name: string): Promise<GlistGitRepository> => {
+    const parsed = await readStatus(repo);
+    const stashLog = await readFileIfThere(path.join(repo.commonDir, 'logs', 'refs', 'stash'));
+    const { operation: current, subject } = await operation(repo);
+    const change = (entry: GitFileChange): GlistGitChange => ({
+      path: fromGit(repo, entry.path),
+      ...(entry.from ? { from: fromGit(repo, entry.from) } : {}),
+      state: entry.state,
+      ...(entry.conflict ? { conflict: entry.conflict } : {}),
+    });
+    return {
+      kind,
+      name,
+      root: repo.top,
+      folder: repo.folder,
+      location: shortPath(repo.top),
+      aboveProject: path.relative(repo.top, repo.realFolder) !== '',
+      branch: parsed.branch,
+      head: parsed.head,
+      upstream: parsed.upstream,
+      ahead: parsed.ahead,
+      behind: parsed.behind,
+      operation: current,
+      operationSubject: subject,
+      changes: parsed.changes.map(change),
+      ignored: parsed.ignored.map((entry) => fromGit(repo, entry.replace(/\/$/, '')) + (entry.endsWith('/') ? path.sep : '')),
+      stashes: stashLog.split('\n').filter(Boolean).length,
+    };
+  };
+
   const status = async (): Promise<GlistGitStatus> => {
     const found = await gitVersion();
-    if (!found || !context.projectRoot()) return { version: found, repository: null };
+    if (!found || !context.projectRoot()) return { version: found, repository: null, dependencies: [] };
+    let repository: GlistGitRepository | null = null;
+    let top: string | null = null;
+    let error: string | undefined;
     try {
       const repo = await openRepository();
-      if (!repo) return { version: found, repository: null };
-      const parsed = await readStatus(repo);
-      const stashLog = await readFileIfThere(path.join(repo.commonDir, 'logs', 'refs', 'stash'));
-      const { operation: current, subject } = await operation(repo);
-      const change = (entry: GitFileChange): GlistGitChange => ({
-        path: fromGit(repo, entry.path),
-        ...(entry.from ? { from: fromGit(repo, entry.from) } : {}),
-        state: entry.state,
-        ...(entry.conflict ? { conflict: entry.conflict } : {}),
-      });
-      return {
-        version: found,
-        repository: {
-          root: repo.top,
-          location: shortPath(repo.top),
-          aboveProject: path.relative(repo.top, repo.realProjectRoot) !== '',
-          branch: parsed.branch,
-          head: parsed.head,
-          upstream: parsed.upstream,
-          ahead: parsed.ahead,
-          behind: parsed.behind,
-          operation: current,
-          operationSubject: subject,
-          changes: parsed.changes.map(change),
-          ignored: parsed.ignored.map((entry) => fromGit(repo, entry.replace(/\/$/, '')) + (entry.endsWith('/') ? path.sep : '')),
-          stashes: stashLog.split('\n').filter(Boolean).length,
-        },
-      };
-    } catch (error) {
-      return { version: found, repository: null, error: error instanceof Error ? error.message : String(error) };
+      top = repo?.top ?? null;
+      if (repo) repository = await describe(repo, 'project', path.basename(repo.folder));
+    } catch (failure) {
+      error = failure instanceof Error ? failure.message : String(failure);
     }
+    // The engine and plugins, each once, and not when they are part of the project's own repository.
+    const dependencies: GlistGitRepository[] = [];
+    for (const entry of await dependencyFolders()) {
+      try {
+        const repo = await openRepository(entry.path);
+        if (!repo || repo.top === top || dependencies.some((known) => known.root === repo.top)) continue;
+        dependencies.push(await describe(repo, entry.kind, entry.name));
+      } catch { /* A folder git cannot read is left out. */ }
+    }
+    return { version: found, repository, dependencies, ...(error ? { error } : {}) };
   };
 
   const log = async (query: GlistGitLogQuery): Promise<GlistGitCommit[]> => {
-    const repo = await repository();
+    const repo = await repository(query?.root);
     const limit = Math.min(2000, Math.max(1, Math.floor(Number(query?.limit) || 300)));
     const skip = Math.max(0, Math.floor(Number(query?.skip) || 0));
     const args = ['-c', 'log.showSignature=false', 'log', '--date-order', `--format=${logFormat}`, `--max-count=${limit}`, `--skip=${skip}`];
@@ -375,30 +420,30 @@ exit 1
     if (query?.ref) args.push(ref(query.ref));
     else args.push('--exclude=refs/stash', '--all');
     if (query?.path) args.push('--follow', '--', toGit(repo, query.path));
-    const result = await run(query?.path ? literal(args) : args, { cwd: repo.projectRoot });
+    const result = await run(query?.path ? literal(args) : args, { cwd: repo.folder });
     // A repository without commits has no history yet.
     if (result.code !== 0) return [];
     const commits = parseLog(text(result));
     // The search also finds a commit by the start of its hash.
     if (words && skip === 0 && /^[0-9a-f]{4,40}$/i.test(words) && !commits.some((commit) => commit.hash.startsWith(words.toLowerCase()))) {
-      const found = await run(['-c', 'log.showSignature=false', 'log', '-1', `--format=${logFormat}`, `${words}^{commit}`], { cwd: repo.projectRoot });
+      const found = await run(['-c', 'log.showSignature=false', 'log', '-1', `--format=${logFormat}`, `${words}^{commit}`], { cwd: repo.folder });
       if (found.code === 0) commits.unshift(...parseLog(text(found)));
     }
     return commits;
   };
 
-  const commitDetails = async (value: unknown): Promise<GlistGitCommitDetails> => {
-    const repo = await repository();
+  const commitDetails = async (value: unknown, root?: unknown): Promise<GlistGitCommitDetails> => {
+    const repo = await repository(root);
     const rev = revision(value);
     const format = '%H%x1f%h%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ct%x1f%D%x1f%s%x1f%B';
-    const shownCommit = await run(['-c', 'log.showSignature=false', 'show', '-s', `--format=${format}`, rev], { cwd: repo.projectRoot });
+    const shownCommit = await run(['-c', 'log.showSignature=false', 'show', '-s', `--format=${format}`, rev], { cwd: repo.folder });
     if (shownCommit.code !== 0) fail('invalidRevision');
     const [hash, short, parents, author, email, date, committer, committerDate, refs, subject, message] = text(shownCommit).split('\x1f');
     const parentList = parents ? parents.split(' ') : [];
     const base = parentList[0] ?? null;
     const files = await run(base
       ? ['diff-tree', '-r', '-M', '--no-commit-id', '--name-status', '-z', base, hash]
-      : ['diff-tree', '-r', '-M', '--root', '--no-commit-id', '--name-status', '-z', hash], { cwd: repo.projectRoot });
+      : ['diff-tree', '-r', '-M', '--root', '--no-commit-id', '--name-status', '-z', hash], { cwd: repo.folder });
     return {
       hash,
       short,
@@ -420,33 +465,33 @@ exit 1
     };
   };
 
-  const branches = async (): Promise<GlistGitBranch[]> => {
-    const repo = await repository();
+  const branches = async (root?: unknown): Promise<GlistGitBranch[]> => {
+    const repo = await repository(root);
     const result = await run(['for-each-ref', `--format=${branchFormat}`, '--sort=-committerdate', 'refs/heads', 'refs/remotes'],
-      { cwd: repo.projectRoot, env: { LC_ALL: 'C' } });
+      { cwd: repo.folder, env: { LC_ALL: 'C' } });
     return result.code === 0 ? parseBranches(text(result)) : [];
   };
 
-  const tags = async (): Promise<GlistGitTag[]> => {
-    const repo = await repository();
-    const result = await run(['for-each-ref', `--format=${tagFormat}`, '--sort=-creatordate', 'refs/tags'], { cwd: repo.projectRoot });
+  const tags = async (root?: unknown): Promise<GlistGitTag[]> => {
+    const repo = await repository(root);
+    const result = await run(['for-each-ref', `--format=${tagFormat}`, '--sort=-creatordate', 'refs/tags'], { cwd: repo.folder });
     return result.code === 0 ? parseTags(text(result)) : [];
   };
 
-  const remotes = async (): Promise<GlistGitRemote[]> => {
-    const repo = await repository();
-    return parseRemotes(text(await run(['remote', '-v'], { cwd: repo.projectRoot })));
+  const remotes = async (root?: unknown): Promise<GlistGitRemote[]> => {
+    const repo = await repository(root);
+    return parseRemotes(text(await run(['remote', '-v'], { cwd: repo.folder })));
   };
 
-  const stashes = async (): Promise<GlistGitStash[]> => {
-    const repo = await repository();
-    const result = await run(['stash', 'list', `--format=${stashFormat}`], { cwd: repo.projectRoot });
+  const stashes = async (root?: unknown): Promise<GlistGitStash[]> => {
+    const repo = await repository(root);
+    const result = await run(['stash', 'list', `--format=${stashFormat}`], { cwd: repo.folder });
     return result.code === 0 ? parseStashes(text(result)) : [];
   };
 
   const fileAt = async (value: unknown, filePath: unknown): Promise<GlistGitFileVersion> => {
-    const repo = await repository();
-    const result = await run(['cat-file', 'blob', `${revision(value)}:${toGit(repo, filePath)}`], { cwd: repo.projectRoot });
+    const repo = await repositoryOf(filePath);
+    const result = await run(['cat-file', 'blob', `${revision(value)}:${toGit(repo, filePath)}`], { cwd: repo.folder });
     if (result.code !== 0) return { text: null };
     if (result.stdout.length > 5 * 1024 * 1024) return { text: '', tooLarge: true };
     if (result.stdout.subarray(0, 8000).includes(0)) return { text: '', binary: true };
@@ -455,9 +500,9 @@ exit 1
 
   // Against what is in the editor, so lines typed since the last save count as not committed.
   const blame = async (filePath: unknown, contents: unknown): Promise<GlistGitBlameLine[]> => {
-    const repo = await repository();
+    const repo = await repositoryOf(filePath);
     const result = await run(literal(['blame', '--line-porcelain', '--contents', '-', '--', toGit(repo, filePath)]),
-      { cwd: repo.projectRoot, input: typeof contents === 'string' ? contents : '' });
+      { cwd: repo.folder, input: typeof contents === 'string' ? contents : '' });
     return result.code === 0 ? parseBlame(text(result)) : [];
   };
 
@@ -473,29 +518,29 @@ exit 1
     return suggestedName ? { ...found, suggestedName } : found;
   };
 
-  const lastMessage = async (): Promise<string> => {
-    const repo = await repository();
-    const result = await run(['log', '-1', '--format=%B'], { cwd: repo.projectRoot });
+  const lastMessage = async (root?: unknown): Promise<string> => {
+    const repo = await repository(root);
+    const result = await run(['log', '-1', '--format=%B'], { cwd: repo.folder });
     return result.code === 0 ? text(result).trim() : '';
   };
 
   const upstreamRemote = async (repo: Repository, branch: string | null): Promise<string | null> => {
     if (!branch) return null;
-    const result = await run(['config', `branch.${branch}.remote`], { cwd: repo.projectRoot });
+    const result = await run(['config', `branch.${branch}.remote`], { cwd: repo.folder });
     return result.code === 0 ? text(result).trim() : null;
   };
 
   // What Push would send, and where.
-  const outgoing = async () => {
-    const repo = await repository();
+  const outgoing = async (root?: unknown) => {
+    const repo = await repository(root);
     const parsed = await readStatus(repo);
-    const remoteNames = text(await run(['remote'], { cwd: repo.projectRoot })).split('\n').filter(Boolean);
+    const remoteNames = text(await run(['remote'], { cwd: repo.folder })).split('\n').filter(Boolean);
     const remote = await upstreamRemote(repo, parsed.branch)
       ?? (remoteNames.includes('origin') ? 'origin' : remoteNames[0] ?? null);
     let commits: GlistGitCommit[] = [];
     if (parsed.head) {
       const range = parsed.upstream ? ['@{upstream}..HEAD'] : ['HEAD', '--not', ...(remote ? [`--remotes=${remote}`] : [])];
-      const result = await run(['-c', 'log.showSignature=false', 'log', `--format=${logFormat}`, '--max-count=200', ...range], { cwd: repo.projectRoot });
+      const result = await run(['-c', 'log.showSignature=false', 'log', `--format=${logFormat}`, '--max-count=200', ...range], { cwd: repo.folder });
       if (result.code === 0) commits = parseLog(text(result));
     }
     return { remote, branch: parsed.branch, remotes: remoteNames, commits };
@@ -533,7 +578,7 @@ exit 1
   // Runs commands in order, stopping at the first that fails.
   const steps = async (repo: Repository, commands: string[][], options: Partial<RunOptions> = {}): Promise<GlistGitResult> => {
     for (const args of commands) {
-      const result = await run(args, { cwd: repo.projectRoot, logged: true, ...options });
+      const result = await run(args, { cwd: repo.folder, logged: true, ...options });
       if (result.code !== 0) return explain(result);
     }
     return done();
@@ -560,10 +605,10 @@ exit 1
       if (parsed.changes.some((entry) => entry.state === 'conflict')) fail('unresolved');
       if (chosen.size > 0) {
         const add = withPaths(['add', '-A'], [...chosen]);
-        const added = await run(add.args, { cwd: repo.projectRoot, input: add.input, logged: true });
+        const added = await run(add.args, { cwd: repo.folder, input: add.input, logged: true });
         if (added.code !== 0) return explain(added);
       }
-      const result = await run(['commit', '-m', message], { cwd: repo.projectRoot, logged: true });
+      const result = await run(['commit', '-m', message], { cwd: repo.folder, logged: true });
       return result.code === 0 ? done(say('committed')) : explain(result);
     }
     if (chosen.size === 0 && !action.amend) fail('nothingSelected');
@@ -572,12 +617,12 @@ exit 1
     const untracked = parsed.changes.filter((entry) => entry.state === 'untracked' && chosen.has(entry.path)).map((entry) => entry.path);
     if (untracked.length > 0) {
       const add = withPaths(['add'], untracked);
-      const added = await run(add.args, { cwd: repo.projectRoot, input: add.input, logged: true });
+      const added = await run(add.args, { cwd: repo.folder, input: add.input, logged: true });
       if (added.code !== 0) return explain(added);
     }
     const committing = withPaths(['commit', '-m', message, ...(action.amend ? ['--amend'] : []), '--only'], [...chosen]);
     const result = await run(chosen.size > 0 ? committing.args : ['commit', '-m', message, '--amend', '--only'],
-      { cwd: repo.projectRoot, input: committing.input, logged: true });
+      { cwd: repo.folder, input: committing.input, logged: true });
     return result.code === 0 ? done(say('committed')) : explain(result);
   };
 
@@ -596,12 +641,12 @@ exit 1
     });
     if (restore.length > 0 && parsed.head) {
       const checkout = withPaths(['checkout', 'HEAD'], restore);
-      const result = await run(checkout.args, { cwd: repo.projectRoot, input: checkout.input, logged: true });
+      const result = await run(checkout.args, { cwd: repo.folder, input: checkout.input, logged: true });
       if (result.code !== 0) return explain(result);
     }
     if (remove.length > 0) {
       const unstage = withPaths(['rm', '--cached', '-q', '-f', '-r'], remove);
-      const result = await run(unstage.args, { cwd: repo.projectRoot, input: unstage.input, logged: true });
+      const result = await run(unstage.args, { cwd: repo.folder, input: unstage.input, logged: true });
       if (result.code !== 0) return explain(result);
       for (const entry of remove) {
         const file = path.join(repo.top, entry);
@@ -617,11 +662,11 @@ exit 1
 
   // Adds lines to the project's .gitignore, relative to the project folder.
   const ignore = async (repo: Repository, paths: unknown[]): Promise<GlistGitResult> => {
-    const file = path.join(repo.projectRoot, '.gitignore');
+    const file = path.join(repo.folder, '.gitignore');
     const current = await readFileIfThere(file);
     const lines = paths.map((entry) => {
       if (typeof entry !== 'string') return fail('outsideRepository');
-      const relative = path.relative(repo.projectRoot, path.resolve(entry));
+      const relative = path.relative(repo.folder, path.resolve(entry));
       if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) fail('outsideRepository');
       return `/${relative.split(path.sep).join('/')}${isDirectory(entry) ? '/' : ''}`;
     }).filter((line) => !current.split(/\r?\n/).includes(line));
@@ -631,7 +676,7 @@ exit 1
   };
 
   const stageOf = async (repo: Repository, relative: string, stage: 2 | 3): Promise<boolean> => {
-    const result = await run(literal(['ls-files', '-u', '-z', '--', relative]), { cwd: repo.projectRoot });
+    const result = await run(literal(['ls-files', '-u', '-z', '--', relative]), { cwd: repo.folder });
     return text(result).split('\0').some((line) => line.split(/\s+/)[2] === String(stage));
   };
 
@@ -664,21 +709,21 @@ exit 1
 
   const checkout = async (repo: Repository, action: Extract<GlistGitAction, { kind: 'checkout' }>): Promise<GlistGitResult> => {
     const target = ref(action.ref);
-    const local = await run(['show-ref', '--verify', '--quiet', `refs/heads/${target}`], { cwd: repo.projectRoot });
+    const local = await run(['show-ref', '--verify', '--quiet', `refs/heads/${target}`], { cwd: repo.folder });
     const remote = local.code !== 0
-      ? await run(['show-ref', '--verify', '--quiet', `refs/remotes/${target}`], { cwd: repo.projectRoot }) : null;
+      ? await run(['show-ref', '--verify', '--quiet', `refs/remotes/${target}`], { cwd: repo.folder }) : null;
     let command = ['checkout', target];
     if (remote?.code === 0) {
       // A remote branch is checked out as a local one that follows it.
       const localName = target.slice(target.indexOf('/') + 1);
-      const exists = await run(['show-ref', '--verify', '--quiet', `refs/heads/${localName}`], { cwd: repo.projectRoot });
+      const exists = await run(['show-ref', '--verify', '--quiet', `refs/heads/${localName}`], { cwd: repo.folder });
       command = exists.code === 0 ? ['checkout', localName] : ['checkout', '--track', target];
     } else if (local.code !== 0) command = ['checkout', '--detach', target];
     if (!action.smart) return steps(repo, [command]);
-    const before = parseStashes(text(await run(['stash', 'list', `--format=${stashFormat}`], { cwd: repo.projectRoot }))).length;
+    const before = parseStashes(text(await run(['stash', 'list', `--format=${stashFormat}`], { cwd: repo.folder }))).length;
     const stashed = await steps(repo, [['stash', 'push', '--include-untracked', '-m', 'Glist Studio: before checkout']]);
     if (!stashed.success) return stashed;
-    const after = parseStashes(text(await run(['stash', 'list', `--format=${stashFormat}`], { cwd: repo.projectRoot }))).length;
+    const after = parseStashes(text(await run(['stash', 'list', `--format=${stashFormat}`], { cwd: repo.folder }))).length;
     const switched = await steps(repo, [command]);
     if (after === before) return switched;
     const restored = await steps(repo, [['stash', 'pop']]);
@@ -687,7 +732,7 @@ exit 1
 
   const createBranch = async (repo: Repository, action: Extract<GlistGitAction, { kind: 'create-branch' }>): Promise<GlistGitResult> => {
     const branch = name(action.name);
-    const valid = await run(['check-ref-format', '--branch', branch], { cwd: repo.projectRoot });
+    const valid = await run(['check-ref-format', '--branch', branch], { cwd: repo.folder });
     if (valid.code !== 0) fail('invalidName');
     const start = action.start ? [ref(action.start)] : [];
     return steps(repo, [action.checkout ? ['checkout', '-b', branch, ...start] : ['branch', branch, ...start]]);
@@ -702,12 +747,12 @@ exit 1
   };
 
   const commitParents = async (repo: Repository, commit: string): Promise<number> =>
-    text(await run(['show', '-s', '--format=%P', commit], { cwd: repo.projectRoot })).trim().split(' ').filter(Boolean).length;
+    text(await run(['show', '-s', '--format=%P', commit], { cwd: repo.folder })).trim().split(' ').filter(Boolean).length;
 
   const push = async (repo: Repository, action: Extract<GlistGitAction, { kind: 'push' }>): Promise<GlistGitResult> => {
     const parsed = await readStatus(repo);
     if (!parsed.branch) fail('invalidRevision');
-    const remoteNames = text(await run(['remote'], { cwd: repo.projectRoot })).split('\n').filter(Boolean);
+    const remoteNames = text(await run(['remote'], { cwd: repo.folder })).split('\n').filter(Boolean);
     const remote = action.remote ? name(action.remote) : await upstreamRemote(repo, parsed.branch)
       ?? (remoteNames.includes('origin') ? 'origin' : remoteNames[0]);
     if (!remote) fail('noRemote');
@@ -718,7 +763,7 @@ exit 1
     return result.success ? done(say('pushed')) : result;
   };
 
-  const act = async (action: GlistGitAction): Promise<GlistGitResult> => {
+  const act = async (action: GlistGitAction, root?: unknown): Promise<GlistGitResult> => {
     if (action?.kind === 'init') {
       const root = projectRoot();
       if (await openRepository()) fail('alreadyRepository');
@@ -741,7 +786,7 @@ exit 1
       const failed = results.find((result) => result.code !== 0 && result.code !== 5);
       return failed ? explain(failed) : done();
     }
-    const repo = await repository();
+    const repo = await repository(root);
     switch (action?.kind) {
       case 'commit': return commit(repo, action);
       case 'rollback': return rollback(repo, Array.isArray(action.paths) ? action.paths : []);
@@ -751,7 +796,7 @@ exit 1
       case 'mark-resolved': {
         const paths = (Array.isArray(action.paths) ? action.paths : []).map((entry) => toGit(repo, entry));
         const add = withPaths(['add', '-A'], paths);
-        const result = await run(add.args, { cwd: repo.projectRoot, input: add.input, logged: true });
+        const result = await run(add.args, { cwd: repo.folder, input: add.input, logged: true });
         return result.code === 0 ? done() : explain(result);
       }
       case 'abort': case 'continue': case 'skip': return abortOrContinue(repo, action.kind);
@@ -848,7 +893,7 @@ exit 1
     const folders = [root];
     try {
       const repo = await openRepository();
-      if (repo && !repo.gitDir.startsWith(repo.realProjectRoot + path.sep)) folders.push(repo.gitDir);
+      if (repo && !repo.gitDir.startsWith(repo.realFolder + path.sep)) folders.push(repo.gitDir);
     } catch { /* Not a repository: the project folder is still watched, for git init. */ }
     folders.forEach((folder) => {
       try {
@@ -874,7 +919,7 @@ exit 1
       gitIdentity: identity,
       gitLastMessage: lastMessage,
       gitOutgoing: outgoing,
-      gitRun: (action: GlistGitAction) => exclusive(() => act(action).catch(failure)),
+      gitRun: (action: GlistGitAction, root?: unknown) => exclusive(() => act(action, root).catch(failure)),
       gitClone: (address: unknown, folder: unknown) => clone(address, folder).catch(failure),
     },
     // The project changed.

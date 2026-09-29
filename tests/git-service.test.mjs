@@ -25,10 +25,15 @@ const write = (file, text) => {
 const read = (file) => readFileSync(path.join(project, file), 'utf8');
 const inProject = (file) => path.join(project, file);
 
+// The engine and a plugin beside the project, each a repository of its own.
+const engine = path.join(root, 'GlistEngine');
+const plugin = path.join(root, 'glistplugins', 'gipDemo');
+let dependencies = [];
 let openRoot = project;
 const consoleLines = [];
 const service = createGitService({
   projectRoot: () => openRoot,
+  dependencies: async () => dependencies,
   environment: () => ({ ...process.env }),
   send: (channel, payload) => { if (channel === 'git:console') consoleLines.push(payload); },
   trash: async (file) => renameSync(file, path.join(trash, path.basename(file))),
@@ -37,8 +42,8 @@ const service = createGitService({
   language: () => 'en',
 });
 const git = service.handlers;
-const run = async (action) => {
-  const result = await git.gitRun(action);
+const run = async (action, repositoryRoot) => {
+  const result = await git.gitRun(action, repositoryRoot);
   assert.equal(result.success, true, `${action.kind}: ${result.message}`);
   return result;
 };
@@ -231,6 +236,36 @@ try {
   await run({ kind: 'rebase', onto: 'side' });
   assert.equal(read('src/main.cpp'), 'kept while rebasing\n');
   assert.equal(read('notes.txt'), 'side notes\n');
+
+  // The engine and plugins are repositories of their own, reached by their folders.
+  for (const [folder, file] of [[engine, 'engine/gCore.h'], [plugin, 'src/gipDemo.h']]) {
+    mkdirSync(path.join(folder, path.dirname(file)), { recursive: true });
+    writeFileSync(path.join(folder, file), '// first\n');
+    execFileSync('git', ['init', '-q', '--initial-branch=main', folder]);
+    execFileSync('git', ['-C', folder, 'add', '.']);
+    execFileSync('git', ['-C', folder, '-c', 'user.name=Engine', '-c', 'user.email=e@example.com', 'commit', '-q', '-m', `Start ${path.basename(folder)}`]);
+  }
+  dependencies = [
+    { name: 'GlistEngine', kind: 'engine', path: engine, exists: true },
+    { name: 'gipDemo', kind: 'plugin', path: plugin, exists: true },
+    { name: 'gipMissing', kind: 'plugin', path: path.join(root, 'glistplugins', 'gipMissing'), exists: false },
+  ];
+  writeFileSync(path.join(engine, 'engine', 'gCore.h'), '// first\n// changed\n');
+  status = await git.gitStatus();
+  assert.deepEqual(status.dependencies.map((entry) => [entry.kind, entry.name, entry.branch]), [['engine', 'GlistEngine', 'main'], ['plugin', 'gipDemo', 'main']]);
+  assert.deepEqual(status.dependencies[0].changes.map((change) => [path.relative(engine, change.path), change.state]), [[path.join('engine', 'gCore.h'), 'modified']]);
+  assert.equal(status.repository.kind, 'project');
+  assert.deepEqual((await git.gitLog({ root: engine })).map((commit) => commit.subject), ['Start GlistEngine']);
+  assert.equal((await git.gitFileAt('HEAD', path.join(engine, 'engine', 'gCore.h'))).text, '// first\n');
+  assert.deepEqual((await git.gitBranches(plugin)).map((branch) => branch.name), ['main']);
+  await run({ kind: 'commit', message: 'Change the core', paths: [path.join(engine, 'engine', 'gCore.h')], amend: false }, engine);
+  assert.equal((await git.gitLog({ root: engine }))[0].subject, 'Change the core');
+  assert.equal((await git.gitStatus()).dependencies[0].changes.length, 0);
+  // Only the project's own engine and plugins can be named, not any folder.
+  await assert.rejects(git.gitBranches(root));
+  await assert.rejects(git.gitBranches(path.join(root, 'glistplugins', 'gipMissing')));
+  assert.equal((await git.gitRun({ kind: 'fetch' }, '/')).success, false);
+  await assert.rejects(git.gitFileAt('HEAD', path.join(root, 'elsewhere', 'file.h')));
 
   // The console shows the commands that change the repository.
   assert.ok(consoleLines.some((entry) => entry.kind === 'command' && entry.text.startsWith('git commit -m First')));
