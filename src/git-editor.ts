@@ -277,8 +277,8 @@ export class GitEditor {
     if (this.editor.getModel() === model) this.showBlame();
   }
 
-  // Who last changed each line and when, beside its number, for the first line
-  // of each run from one commit; hovering a number tells the rest.
+  // Who last changed each line and when, beside its number, as JetBrains shows
+  // it; hovering a number tells the rest.
   private showBlame(): void {
     const lines = this.blames.get(this.path() ?? '');
     if (!lines) {
@@ -288,8 +288,7 @@ export class GitEditor {
     }
     const recent = Date.now() / 1000 - 14 * 24 * 3600;
     const author = (line: GlistGitBlameLine): string => (line.uncommitted ? t('notCommittedYet') : line.author);
-    const labels = lines.map((line, index) => (index > 0 && lines[index - 1].commit === line.commit ? ''
-      : `${line.uncommitted ? '' : shortDate(line.date * 1000)} ${author(line)}`.trim().slice(0, 26)));
+    const labels = lines.map((line) => `${line.uncommitted ? '' : shortDate(line.date * 1000)} ${author(line)}`.trim().slice(0, 26));
     this.editor.updateOptions({
       lineNumbers: (number) => `${(labels[number - 1] ?? '').padEnd(27)}${String(number).padStart(4)}`,
       lineNumbersMinChars: 32,
