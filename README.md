@@ -8,7 +8,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 
 ## Features
 
-- Project explorer with file and folder operations, context menus, and copy/paste, and the engine and plugins the project uses listed below it, to browse and read
+- Project explorer with file and folder operations, context menus, and copy/paste, and the engine and plugins the project uses listed below it, to browse and edit
 - Tabbed C/C++ editor powered by Monaco, which also highlights CMake files
 - C++ code intelligence from clangd: diagnostics, completion, hover, signature help, go to definition, references, rename, quick fixes, formatting, outline, and header/source switching (Alt+O)
 - Save, build, run, and stop commands with live output, colored as the compiler colors it, where file locations open the file at that line
@@ -28,7 +28,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 
 Opening a project starts [clangd](https://clangd.llvm.org/). It is looked up on `PATH`; on Windows the Glist `clang64\bin` folder is searched first. Without clangd the editor still works, with syntax highlighting only.
 
-clangd reads the compile flags from `_build/Release/compile_commands.json`, which the build writes. Until a project has been built once, clangd cannot find the engine headers; it restarts on its own after that first build. Definitions in GlistEngine and its plugins open read-only.
+clangd reads the compile flags from `_build/Release/compile_commands.json`, which the build writes. Until a project has been built once, clangd cannot find the engine headers; it restarts on its own after that first build. Definitions in GlistEngine and the plugins the project uses open for editing, as their files do from the explorer: neither builds on its own, so work on them happens from an app. The first change to one in a session says that every project shares it. Other files in the Glist folder, such as zbin's, open read-only, and a rename or fix that clangd offers only ever changes the project's own files.
 
 ## Debugging
 
@@ -88,7 +88,7 @@ Update Project (Ctrl+T) brings in the remote's commits by merging, or by rebasin
 - Their changes appear in the Commit view, each in a group of its own, closed and unchecked. Checked files are committed to their own repository with the same message; Amend only ever changes the project's last commit.
 - Push offers each one that has commits to send, with a checkbox.
 
-Update Engine and Plugins, in the Git menu and the branch menu, brings in their remotes' commits. It is separate from Update Project, because every project shares them. For the same reason, the studio asks before rolling back, checking out, merging, rebasing or resetting one. Their files stay read-only in the editor, with their changed lines marked all the same.
+Update Engine and Plugins, in the Git menu and the branch menu, brings in their remotes' commits. It is separate from Update Project, because every project shares them. For the same reason, the studio asks before rolling back, checking out, merging, rebasing or resetting one. Their files can be edited like the project's, with their changed lines marked.
 
 A remote that asks for a password is answered through the system, never through the studio: git and ssh ask a system dialog on macOS, and the desktop's password dialog on Linux (zenity, kdialog or ssh-askpass), through `GIT_ASKPASS` and `SSH_ASKPASS`. Git's own credential helper, such as the macOS keychain or Git Credential Manager on Windows, remembers it. GitHub takes a personal access token instead of the account password.
 
