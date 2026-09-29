@@ -1,11 +1,14 @@
 import { cpSync, existsSync, mkdirSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
-import { invokeChannels, type Handler, type InvokeMethod } from './api';
+import { eventChannels, invokeChannels, type Handler, type InvokeMethod } from './api';
 import {
   defaultProjectsDirectory, initializeStudio, msg, openProjectAt, projectsDirectory, stopClangd, stopDebugging, stopProcesses,
   stopGit, stopTerminal, stopWatchingConfiguration, studio, studioHome,
 } from './studio';
+import {
+  checkForUpdates, installOnQuit, installUpdate, openUpdatePage, quitCancelled, restartingToUpdate, setUpdateListener, updateState,
+} from './updater';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -85,6 +88,10 @@ const registerIpcHandlers = (): void => {
     return openProjectAt(result.filePaths[0]);
   });
   ipcMain.handle(invokeChannels.openEngineSite, () => shell.openExternal('https://www.glistengine.com/'));
+  ipcMain.handle(invokeChannels.updateState, () => updateState());
+  ipcMain.handle(invokeChannels.checkForUpdates, () => checkForUpdates());
+  ipcMain.handle(invokeChannels.installUpdate, () => installUpdate());
+  ipcMain.handle(invokeChannels.openUpdatePage, () => openUpdatePage());
   ipcMain.handle(invokeChannels.setZoomFactor, (event, factor: number) => {
     const safeFactor = Number.isFinite(factor) ? Math.min(3, Math.max(0.5, factor)) : 1;
     event.sender.setZoomFactor(safeFactor);
@@ -135,6 +142,7 @@ const createWindow = (): void => {
     });
     if (choice === 0) createdWindow.webContents.send('app:save-and-close', null);
     else if (choice === 1) event.preventDefault();
+    else quitCancelled();
   });
   createdWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== MAIN_WINDOW_WEBPACK_ENTRY) event.preventDefault();
@@ -167,6 +175,12 @@ const createWindow = (): void => {
   createdWindow.on('closed', () => { stopProcesses(); stopClangd(); stopDebugging(); stopTerminal(); stopGit(); stopWatchingConfiguration(); mainWindow = null; });
 };
 
+setUpdateListener((update) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(eventChannels.onUpdateState, update);
+});
+
 app.whenReady().then(() => { registerIpcHandlers(); createWindow(); });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+// On macOS the app stays open without windows, unless it is restarting to update.
+app.on('window-all-closed', () => { if (process.platform !== 'darwin' || restartingToUpdate()) app.quit(); });
+app.on('will-quit', installOnQuit);
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

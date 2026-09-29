@@ -20,6 +20,7 @@ import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isMac, primaryKey, shortcutLabel } from './shortcuts';
 import { setUpGlistInstaller } from './glist-installer';
+import { canUpdate, checkForUpdates, setUpUpdates } from './updates';
 import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
@@ -1987,6 +1988,7 @@ const configureMenus = (): void => {
       help: [
         ...(glistInstalled ? [] : [item(t('installGlistMenu'), () => { void showGlistInstaller(); })]),
         item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
+        ...(canUpdate() ? [item(t('checkForUpdates'), checkForUpdates)] : []),
       ],
     };
     return menus[menu] ?? [];
@@ -2218,6 +2220,7 @@ const agentSettings = new AgentSettings(
   (text, kind) => appendOutput(text, kind),
 );
 void agentSettings.refresh();
+void setUpUpdates();
 element<HTMLButtonElement>('#open-settings').addEventListener('click', () => {
   settingsDialog.showModal();
   // An agent may have been installed or removed outside the studio.

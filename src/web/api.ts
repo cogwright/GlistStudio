@@ -73,6 +73,11 @@ Object.assign(api, {
     return project;
   },
   openEngineSite: async () => { window.open('https://www.glistengine.com/', '_blank', 'noopener'); },
+  // The browser version runs from source, which updates through git.
+  updateState: async (): Promise<GlistUpdateState> => ({ state: 'unavailable' }),
+  checkForUpdates: async (): Promise<GlistUpdateState> => ({ state: 'unavailable' }),
+  installUpdate: async (): Promise<void> => undefined,
+  openUpdatePage: async (): Promise<void> => undefined,
   // A page cannot set the browser's zoom, so this is CSS zoom. Mouse coordinates
   // then stay in screen pixels while CSS lengths grow; --page-zoom lets the
   // stylesheet and the renderer convert between the two.

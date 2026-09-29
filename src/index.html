@@ -308,6 +308,12 @@
             <p id="git-settings-error" class="dialog-error" role="alert"></p>
           </div>
         </fieldset>
+        <fieldset id="update-settings" class="settings-section update-settings" hidden>
+          <legend data-i18n="updateSettings">Updates</legend>
+          <label class="checkbox-row"><input id="auto-update" type="checkbox" /><span data-i18n="autoUpdate">Download new versions automatically</span></label>
+          <p class="dialog-hint" data-i18n="autoUpdateHint">New versions come from Glist Studio's releases on GitHub. One that has been downloaded is installed when Glist Studio restarts.</p>
+          <p id="update-version" class="dialog-hint"></p>
+        </fieldset>
         <div class="dialog-actions"><button type="button" id="settings-close" class="primary" data-i18n="close">Close</button></div>
       </dialog>
 

@@ -49,6 +49,10 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   stopTerminal: 'terminal:stop',
   listAgents: 'agents:list',
   glistStatus: 'glist:status',
+  updateState: 'update:state',
+  checkForUpdates: 'update:check',
+  installUpdate: 'update:install',
+  openUpdatePage: 'update:open-page',
   installAgent: 'agents:install',
   gitStatus: 'git:status',
   gitWatch: 'git:watch',
@@ -82,6 +86,7 @@ export const eventChannels: Record<EventMethod, string> = {
   onTerminalData: 'terminal:data',
   onTerminalExit: 'terminal:exit',
   onAgentInstall: 'agent:install',
+  onUpdateState: 'update:changed',
   onGitChanged: 'git:changed',
   onGitConsole: 'git:console',
 };
