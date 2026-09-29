@@ -291,6 +291,9 @@ const en = {
   sharedChanges: 'Changes in {name}, which every project that uses it shares. They are committed to its own repository.',
   sharedEdit: '{name} is shared by every project that uses it, so saving changes it for all of them.',
   tookTheirs: '{name}: their version was taken.',
+  buildSettings: 'Build',
+  autoConfigure: 'Configure again when CMake files change',
+  autoConfigureHint: 'When CMakeLists.txt or another CMake file of the project, the engine or its plugins changes, CMake configures the project again a moment later, so code completion knows new files without a build.',
 } as const;
 
 export type TranslationKey = keyof typeof en;
@@ -585,6 +588,9 @@ const tr: Record<TranslationKey, string> = {
   sharedChanges: '{name} içindeki değişiklikler; onu kullanan her proje bunları paylaşır. Kendi deposuna commit edilirler.',
   sharedEdit: '{name}, onu kullanan tüm projelerce paylaşılıyor; kaydetmek hepsi için değiştirir.',
   tookTheirs: '{name}: onların sürümü alındı.',
+  buildSettings: 'Derleme',
+  autoConfigure: 'CMake dosyaları değişince yeniden yapılandır',
+  autoConfigureHint: 'Projede, motorda ya da eklentilerde bir CMake dosyası değişince CMake projeyi kısa süre sonra yeniden yapılandırır; böylece kod tamamlama yeni dosyaları derlemeden tanır.',
 };
 
 const dictionaries = { en, tr };

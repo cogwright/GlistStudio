@@ -17,6 +17,7 @@ It expects the layout the Glist install scripts create: `C:\dev\glist` on Window
 - Coding agents (Claude Code, Codex, Gemini CLI, Antigravity) in an Agent tab, off until turned on, and installable into the Glist folder
 - Git, off until turned on: a Commit view, changes shown as diffs in the editor area, a Git tab with the log and its graph, branches, remotes and stashes, changed lines and blame in the editor, help with conflicts, and the engine's and plugins' own repositories
 - Automatic CMake source-list updates when files are created, renamed, or removed
+- CMake configures again on its own when a CMake file changes, so code intelligence follows new files and plugins without a build
 - C++ class generation with matching header and source files
 - Project creation from the bundled GlistApp, GlistConsoleApp, and GlistGUIApp templates, into the `myglistapps` folder of the open project's workspace
 - Open Project lists the projects in `myglistapps` and the ones opened before, most recently opened first, with a search box
