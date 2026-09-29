@@ -1,3 +1,4 @@
+import { defaultProtection } from './git-protection';
 import { notify, type NoticeAction } from './notifications';
 import { t, type TranslationKey } from './localization';
 
@@ -7,6 +8,7 @@ import { t, type TranslationKey } from './localization';
 
 const storageKey = 'glist-studio-git';
 const updateKey = 'glist-studio-git-update';
+const protectionKey = 'glist-studio-git-protection';
 
 export interface GitClientHooks {
   // Saves every changed tab, so what is committed or switched away from is what is on screen.
@@ -57,6 +59,7 @@ export class GitClient {
     try { this.enabled = window.localStorage.getItem(storageKey) === 'on'; } catch { this.enabled = false; }
     window.glistAPI.onGitChanged(() => { this.hooks.filesChanged(); void this.refresh(); });
     window.addEventListener('focus', () => { void this.refresh(); });
+    void window.glistAPI.gitProtection(this.protection);
   }
 
   get repository(): GlistGitRepository | null {
@@ -89,6 +92,20 @@ export class GitClient {
 
   set updateByRebase(rebase: boolean) {
     try { window.localStorage.setItem(updateKey, rebase ? 'rebase' : 'merge'); } catch { /* Storage may be unavailable. */ }
+  }
+
+  // Whether pushed commits are protected, and which branches are (Settings > Git).
+  get protection(): GlistGitProtection {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(protectionKey) ?? 'null') as GlistGitProtection | null;
+      if (saved && Array.isArray(saved.branches)) return { on: saved.on !== false, branches: saved.branches };
+    } catch { /* A setting that cannot be read is the default. */ }
+    return defaultProtection;
+  }
+
+  set protection(protection: GlistGitProtection) {
+    try { window.localStorage.setItem(protectionKey, JSON.stringify(protection)); } catch { /* Storage may be unavailable. */ }
+    void window.glistAPI.gitProtection(protection);
   }
 
   onStatus(listener: (status: GlistGitStatus | null) => void): void {

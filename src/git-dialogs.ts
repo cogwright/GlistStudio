@@ -5,7 +5,7 @@ import { relativeTime } from './time';
 
 export type Field =
   | { kind: 'text'; key: string; label: string; value?: string; placeholder?: string; required?: boolean; autofocus?: boolean }
-  | { kind: 'checkbox'; key: string; label: string; value?: boolean; hint?: string }
+  | { kind: 'checkbox'; key: string; label: string; value?: boolean; hint?: string; disabled?: boolean }
   | { kind: 'choice'; key: string; label?: string; options: Array<{ value: string; label: string }>; value: string };
 
 export type FormValues = Record<string, string | boolean>;
@@ -73,6 +73,7 @@ export const formDialog = (options: FormOptions): Promise<FormValues | null> => 
       const input = document.createElement('input');
       input.type = 'checkbox';
       input.checked = Boolean(field.value);
+      input.disabled = Boolean(field.disabled);
       const text = document.createElement('span');
       text.textContent = field.label;
       label.append(input, text);
@@ -262,7 +263,12 @@ export const pushDialog = async (entries: PushEntry[]): Promise<PushChoice | nul
     });
   }
   fields.push({ kind: 'checkbox', key: 'tags', label: t('pushTags') });
-  fields.push({ kind: 'checkbox', key: 'force', label: t('forcePush'), hint: t('forcePushHint') });
+  // A protected branch is never overwritten (Settings > Git).
+  const locked = [...new Set(entries.filter((entry) => entry.outgoing.protected).map((entry) => entry.outgoing.branch ?? ''))];
+  fields.push({
+    kind: 'checkbox', key: 'force', label: t('forcePush'), disabled: locked.length > 0,
+    hint: locked.length > 0 ? t('forcePushLocked').replace('{branch}', locked.join(', ')) : t('forcePushHint'),
+  });
   const values = await formDialog({ title: t('pushCommits'), fields, submit: t('pushButton'), body });
   if (!values) return null;
   return {

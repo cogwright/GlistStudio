@@ -302,6 +302,13 @@
               <input id="git-email" type="email" autocomplete="email" />
             </div>
             <p class="dialog-hint" data-i18n="gitIdentityHint">Commits are signed with these, in every project on this computer.</p>
+            <label class="checkbox-row git-protect"><input id="git-protect" type="checkbox" /><span data-i18n="gitProtect">Protect pushed commits</span></label>
+            <p class="dialog-hint" data-i18n="gitProtectHint">A commit that is already pushed cannot be amended, and protected branches cannot be force pushed, so nobody rewrites history others already have.</p>
+            <div class="font-grid">
+              <label for="git-protected-branches" data-i18n="gitProtectedBranches">Protected branches</label>
+              <input id="git-protected-branches" type="text" autocomplete="off" spellcheck="false" placeholder="main, master" />
+            </div>
+            <p class="dialog-hint" data-i18n="gitProtectedHint">Separated by commas; * stands for any text, as in release/*. Branches GitHub protects are protected too.</p>
             <p class="git-update-label" data-i18n="gitUpdateMethod">Update Project brings in commits from the remote by</p>
             <label class="checkbox-row"><input id="git-update-merge" type="radio" name="git-update" value="merge" /><span data-i18n="gitUpdateMerge">Merging them into the branch</span></label>
             <label class="checkbox-row"><input id="git-update-rebase" type="radio" name="git-update" value="rebase" /><span data-i18n="gitUpdateRebase">Putting the branch's own commits after them (rebase)</span></label>
