@@ -538,7 +538,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .theme-remove { position: absolute; top: 3px; right: 3px; display: grid; width: 20px; height: 20px; padding: 0; place-items: center; border: 0; border-radius: 4px; color: var(--ui-fg-muted); background: var(--ui-raised); cursor: pointer; }
 .theme-remove:hover { color: #fff; background: var(--ui-danger-strong); }
 .theme-import { margin-top: 12px; }
-.theme-import button { height: 28px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.theme-import button { display: inline-flex; height: 26px; align-items: center; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .theme-import button:hover { background: var(--ui-hover-strong); }
 .dialog-hint { margin: 10px 0 0; color: var(--ui-fg-muted); font-size: 11px; }
 #open-project-dialog { width: min(560px, calc((100vw - 32px) / var(--page-zoom, 1))); }
@@ -575,7 +575,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .debugger-settings { padding: 0; border: 0; }
 .debugger-settings[hidden] { display: none; }
 .debugger-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
-.debugger-install { height: 28px; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.debugger-install { display: inline-flex; height: 26px; align-items: center; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .debugger-install:hover:not(:disabled) { background: var(--ui-hover-strong); }
 .debugger-install[hidden] { display: none; }
 .agent-settings, .update-settings { padding: 0; border: 0; }
@@ -593,7 +593,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .path-source { flex: none; color: var(--ui-fg-muted); font-size: 11px; }
 .path-remove { display: flex; width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; color: var(--ui-fg); background: transparent; cursor: pointer; }
 .path-remove:hover { background: var(--ui-hover-strong); }
-.path-add { height: 28px; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.path-add { display: inline-flex; height: 26px; align-items: center; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .path-add:hover { background: var(--ui-hover-strong); }
 .agent-option { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 34px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: var(--ui-bg); }
 .studio-dialog .agent-toggle { display: flex; min-width: 0; align-items: center; gap: 10px; margin: 0; font-size: 13px; cursor: pointer; }
@@ -608,7 +608,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .agent-select[hidden], .output-tab[hidden] { display: none; }
 .dialog-error { min-height: 14px; margin: 10px 0 0; color: var(--ui-danger); font-size: 11px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
-.dialog-actions button { height: 30px; min-width: 72px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.dialog-actions button { display: inline-flex; height: 28px; min-width: 72px; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .dialog-actions button:hover { background: var(--ui-hover-strong); }
 .dialog-actions button.primary { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
 .dialog-actions button.primary:hover { background: var(--ui-accent-hover); }
@@ -658,7 +658,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .commit-banner-title { margin: 0; overflow-wrap: anywhere; color: var(--ui-fg-strong); font-size: 12px; font-weight: 600; }
 .commit-banner-hint { margin: 3px 0 8px; color: var(--ui-fg-muted); font-size: 11px; }
 .commit-banner-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.commit-banner-actions button, .commit-buttons button { height: 26px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); font-size: 12px; cursor: pointer; }
+.commit-banner-actions button, .commit-buttons button { display: inline-flex; height: 24px; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); font-size: 12px; cursor: pointer; }
 .commit-banner-actions button:hover:not(:disabled), .commit-buttons button:hover:not(:disabled) { background: var(--ui-hover-strong); }
 .commit-banner-actions button.primary, .commit-buttons button.primary { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
 .commit-banner-actions button.primary:hover:not(:disabled), .commit-buttons button.primary:hover:not(:disabled) { background: var(--ui-accent-hover); }
