@@ -248,146 +248,150 @@
       </dialog>
 
       <dialog id="settings-dialog" class="studio-dialog">
-        <h2 data-i18n="settings">Settings</h2>
         <div class="settings-layout">
-          <nav class="settings-nav" aria-label="Settings" data-i18n-aria-label="settings">
-            <button type="button" class="settings-tab" data-page="general" data-i18n="pageGeneral">General</button>
-            <button type="button" class="settings-tab" data-page="appearance" data-i18n="pageAppearance">Appearance</button>
-            <button type="button" class="settings-tab" data-page="build" data-i18n="pageBuild">Build</button>
-            <button type="button" class="settings-tab" data-page="run" data-i18n="pageRun">Run and Debug</button>
-            <button type="button" class="settings-tab" data-page="environment" data-i18n="pageEnvironment">Environment</button>
-            <button type="button" class="settings-tab" data-page="git" data-i18n="pageGit">Git</button>
-            <button type="button" class="settings-tab" data-page="agents" data-i18n="pageAgents">Agents</button>
-          </nav>
-          <div class="settings-pages">
-          <section class="settings-page" data-page="general">
-            <div class="settings-section">
-              <label for="settings-language" data-i18n="language">Language</label>
-              <select id="settings-language"><option value="en">English</option><option value="tr">Türkçe</option></select>
-              <p class="dialog-hint" data-i18n="languageHint">The interface language changes immediately.</p>
-            </div>
-            <div class="settings-section scale-settings">
-              <label for="settings-scale" data-i18n="scale">Scale</label>
-              <div class="scale-row">
-                <button id="scale-down" class="scale-step" type="button" title="Zoom Out (Ctrl+-)" data-i18n-title="zoomOutTitle"><i data-icon="zoom-out"></i></button>
-                <input id="settings-scale" type="range" min="0" step="1" />
-                <button id="scale-up" class="scale-step" type="button" title="Zoom In (Ctrl++)" data-i18n-title="zoomInTitle"><i data-icon="zoom-in"></i></button>
-                <output id="scale-value" for="settings-scale">100%</output>
-                <button id="scale-reset" class="scale-reset" type="button" data-i18n="scaleReset">Back to 100%</button>
-              </div>
-              <p class="dialog-hint" data-i18n="scaleHint">Makes everything in the studio larger or smaller, for example on a classroom projector.</p>
-            </div>
-            <fieldset id="update-settings" class="settings-section update-settings" hidden>
-              <legend data-i18n="updateSettings">Updates</legend>
-              <label class="checkbox-row"><input id="auto-update" type="checkbox" /><span data-i18n="autoUpdate">Download new versions automatically</span></label>
-              <p class="dialog-hint" data-i18n="autoUpdateHint">New versions come from Glist Studio's releases on GitHub. One that has been downloaded is installed when Glist Studio restarts.</p>
-              <p id="update-version" class="dialog-hint"></p>
-            </fieldset>
-          </section>
-          <section class="settings-page" data-page="appearance" hidden>
-            <fieldset class="settings-section theme-settings">
-              <legend data-i18n="appearance">Appearance</legend>
-              <div id="theme-options" class="theme-options"></div>
-              <div class="theme-import">
-                <button id="theme-import" type="button" data-i18n="importTheme">Import a Theme File...</button>
-                <input id="theme-file" type="file" accept=".json,application/json" hidden />
-              </div>
-              <p class="dialog-hint" data-i18n="themeHint">Themes color the whole studio. Color themes from VS Code (.json) can be imported.</p>
-              <p id="theme-error" class="dialog-error" role="alert"></p>
-            </fieldset>
-            <fieldset class="settings-section font-settings">
-              <legend data-i18n="fonts">Fonts</legend>
-              <div class="font-grid">
-                <label for="font-code" data-i18n="codeFont">Code font</label>
-                <input id="font-code" type="text" list="font-code-list" autocomplete="off" placeholder="Cascadia Code" />
-                <label for="font-code-size" data-i18n="codeFontSize">Code size</label>
-                <input id="font-code-size" type="number" min="8" max="32" step="1" />
-                <label for="font-interface" data-i18n="interfaceFont">Interface font</label>
-                <input id="font-interface" type="text" list="font-interface-list" autocomplete="off" placeholder="System" data-i18n-placeholder="systemFont" />
-              </div>
-              <label class="checkbox-row"><input id="font-ligatures" type="checkbox" /><span data-i18n="ligatures">Join characters such as =&gt; where the font supports it</span></label>
-              <datalist id="font-code-list"></datalist>
-              <datalist id="font-interface-list"></datalist>
-              <p class="dialog-hint" data-i18n="fontsHint">Pick a font from the list or type the name of one installed on this computer.</p>
-            </fieldset>
-          </section>
-          <section class="settings-page" data-page="build" hidden>
-            <fieldset class="settings-section build-settings">
-              <legend data-i18n="buildSettings">Build</legend>
-              <label class="checkbox-row"><input id="auto-configure" type="checkbox" /><span data-i18n="autoConfigure">Configure again when CMake files change</span></label>
-              <p class="dialog-hint" data-i18n="autoConfigureHint">When CMakeLists.txt or another CMake file of the project, the engine or its plugins changes, CMake configures the project again a moment later, so code completion knows new files without a build.</p>
-              <label class="checkbox-row"><input id="show-targets" type="checkbox" /><span data-i18n="showTargets">Show all targets</span></label>
-              <p class="dialog-hint" data-i18n="showTargetsHint">Adds a list beside Run of every target CMake builds, the engine's and plugins' too, as CLion has. Build, Run and Debug then use the one chosen.</p>
-            </fieldset>
-          </section>
-          <section class="settings-page" data-page="run" hidden>
-            <fieldset class="settings-section run-settings">
-              <legend data-i18n="runSettings">Run</legend>
-              <label for="run-arguments" data-i18n="runArguments">Program arguments</label>
-              <input id="run-arguments" type="text" autocomplete="off" spellcheck="false" placeholder="--level 2 &quot;my file.txt&quot;" />
-              <p id="run-arguments-hint" class="dialog-hint"></p>
-            </fieldset>
-            <fieldset id="debugger-settings" class="settings-section debugger-settings" hidden>
-              <legend data-i18n="debuggerSettings">Debugger</legend>
-              <p id="debugger-state" class="dialog-hint"></p>
-              <button id="debugger-install" class="debugger-install" type="button">Install GDB</button>
-            </fieldset>
-          </section>
-          <section class="settings-page" data-page="environment" hidden>
-            <fieldset class="settings-section path-settings">
-              <legend data-i18n="pathSettings">PATH</legend>
-              <p class="dialog-hint" data-i18n="pathHint">The folders builds, runs, the debugger and the terminal look in for programs and DLLs, in this order.</p>
-              <ol id="path-entries" class="path-entries"></ol>
-              <button id="path-add" class="path-add" type="button" data-i18n="addPathFolder">Add Folder...</button>
-              <p id="path-error" class="dialog-error" role="alert"></p>
-            </fieldset>
-            <fieldset class="settings-section env-settings">
-              <legend data-i18n="envSettings">Environment Variables</legend>
-              <p class="dialog-hint" data-i18n="envHint">Set for builds, runs, the debugger and the terminal, in every project. PATH has its own list above.</p>
-              <div id="env-entries" class="env-entries"></div>
-              <button id="env-add" class="path-add" type="button" data-i18n="addVariable">Add Variable</button>
-              <p id="env-error" class="dialog-error" role="alert"></p>
-            </fieldset>
-          </section>
-          <section class="settings-page" data-page="git" hidden>
-            <fieldset class="settings-section git-settings">
-              <legend data-i18n="gitSettings">Git</legend>
-              <label class="checkbox-row git-toggle"><input id="git-enabled" type="checkbox" role="switch" /><span data-i18n="gitEnable">Show Git tools</span></label>
-              <p class="dialog-hint" data-i18n="gitHint">Adds a Commit view beside the explorer, a Git tab below the editor and the current branch to the title bar, and marks changed lines beside the line numbers. Projects stay as they are until you use them.</p>
-              <p id="git-version" class="dialog-hint git-version"></p>
-              <div id="git-options" class="git-options" hidden>
-                <div class="font-grid">
-                  <label for="git-name" data-i18n="gitName">Your name</label>
-                  <input id="git-name" type="text" autocomplete="name" />
-                  <label for="git-email" data-i18n="gitEmail">Email</label>
-                  <input id="git-email" type="email" autocomplete="email" />
+          <div class="settings-side">
+            <h2 data-i18n="settings">Settings</h2>
+            <nav class="settings-nav" aria-label="Settings" data-i18n-aria-label="settings">
+              <button type="button" class="settings-tab" data-page="general" data-i18n="pageGeneral">General</button>
+              <button type="button" class="settings-tab" data-page="appearance" data-i18n="pageAppearance">Appearance</button>
+              <button type="button" class="settings-tab" data-page="build" data-i18n="pageBuild">Build</button>
+              <button type="button" class="settings-tab" data-page="run" data-i18n="pageRun">Run and Debug</button>
+              <button type="button" class="settings-tab" data-page="environment" data-i18n="pageEnvironment">Environment</button>
+              <button type="button" class="settings-tab" data-page="git" data-i18n="pageGit">Git</button>
+              <button type="button" class="settings-tab" data-page="agents" data-i18n="pageAgents">Agents</button>
+            </nav>
+          </div>
+          <div class="settings-main">
+            <div class="settings-pages">
+              <section class="settings-page" data-page="general">
+                <div class="settings-section">
+                  <label for="settings-language" data-i18n="language">Language</label>
+                  <select id="settings-language"><option value="en">English</option><option value="tr">Türkçe</option></select>
+                  <p class="dialog-hint" data-i18n="languageHint">The interface language changes immediately.</p>
                 </div>
-                <p class="dialog-hint" data-i18n="gitIdentityHint">Commits are signed with these, in every project on this computer.</p>
-                <label class="checkbox-row git-protect"><input id="git-protect" type="checkbox" /><span data-i18n="gitProtect">Protect pushed commits</span></label>
-                <p class="dialog-hint" data-i18n="gitProtectHint">A commit that is already pushed cannot be amended, and protected branches cannot be force pushed, so nobody rewrites history others already have.</p>
-                <div class="font-grid">
-                  <label for="git-protected-branches" data-i18n="gitProtectedBranches">Protected branches</label>
-                  <input id="git-protected-branches" type="text" autocomplete="off" spellcheck="false" placeholder="main, master" />
+                <div class="settings-section scale-settings">
+                  <label for="settings-scale" data-i18n="scale">Scale</label>
+                  <div class="scale-row">
+                    <button id="scale-down" class="scale-step" type="button" title="Zoom Out (Ctrl+-)" data-i18n-title="zoomOutTitle"><i data-icon="zoom-out"></i></button>
+                    <input id="settings-scale" type="range" min="0" step="1" />
+                    <button id="scale-up" class="scale-step" type="button" title="Zoom In (Ctrl++)" data-i18n-title="zoomInTitle"><i data-icon="zoom-in"></i></button>
+                    <output id="scale-value" for="settings-scale">100%</output>
+                    <button id="scale-reset" class="scale-reset" type="button" data-i18n="scaleReset">Back to 100%</button>
+                  </div>
+                  <p class="dialog-hint" data-i18n="scaleHint">Makes everything in the studio larger or smaller, for example on a classroom projector.</p>
                 </div>
-                <p class="dialog-hint" data-i18n="gitProtectedHint">Separated by commas; * stands for any text, as in release/*. Branches GitHub protects are protected too.</p>
-                <p class="git-update-label" data-i18n="gitUpdateMethod">Update Project brings in commits from the remote by</p>
-                <label class="checkbox-row"><input id="git-update-merge" type="radio" name="git-update" value="merge" /><span data-i18n="gitUpdateMerge">Merging them into the branch</span></label>
-                <label class="checkbox-row"><input id="git-update-rebase" type="radio" name="git-update" value="rebase" /><span data-i18n="gitUpdateRebase">Putting the branch's own commits after them (rebase)</span></label>
-                <p id="git-settings-error" class="dialog-error" role="alert"></p>
-              </div>
-            </fieldset>
-          </section>
-          <section class="settings-page" data-page="agents" hidden>
-            <fieldset class="settings-section agent-settings">
-              <legend data-i18n="agents">Agents</legend>
-              <p class="dialog-hint" data-i18n="agentsHint">Coding assistants that work in the Agent tab, in the open project.</p>
-              <div id="agent-options" class="agent-options"></div>
-              <p id="agent-error" class="dialog-error" role="alert"></p>
-            </fieldset>
-          </section>
+                <fieldset id="update-settings" class="settings-section update-settings" hidden>
+                  <legend data-i18n="updateSettings">Updates</legend>
+                  <label class="checkbox-row"><input id="auto-update" type="checkbox" /><span data-i18n="autoUpdate">Download new versions automatically</span></label>
+                  <p class="dialog-hint" data-i18n="autoUpdateHint">New versions come from Glist Studio's releases on GitHub. One that has been downloaded is installed when Glist Studio restarts.</p>
+                  <p id="update-version" class="dialog-hint"></p>
+                </fieldset>
+              </section>
+              <section class="settings-page" data-page="appearance" hidden>
+                <fieldset class="settings-section theme-settings">
+                  <legend data-i18n="appearance">Appearance</legend>
+                  <div id="theme-options" class="theme-options"></div>
+                  <div class="theme-import">
+                    <button id="theme-import" type="button" data-i18n="importTheme">Import a Theme File...</button>
+                    <input id="theme-file" type="file" accept=".json,application/json" hidden />
+                  </div>
+                  <p class="dialog-hint" data-i18n="themeHint">Themes color the whole studio. Color themes from VS Code (.json) can be imported.</p>
+                  <p id="theme-error" class="dialog-error" role="alert"></p>
+                </fieldset>
+                <fieldset class="settings-section font-settings">
+                  <legend data-i18n="fonts">Fonts</legend>
+                  <div class="font-grid">
+                    <label for="font-code" data-i18n="codeFont">Code font</label>
+                    <input id="font-code" type="text" list="font-code-list" autocomplete="off" placeholder="Cascadia Code" />
+                    <label for="font-code-size" data-i18n="codeFontSize">Code size</label>
+                    <input id="font-code-size" type="number" min="8" max="32" step="1" />
+                    <label for="font-interface" data-i18n="interfaceFont">Interface font</label>
+                    <input id="font-interface" type="text" list="font-interface-list" autocomplete="off" placeholder="System" data-i18n-placeholder="systemFont" />
+                  </div>
+                  <label class="checkbox-row"><input id="font-ligatures" type="checkbox" /><span data-i18n="ligatures">Join characters such as =&gt; where the font supports it</span></label>
+                  <datalist id="font-code-list"></datalist>
+                  <datalist id="font-interface-list"></datalist>
+                  <p class="dialog-hint" data-i18n="fontsHint">Pick a font from the list or type the name of one installed on this computer.</p>
+                </fieldset>
+              </section>
+              <section class="settings-page" data-page="build" hidden>
+                <fieldset class="settings-section build-settings">
+                  <legend data-i18n="buildSettings">Build</legend>
+                  <label class="checkbox-row"><input id="auto-configure" type="checkbox" /><span data-i18n="autoConfigure">Configure again when CMake files change</span></label>
+                  <p class="dialog-hint" data-i18n="autoConfigureHint">When CMakeLists.txt or another CMake file of the project, the engine or its plugins changes, CMake configures the project again a moment later, so code completion knows new files without a build.</p>
+                  <label class="checkbox-row"><input id="show-targets" type="checkbox" /><span data-i18n="showTargets">Show all targets</span></label>
+                  <p class="dialog-hint" data-i18n="showTargetsHint">Adds a list beside Run of every target CMake builds, the engine's and plugins' too, as CLion has. Build, Run and Debug then use the one chosen.</p>
+                </fieldset>
+              </section>
+              <section class="settings-page" data-page="run" hidden>
+                <fieldset class="settings-section run-settings">
+                  <legend data-i18n="runSettings">Run</legend>
+                  <label for="run-arguments" data-i18n="runArguments">Program arguments</label>
+                  <input id="run-arguments" type="text" autocomplete="off" spellcheck="false" placeholder="--level 2 &quot;my file.txt&quot;" />
+                  <p id="run-arguments-hint" class="dialog-hint"></p>
+                </fieldset>
+                <fieldset id="debugger-settings" class="settings-section debugger-settings" hidden>
+                  <legend data-i18n="debuggerSettings">Debugger</legend>
+                  <p id="debugger-state" class="dialog-hint"></p>
+                  <button id="debugger-install" class="debugger-install" type="button">Install GDB</button>
+                </fieldset>
+              </section>
+              <section class="settings-page" data-page="environment" hidden>
+                <fieldset class="settings-section path-settings">
+                  <legend data-i18n="pathSettings">PATH</legend>
+                  <p class="dialog-hint" data-i18n="pathHint">The folders builds, runs, the debugger and the terminal look in for programs and DLLs, in this order.</p>
+                  <ol id="path-entries" class="path-entries"></ol>
+                  <button id="path-add" class="path-add" type="button" data-i18n="addPathFolder">Add Folder...</button>
+                  <p id="path-error" class="dialog-error" role="alert"></p>
+                </fieldset>
+                <fieldset class="settings-section env-settings">
+                  <legend data-i18n="envSettings">Environment Variables</legend>
+                  <p class="dialog-hint" data-i18n="envHint">Set for builds, runs, the debugger and the terminal, in every project. PATH has its own list above.</p>
+                  <div id="env-entries" class="env-entries"></div>
+                  <button id="env-add" class="path-add" type="button" data-i18n="addVariable">Add Variable</button>
+                  <p id="env-error" class="dialog-error" role="alert"></p>
+                </fieldset>
+              </section>
+              <section class="settings-page" data-page="git" hidden>
+                <fieldset class="settings-section git-settings">
+                  <legend data-i18n="gitSettings">Git</legend>
+                  <label class="checkbox-row git-toggle"><input id="git-enabled" type="checkbox" role="switch" /><span data-i18n="gitEnable">Show Git tools</span></label>
+                  <p class="dialog-hint" data-i18n="gitHint">Adds a Commit view beside the explorer, a Git tab below the editor and the current branch to the title bar, and marks changed lines beside the line numbers. Projects stay as they are until you use them.</p>
+                  <p id="git-version" class="dialog-hint git-version"></p>
+                  <div id="git-options" class="git-options" hidden>
+                    <div class="font-grid">
+                      <label for="git-name" data-i18n="gitName">Your name</label>
+                      <input id="git-name" type="text" autocomplete="name" />
+                      <label for="git-email" data-i18n="gitEmail">Email</label>
+                      <input id="git-email" type="email" autocomplete="email" />
+                    </div>
+                    <p class="dialog-hint" data-i18n="gitIdentityHint">Commits are signed with these, in every project on this computer.</p>
+                    <label class="checkbox-row git-protect"><input id="git-protect" type="checkbox" /><span data-i18n="gitProtect">Protect pushed commits</span></label>
+                    <p class="dialog-hint" data-i18n="gitProtectHint">A commit that is already pushed cannot be amended, and protected branches cannot be force pushed, so nobody rewrites history others already have.</p>
+                    <div class="font-grid">
+                      <label for="git-protected-branches" data-i18n="gitProtectedBranches">Protected branches</label>
+                      <input id="git-protected-branches" type="text" autocomplete="off" spellcheck="false" placeholder="main, master" />
+                    </div>
+                    <p class="dialog-hint" data-i18n="gitProtectedHint">Separated by commas; * stands for any text, as in release/*. Branches GitHub protects are protected too.</p>
+                    <p class="git-update-label" data-i18n="gitUpdateMethod">Update Project brings in commits from the remote by</p>
+                    <label class="checkbox-row"><input id="git-update-merge" type="radio" name="git-update" value="merge" /><span data-i18n="gitUpdateMerge">Merging them into the branch</span></label>
+                    <label class="checkbox-row"><input id="git-update-rebase" type="radio" name="git-update" value="rebase" /><span data-i18n="gitUpdateRebase">Putting the branch's own commits after them (rebase)</span></label>
+                    <p id="git-settings-error" class="dialog-error" role="alert"></p>
+                  </div>
+                </fieldset>
+              </section>
+              <section class="settings-page" data-page="agents" hidden>
+                <fieldset class="settings-section agent-settings">
+                  <legend data-i18n="agents">Agents</legend>
+                  <p class="dialog-hint" data-i18n="agentsHint">Coding assistants that work in the Agent tab, in the open project.</p>
+                  <div id="agent-options" class="agent-options"></div>
+                  <p id="agent-error" class="dialog-error" role="alert"></p>
+                </fieldset>
+              </section>
+            </div>
+            <div class="dialog-actions"><button type="button" id="settings-close" class="primary" data-i18n="close">Close</button></div>
           </div>
         </div>
-        <div class="dialog-actions"><button type="button" id="settings-close" class="primary" data-i18n="close">Close</button></div>
       </dialog>
 
     </div>

@@ -393,7 +393,7 @@ const tr: Record<TranslationKey, string> = {
   pathGlist: 'Glist araçları', pathCmake: 'CMake', pathSystem: 'Bu bilgisayar', pathGit: 'Git', pathPlugin: '{name} eklentisi', pathCustom: 'Buradan eklendi',
   addPathFolder: 'Klasör Ekle...', removePathFolder: 'Kaldır', pathMissing: 'Bu klasör yok.',
   pathInvalid: 'Bu klasör eklenemez.',
-  pageGeneral: 'Genel', pageAppearance: 'Görünüm', pageBuild: 'Derleme', pageRun: 'Çalıştırma ve Hata Ayıklama',
+  pageGeneral: 'Genel', pageAppearance: 'Görünüm', pageBuild: 'Derleme', pageRun: 'Çalıştır ve Hata Ayıkla',
   pageEnvironment: 'Ortam', pageGit: 'Git', pageAgents: 'Ajanlar',
   runSettings: 'Çalıştırma', runArguments: 'Program argümanları',
   runArgumentsHint: 'Çalıştır ya da Hata Ayıkla {project} programını başlatırken verilir. Boşluk içeren bir argüman tırnak içine yazılır.',
