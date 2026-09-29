@@ -19,6 +19,10 @@ assert.equal(isNewer('0.1.0', '0.0.9'), true);
 assert.equal(isNewer('1.0.0', '1.0.0'), false);
 assert.equal(isNewer('v0.0.1', '0.1.0'), false);
 assert.equal(isNewer('0.10.0', '0.9.3'), true, 'compared as numbers, not text');
+assert.equal(isNewer('v0.0.4', '0.0.4-dev.12'), true, 'a release after its prereleases');
+assert.equal(isNewer('v0.0.4', '0.0.5-dev.1'), false);
+assert.equal(isNewer('v0.0.3', '0.0.4-dev.1'), false);
+assert.equal(isNewer('v0.0.4', '0.0.4'), false);
 
 const names = [
   'Glist-Studio-0.0.3-linux-aarch64.AppImage', 'Glist-Studio-0.0.3-linux-x86_64.AppImage', 'Glist-Studio-0.0.3-macos-universal.dmg',

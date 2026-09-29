@@ -36,13 +36,16 @@ export interface Release {
 const numbers = (version: string): number[] =>
   version.replace(/^v/, '').split(/[.+-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
 
-// Whether a version is newer than another, by major, minor and patch.
+// Whether a version is newer than another, by major, minor and patch; with
+// those equal, a release is newer than its own prereleases.
 export const isNewer = (candidate: string, current: string): boolean => {
   const [next, now] = [numbers(candidate), numbers(current)];
   for (let index = 0; index < 3; index += 1) {
     if ((next[index] ?? 0) !== (now[index] ?? 0)) return (next[index] ?? 0) > (now[index] ?? 0);
   }
-  return false;
+  // 0.0.4 after 0.0.4-dev.12, which main's prereleases are numbered like.
+  const prerelease = (version: string): boolean => version.replace(/^v/, '').split('+')[0].includes('-');
+  return prerelease(current) && !prerelease(candidate);
 };
 
 // The tag of the latest published release, from where github.com sends
