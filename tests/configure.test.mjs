@@ -98,17 +98,18 @@ try {
   const multi = path.join(apps, 'Multi');
   mkdirSync(multi, { recursive: true });
   writeFileSync(path.join(multi, 'CMakeLists.txt'), `cmake_minimum_required(VERSION 3.14)\nproject(Multi CXX)
-add_executable(Multi main.cpp)\nadd_executable(Tool tool.cpp)\nadd_library(Shapes STATIC shapes.cpp)
+add_executable(Multi main.cpp)\nadd_executable(Tool tool.cpp)\nadd_executable(Echo echo.cpp)\nadd_library(Shapes STATIC shapes.cpp)
 add_custom_target(Step COMMAND \${CMAKE_COMMAND} -E echo step)\n`);
   writeFileSync(path.join(multi, 'main.cpp'), 'int main() { return 0; }\n');
   writeFileSync(path.join(multi, 'tool.cpp'), '#include <cstdio>\nint main() { std::puts("the tool ran"); return 0; }\n');
   writeFileSync(path.join(multi, 'shapes.cpp'), 'int area() { return 4; }\n');
+  writeFileSync(path.join(multi, 'echo.cpp'), '#include <cstdio>\n#include <cstdlib>\nint main(int count, char** args) {\n  for (int i = 1; i < count; i++) std::printf("[%s]", args[i]);\n  const char* value = std::getenv("GLIST_TEST");\n  std::printf(" GLIST_TEST=%s\\n", value ? value : "(none)");\n  return 0;\n}\n');
   // Configured before targets were asked for: the list configures once to have them.
   execFileSync('cmake', ['-S', multi, '-B', path.join(multi, '_build', 'Release'), '-DCMAKE_BUILD_TYPE=Release'], { stdio: 'ignore' });
   await openProjectAt(multi);
   const targets = await studio.listTargets();
   assert.deepEqual(targets.map((target) => [target.name, target.type, target.group, target.app]), [
-    ['Multi', 'executable', 'project', true], ['Shapes', 'library', 'project', false],
+    ['Multi', 'executable', 'project', true], ['Echo', 'executable', 'project', false], ['Shapes', 'library', 'project', false],
     ['Step', 'utility', 'project', false], ['Tool', 'executable', 'project', false],
   ]);
   assert.equal(targets.find((target) => target.name === 'Tool').artifact, path.join(multi, '_build', 'Release', 'Tool'));
@@ -123,6 +124,19 @@ add_custom_target(Step COMMAND \${CMAKE_COMMAND} -E echo step)\n`);
   await studio.setTarget('Shapes');
   assert.equal((await studio.buildProject()).success, true);
   assert.match((await studio.runProject()).message, /Shapes is not a program/);
+  // Settings' program arguments and environment variables reach the program.
+  assert.deepEqual(await studio.setCustomEnvironment([
+    { name: 'PATH', value: '/nowhere' }, { name: '1BAD', value: 'x' }, { name: 'GLIST_TEST', value: 'first' }, { name: 'GLIST_TEST', value: 'from settings' },
+  ]), [{ name: 'GLIST_TEST', value: 'from settings' }], 'PATH and bad names are refused, and the last of a name wins');
+  assert.deepEqual(await studio.setRunArguments(['hello world', 'x']), ['hello world', 'x']);
+  await studio.setTarget('Echo');
+  sent.length = 0;
+  assert.equal((await studio.runProject()).success, true);
+  assert.ok(await until(() => sent.some(([channel, text]) => channel === 'run:output' && String(text).includes('[hello world][x] GLIST_TEST=from settings'))),
+    sent.filter(([channel]) => channel === 'run:output').map(([, text]) => text).join(''));
+  await studio.setCustomEnvironment([]);
+  await studio.setRunArguments([]);
+
   // A name that could pass for an option is refused, which leaves nothing chosen: everything is built.
   await studio.setTarget('--target=Tool');
   assert.equal((await studio.buildProject()).success, true);

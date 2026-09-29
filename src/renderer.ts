@@ -33,6 +33,8 @@ import { notify, type Notice } from './notifications';
 import { setUpProjectPicker } from './project-picker';
 import { StudioTerminal } from './terminal';
 import { PathSettings } from './path-settings';
+import { EnvironmentSettings } from './environment-settings';
+import { RunArguments } from './run-arguments';
 import { terminalTheme } from './themes';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
 import './index.css';
@@ -345,6 +347,7 @@ setZoom(zoomPercentage);
 const refreshLanguage = (): void => {
   applyLanguage(getLanguage());
   describeDebugger();
+  runArguments.describe();
   if (!activeProject) {
     projectRootLabel.textContent = t('projectPlaceholder');
     if (output.textContent === '' || output.textContent.includes('Glist Studio is ready')
@@ -1753,6 +1756,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   void clangd.start(selected.root);
   debug.setProject(selected.root);
   targetPicker.projectChanged(selected.root);
+  runArguments.projectChanged(selected.root, selected.name);
 };
 
 const openProjectWith = async (open: () => Promise<GlistProjectInfo | null>): Promise<void> => {
@@ -2254,6 +2258,25 @@ const agentSettings = new AgentSettings(
 );
 void agentSettings.refresh();
 void setUpUpdates();
+// Settings: a page per category, and the last one seen comes back.
+const settingsTabs = [...document.querySelectorAll<HTMLButtonElement>('.settings-tab')];
+const settingsPages = [...document.querySelectorAll<HTMLElement>('.settings-page')];
+const showSettingsPage = (page: string): void => {
+  const shown = settingsTabs.some((tab) => tab.dataset.page === page) ? page : 'general';
+  settingsTabs.forEach((tab) => {
+    tab.classList.toggle('active', tab.dataset.page === shown);
+    tab.setAttribute('aria-current', tab.dataset.page === shown ? 'page' : 'false');
+  });
+  settingsPages.forEach((section) => { section.hidden = section.dataset.page !== shown; });
+  try { window.localStorage.setItem('glist-studio-settings-page', shown); } catch { /* Storage may be unavailable. */ }
+};
+settingsTabs.forEach((tab) => tab.addEventListener('click', () => showSettingsPage(tab.dataset.page ?? 'general')));
+showSettingsPage(((): string => { try { return window.localStorage.getItem('glist-studio-settings-page') ?? 'general'; } catch { return 'general'; } })());
+// Settings > Environment's variables, and Run and Debug's program arguments for the open project.
+new EnvironmentSettings(element<HTMLElement>('#env-entries'), element<HTMLButtonElement>('#env-add'), element<HTMLElement>('#env-error'));
+const runArguments = new RunArguments(element<HTMLInputElement>('#run-arguments'), element<HTMLElement>('#run-arguments-hint'));
+runArguments.projectChanged(null, '');
+
 // Settings > PATH, whose automatic folders depend on the open project.
 const pathSettings = new PathSettings(element<HTMLElement>('#path-entries'), element<HTMLButtonElement>('#path-add'), element<HTMLElement>('#path-error'));
 element<HTMLButtonElement>('#open-settings').addEventListener('click', () => {

@@ -498,7 +498,32 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .theme-settings { padding-right: 0; padding-bottom: 0; padding-left: 0; border: 0; }
 .theme-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 /* --page-zoom: the browser build's CSS zoom, under which viewport units do not shrink. */
-#settings-dialog { width: min(640px, calc((100vw - 32px) / var(--page-zoom, 1))); max-height: calc((100vh - 48px) / var(--page-zoom, 1)); overflow-y: auto; }
+#settings-dialog { width: min(860px, calc((100vw - 32px) / var(--page-zoom, 1))); height: min(620px, calc((100vh - 48px) / var(--page-zoom, 1))); padding: 0; overflow: hidden; }
+#settings-dialog[open] { display: flex; flex-direction: column; }
+/* The categories down the left, a shade darker than the page beside them. */
+.settings-layout { display: grid; min-height: 0; flex: 1; grid-template-columns: 200px minmax(0, 1fr); }
+.settings-side { display: flex; min-height: 0; flex-direction: column; padding: 16px 10px; border-right: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-raised) 82%, #000000); }
+.studio-dialog .settings-side h2 { margin: 0 10px 12px; }
+.settings-nav { display: flex; min-height: 0; flex-direction: column; gap: 2px; overflow-y: auto; }
+.settings-tab { position: relative; flex: none; height: 30px; padding: 0 10px; overflow: hidden; border: 0; border-radius: 4px; color: var(--ui-fg); background: transparent; font: inherit; font-size: 13px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.settings-tab:hover { color: var(--ui-fg-strong); background: var(--ui-hover); }
+.settings-tab.active { color: var(--ui-fg-strong); background: var(--ui-hover-strong); }
+.settings-tab.active::before { position: absolute; top: 7px; bottom: 7px; left: 0; width: 3px; border-radius: 2px; background: var(--ui-accent); content: ''; }
+html[data-kind="light"] .settings-side { background: color-mix(in srgb, var(--ui-raised) 95%, #000000); }
+html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
+.settings-main { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
+.settings-pages { min-height: 0; flex: 1; padding: 18px 20px 16px; overflow-y: auto; }
+.settings-main .dialog-actions { margin: 0; padding: 10px 16px; border-top: 1px solid var(--ui-border); }
+.settings-page[hidden] { display: none; }
+.env-settings { min-width: 0; padding: 0; border: 0; }
+.env-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
+.run-settings { min-width: 0; padding: 0; border: 0; }
+.run-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
+.env-entries { display: grid; gap: 6px; margin-top: 10px; }
+.env-entries:empty { display: none; }
+.env-row { display: grid; align-items: center; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) 22px; gap: 6px; }
+.studio-dialog .env-row input { height: 28px; font-family: var(--font-code); font-size: 12px; }
+.studio-dialog .env-row.refused .env-name { border-color: var(--ui-danger); }
 .font-settings { padding: 0; border: 0; }
 .font-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .font-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 14px; margin-top: 10px; }
@@ -521,7 +546,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .theme-remove { position: absolute; top: 3px; right: 3px; display: grid; width: 20px; height: 20px; padding: 0; place-items: center; border: 0; border-radius: 4px; color: var(--ui-fg-muted); background: var(--ui-raised); cursor: pointer; }
 .theme-remove:hover { color: #fff; background: var(--ui-danger-strong); }
 .theme-import { margin-top: 12px; }
-.theme-import button { height: 28px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.theme-import button { display: inline-flex; height: 26px; align-items: center; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .theme-import button:hover { background: var(--ui-hover-strong); }
 .dialog-hint { margin: 10px 0 0; color: var(--ui-fg-muted); font-size: 11px; }
 #open-project-dialog { width: min(560px, calc((100vw - 32px) / var(--page-zoom, 1))); }
@@ -558,7 +583,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .debugger-settings { padding: 0; border: 0; }
 .debugger-settings[hidden] { display: none; }
 .debugger-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
-.debugger-install { height: 28px; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.debugger-install { display: inline-flex; height: 26px; align-items: center; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .debugger-install:hover:not(:disabled) { background: var(--ui-hover-strong); }
 .debugger-install[hidden] { display: none; }
 .agent-settings, .update-settings { padding: 0; border: 0; }
@@ -576,7 +601,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .path-source { flex: none; color: var(--ui-fg-muted); font-size: 11px; }
 .path-remove { display: flex; width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 4px; color: var(--ui-fg); background: transparent; cursor: pointer; }
 .path-remove:hover { background: var(--ui-hover-strong); }
-.path-add { height: 28px; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.path-add { display: inline-flex; height: 26px; align-items: center; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .path-add:hover { background: var(--ui-hover-strong); }
 .agent-option { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; min-height: 34px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: var(--ui-bg); }
 .studio-dialog .agent-toggle { display: flex; min-width: 0; align-items: center; gap: 10px; margin: 0; font-size: 13px; cursor: pointer; }
@@ -591,7 +616,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .agent-select[hidden], .output-tab[hidden] { display: none; }
 .dialog-error { min-height: 14px; margin: 10px 0 0; color: var(--ui-danger); font-size: 11px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
-.dialog-actions button { height: 30px; min-width: 72px; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.dialog-actions button { display: inline-flex; height: 28px; min-width: 72px; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .dialog-actions button:hover { background: var(--ui-hover-strong); }
 .dialog-actions button.primary { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
 .dialog-actions button.primary:hover { background: var(--ui-accent-hover); }
@@ -641,7 +666,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .commit-banner-title { margin: 0; overflow-wrap: anywhere; color: var(--ui-fg-strong); font-size: 12px; font-weight: 600; }
 .commit-banner-hint { margin: 3px 0 8px; color: var(--ui-fg-muted); font-size: 11px; }
 .commit-banner-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.commit-banner-actions button, .commit-buttons button { height: 26px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); font-size: 12px; cursor: pointer; }
+.commit-banner-actions button, .commit-buttons button { display: inline-flex; height: 24px; align-items: center; justify-content: center; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); font-size: 12px; cursor: pointer; }
 .commit-banner-actions button:hover:not(:disabled), .commit-buttons button:hover:not(:disabled) { background: var(--ui-hover-strong); }
 .commit-banner-actions button.primary, .commit-buttons button.primary { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
 .commit-banner-actions button.primary:hover:not(:disabled), .commit-buttons button.primary:hover:not(:disabled) { background: var(--ui-accent-hover); }
@@ -855,3 +880,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .plugin-working { color: var(--ui-fg-muted); font-size: 11px; }
 .activity-button.has-updates { position: relative; }
 .activity-button.has-updates::after { position: absolute; top: 8px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--ui-accent); content: ''; }
+
+/* A page of Settings: its sections spaced apart, each headed alike. */
+.settings-page .settings-section + .settings-section { margin-top: 28px; padding-top: 0; border-top: 0; }
+.settings-page legend, .studio-dialog .settings-page > .settings-section > label:first-child { margin: 0 0 8px; padding: 0; color: var(--ui-fg-strong); font-size: 13px; font-weight: 600; }
