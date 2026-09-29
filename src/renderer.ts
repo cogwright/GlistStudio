@@ -28,6 +28,7 @@ import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
 import { showMenu, type MenuEntry } from './context-menu';
 import { editorCommands, editorMenu, editorMenuPoint, type EditorMenuHooks } from './editor-menu';
+import { EditorLayout } from './editor-layout';
 import { CommandPalette, type PaletteCommand } from './command-palette';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { PluginsView } from './plugins-view';
@@ -137,22 +138,26 @@ element<HTMLImageElement>('#app-icon').src = appIconUrl;
 element<HTMLImageElement>('#welcome-icon').src = appIconUrl;
 
 let activeProject: GlistProjectInfo | null = null;
-let activeFilePath: string | null = null;
 let selectedEntry: GlistFileEntry | null = null;
 let copiedEntryPath: string | null = null;
 let isBuildRunning = false;
 let isRunRunning = false;
 // Build or Run was pressed and the backend has not taken it over yet.
 let isStarting = false;
+// The open files and diffs, each once however many tabs show it.
 const openFiles = new Map<string, EditorTab>();
+// The tabs on each side of the editor area, and which is in front.
+const layout = new EditorLayout();
 const fileTabs = (): OpenFile[] => [...openFiles.values()].filter((tab): tab is OpenFile => tab.kind === 'file');
+// The tab in front on the side being worked in.
+const activeTab = (): EditorTab | undefined => (layout.activeKey ? openFiles.get(layout.activeKey) : undefined);
 // The file tab in front, if the tab in front is one.
 const activeFile = (): OpenFile | undefined => {
-  const tab = activeFilePath ? openFiles.get(activeFilePath) : undefined;
+  const tab = activeTab();
   return tab?.kind === 'file' ? tab : undefined;
 };
 const expandedDirectories = new Set<string>();
-let draggedTabPath: string | null = null;
+let draggedTab: { key: string; group: number } | null = null;
 let suppressTabClick = false;
 
 type SidebarView = 'explorer' | 'debug' | 'commit' | 'plugins';
@@ -412,6 +417,20 @@ const editor = monaco.editor.create(editorHost, {
   contextmenu: false,
 });
 
+// One side of the editor area as it is drawn: its tab strip, and the editor
+// under it showing the file in front there.
+interface GroupView {
+  tabsHost: HTMLElement;
+  host: HTMLElement;
+  editor: monaco.editor.IStandaloneCodeEditor;
+  // The tab shown, and where each of its tabs was scrolled to and its cursor.
+  shown: string | null;
+  viewStates: Map<string, monaco.editor.ICodeEditorViewState | null>;
+}
+const groupViews: GroupView[] = [{ tabsHost, host: editorHost, editor, shown: null, viewStates: new Map() }];
+// The editor of the side being worked in.
+const currentEditor = (): monaco.editor.IStandaloneCodeEditor => (groupViews[layout.focused] ?? groupViews[0]).editor;
+
 // Appends a text node; rewriting textContent made long builds quadratic.
 let outputStyle = newOutputStyle();
 
@@ -484,34 +503,55 @@ const updateButtons = (): void => {
   deleteEntryButton.disabled = !selectedEntry;
 };
 
-const activateFile = (filePath: string): void => {
-  const tab = openFiles.get(filePath);
-  if (!tab) return;
-  activeFilePath = filePath;
-  welcome.hidden = true;
-  if (tab.kind === 'diff') {
-    editorHost.classList.remove('visible');
-    showDiffTab(tab);
-  } else {
-    diffView.hidden = true;
-    editor.setModel(tab.model);
-    editor.updateOptions({ readOnly: tab.readOnly });
-    editorHost.classList.add('visible');
+// Shows each side's tab in front: a file in the side's editor, where it was
+// scrolled to last there, a diff in the diff view, and the welcome screen once
+// no tab is left.
+const showGroups = (): void => {
+  groupViews.forEach((view, index) => {
+    const key = layout.groups[index]?.active ?? null;
+    const tab = key ? openFiles.get(key) : undefined;
+    const model = view.editor.getModel();
+    if (view.shown && model && openFiles.get(view.shown)?.kind === 'file' && (openFiles.get(view.shown) as OpenFile).model === model) {
+      view.viewStates.set(view.shown, view.editor.saveViewState());
+    }
+    view.shown = key;
+    if (!tab) {
+      view.editor.setModel(null);
+      view.host.classList.remove('visible');
+      if (index === 0) {
+        diffEditor?.setModel(null);
+        diffView.hidden = true;
+        welcome.hidden = false;
+      }
+      return;
+    }
+    if (index === 0) welcome.hidden = true;
+    if (tab.kind === 'diff') {
+      view.host.classList.remove('visible');
+      showDiffTab(tab);
+      return;
+    }
+    if (index === 0) diffView.hidden = true;
+    if (model !== tab.model) {
+      view.editor.setModel(tab.model);
+      view.editor.restoreViewState(view.viewStates.get(tab.path) ?? null);
+    }
+    view.editor.updateOptions({ readOnly: tab.readOnly });
+    view.host.classList.add('visible');
     // Measured now, not on the next frame, so a line can be revealed right away.
-    editor.layout();
-  }
-  renderTabs();
-  updateButtons();
-  if (tab.kind === 'file') editor.focus();
+    view.editor.layout();
+  });
 };
 
-// The welcome screen, once no tab is left.
-const showNoTab = (): void => {
-  editor.setModel(null);
-  diffEditor?.setModel(null);
-  editorHost.classList.remove('visible');
-  diffView.hidden = true;
-  welcome.hidden = false;
+// Brings a tab to the front of a side, the one being worked in unless given.
+const activateFile = (filePath: string, group = layout.focused): void => {
+  const tab = openFiles.get(filePath);
+  if (!tab) return;
+  layout.activate(filePath, group);
+  showGroups();
+  renderTabs();
+  updateButtons();
+  if (tab.kind === 'file') currentEditor().focus();
 };
 
 const disposeTab = (tab: EditorTab): void => {
@@ -521,131 +561,141 @@ const disposeTab = (tab: EditorTab): void => {
   tab.modified.dispose();
 };
 
-const closeFile = (filePath: string): void => {
+// Forgets what the file's tabs remembered, once none is left.
+const forgetDocument = (tab: EditorTab): void => {
+  openFiles.delete(tab.path);
+  disposeTab(tab);
+  groupViews.forEach((view) => view.viewStates.delete(tab.path));
+};
+
+// Closes one tab; the file closes with its last tab, asking first about
+// unsaved changes.
+const closeFile = (filePath: string, group = layout.focused): void => {
   const file = openFiles.get(filePath);
   if (!file) return;
-  if (isDirty(file) && !window.confirm(`${file.name} ${t('confirmClose')}`)) return;
-  const paths = [...openFiles.keys()];
-  const closingIndex = paths.indexOf(filePath);
-  openFiles.delete(filePath);
-  disposeTab(file);
-  if (activeFilePath === filePath) {
-    const remaining = [...openFiles.keys()];
-    const next = remaining[Math.min(closingIndex, remaining.length - 1)];
-    activeFilePath = null;
-    if (next) activateFile(next);
-    else showNoTab();
-  }
+  if (layout.groupsWith(filePath).length <= 1 && isDirty(file) && !window.confirm(`${file.name} ${t('confirmClose')}`)) return;
+  const wasInFront = layout.groups[group]?.active === filePath;
+  layout.close(filePath, group);
+  showGroups();
+  if (!layout.isOpen(filePath)) forgetDocument(file);
+  renderTabs();
+  updateButtons();
+  if (wasInFront && activeFile()) currentEditor().focus();
+};
+
+const clearTabDropIndicators = (): void => {
+  groupViews.forEach((view) => {
+    view.tabsHost.classList.remove('drop-at-end');
+    view.tabsHost.querySelectorAll('.drop-before, .drop-after').forEach((tab) => {
+      tab.classList.remove('drop-before', 'drop-after');
+    });
+  });
+};
+
+// Moves a tab before or after another, or to the end of a side's strip.
+const moveTab = (key: string, from: number, to: number, targetKey?: string, placeAfter = false): void => {
+  const tabs = layout.groups[to]?.tabs.filter((other) => other !== key) ?? [];
+  const before = targetKey && placeAfter ? tabs[tabs.indexOf(targetKey) + 1] : targetKey;
+  layout.move(key, from, to, before);
+  showGroups();
   renderTabs();
   updateButtons();
 };
 
-const clearTabDropIndicators = (): void => {
-  tabsHost.classList.remove('drop-at-end');
-  tabsHost.querySelectorAll('.drop-before, .drop-after').forEach((tab) => {
-    tab.classList.remove('drop-before', 'drop-after');
+const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
+  const tab = document.createElement('button');
+  tab.type = 'button';
+  tab.draggable = true;
+  tab.className = 'editor-tab';
+  tab.dataset.path = file.path;
+  tab.classList.toggle('active', file.path === layout.groups[group]?.active);
+  tab.classList.toggle('read-only', file.kind === 'file' && file.readOnly);
+  tab.classList.toggle('diff', file.kind === 'diff');
+  if (file.kind === 'diff') tab.title = `${file.file}\n${file.leftLabel} / ${file.rightLabel}`;
+  else tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
+  const label = document.createElement('span');
+  label.className = 'tab-label';
+  label.textContent = file.name;
+  const dirty = document.createElement('span');
+  dirty.className = 'dirty-dot';
+  dirty.classList.toggle('visible', isDirty(file));
+  dirty.append(icon('circle-filled'));
+  const close = document.createElement('span');
+  close.className = 'tab-close';
+  close.draggable = false;
+  close.append(icon('close'));
+  close.addEventListener('click', (event) => { event.stopPropagation(); closeFile(file.path, group); });
+  let kind = fileIconElement(file.name);
+  if (file.kind === 'diff') {
+    kind = document.createElement('span');
+    kind.className = 'file-icon diff';
+    kind.append(icon('diff'));
+  }
+  tab.append(kind, label, dirty, close);
+  tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path, group); });
+  tab.addEventListener('dragstart', (event) => {
+    draggedTab = { key: file.path, group };
+    suppressTabClick = true;
+    event.dataTransfer?.setData('text/plain', file.path);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    requestAnimationFrame(() => tab.classList.add('dragging'));
   });
-};
-
-const moveOpenFileTab = (sourcePath: string, targetPath?: string, placeAfter = false): void => {
-  if (sourcePath === targetPath) return;
-  const sourceEntry = [...openFiles.entries()].find(([filePath]) => filePath === sourcePath);
-  if (!sourceEntry) return;
-  const reordered = [...openFiles.entries()].filter(([filePath]) => filePath !== sourcePath);
-  if (targetPath) {
-    const targetIndex = reordered.findIndex(([filePath]) => filePath === targetPath);
-    if (targetIndex < 0) return;
-    reordered.splice(targetIndex + (placeAfter ? 1 : 0), 0, sourceEntry);
-  } else reordered.push(sourceEntry);
-  openFiles.clear();
-  reordered.forEach(([filePath, file]) => openFiles.set(filePath, file));
-  renderTabs();
+  tab.addEventListener('dragover', (event) => {
+    if (!draggedTab || (draggedTab.key === file.path && draggedTab.group === group)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    clearTabDropIndicators();
+    const bounds = tab.getBoundingClientRect();
+    tab.classList.add(event.clientX < bounds.left + bounds.width / 2 ? 'drop-before' : 'drop-after');
+  });
+  tab.addEventListener('drop', (event) => {
+    if (!draggedTab) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = tab.getBoundingClientRect();
+    moveTab(draggedTab.key, draggedTab.group, group, file.path, event.clientX >= bounds.left + bounds.width / 2);
+    clearTabDropIndicators();
+  });
+  tab.addEventListener('dragend', () => {
+    tab.classList.remove('dragging');
+    draggedTab = null;
+    clearTabDropIndicators();
+    window.setTimeout(() => { suppressTabClick = false; }, 0);
+  });
+  return tab;
 };
 
 const renderTabs = (): void => {
-  tabsHost.replaceChildren();
-  openFiles.forEach((file) => {
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.draggable = true;
-    tab.className = 'editor-tab';
-    tab.dataset.path = file.path;
-    tab.classList.toggle('active', file.path === activeFilePath);
-    tab.classList.toggle('read-only', file.kind === 'file' && file.readOnly);
-    tab.classList.toggle('diff', file.kind === 'diff');
-    if (file.kind === 'diff') tab.title = `${file.file}\n${file.leftLabel} / ${file.rightLabel}`;
-    else tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
-    const label = document.createElement('span');
-    label.className = 'tab-label';
-    label.textContent = file.name;
-    const dirty = document.createElement('span');
-    dirty.className = 'dirty-dot';
-    dirty.classList.toggle('visible', isDirty(file));
-    dirty.append(icon('circle-filled'));
-    const close = document.createElement('span');
-    close.className = 'tab-close';
-    close.draggable = false;
-    close.append(icon('close'));
-    close.addEventListener('click', (event) => { event.stopPropagation(); closeFile(file.path); });
-    let kind = fileIconElement(file.name);
-    if (file.kind === 'diff') {
-      kind = document.createElement('span');
-      kind.className = 'file-icon diff';
-      kind.append(icon('diff'));
-    }
-    tab.append(kind, label, dirty, close);
-    tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path); });
-    tab.addEventListener('dragstart', (event) => {
-      draggedTabPath = file.path;
-      suppressTabClick = true;
-      event.dataTransfer?.setData('text/plain', file.path);
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-      requestAnimationFrame(() => tab.classList.add('dragging'));
-    });
-    tab.addEventListener('dragover', (event) => {
-      if (!draggedTabPath || draggedTabPath === file.path) return;
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-      clearTabDropIndicators();
-      const bounds = tab.getBoundingClientRect();
-      tab.classList.add(event.clientX < bounds.left + bounds.width / 2 ? 'drop-before' : 'drop-after');
-    });
-    tab.addEventListener('drop', (event) => {
-      if (!draggedTabPath) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const bounds = tab.getBoundingClientRect();
-      moveOpenFileTab(draggedTabPath, file.path, event.clientX >= bounds.left + bounds.width / 2);
-      clearTabDropIndicators();
-    });
-    tab.addEventListener('dragend', () => {
-      tab.classList.remove('dragging');
-      draggedTabPath = null;
-      clearTabDropIndicators();
-      window.setTimeout(() => { suppressTabClick = false; }, 0);
-    });
-    tabsHost.append(tab);
+  groupViews.forEach((view, group) => {
+    const keys = layout.groups[group]?.tabs ?? [];
+    view.tabsHost.replaceChildren(...keys.flatMap((key) => {
+      const file = openFiles.get(key);
+      return file ? [tabElement(file, group)] : [];
+    }));
   });
 };
 
-tabsHost.addEventListener('dragover', (event) => {
-  if (!draggedTabPath) return;
-  const bounds = tabsHost.getBoundingClientRect();
-  if (event.clientX < bounds.left + 28) tabsHost.scrollLeft -= 14;
-  else if (event.clientX > bounds.right - 28) tabsHost.scrollLeft += 14;
-  if (event.target instanceof Element && event.target.closest('.editor-tab')) return;
-  event.preventDefault();
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-  clearTabDropIndicators();
-  tabsHost.classList.add('drop-at-end');
-});
-
-tabsHost.addEventListener('drop', (event) => {
-  if (!draggedTabPath || (event.target instanceof Element && event.target.closest('.editor-tab'))) return;
-  event.preventDefault();
-  moveOpenFileTab(draggedTabPath);
-  clearTabDropIndicators();
-});
+// A drop past the last tab puts it at the end of that side's strip.
+const listenForTabDrops = (view: GroupView): void => {
+  view.tabsHost.addEventListener('dragover', (event) => {
+    if (!draggedTab) return;
+    const bounds = view.tabsHost.getBoundingClientRect();
+    if (event.clientX < bounds.left + 28) view.tabsHost.scrollLeft -= 14;
+    else if (event.clientX > bounds.right - 28) view.tabsHost.scrollLeft += 14;
+    if (event.target instanceof Element && event.target.closest('.editor-tab')) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    clearTabDropIndicators();
+    view.tabsHost.classList.add('drop-at-end');
+  });
+  view.tabsHost.addEventListener('drop', (event) => {
+    if (!draggedTab || (event.target instanceof Element && event.target.closest('.editor-tab'))) return;
+    event.preventDefault();
+    moveTab(draggedTab.key, draggedTab.group, groupViews.indexOf(view));
+    clearTabDropIndicators();
+  });
+};
+listenForTabDrops(groupViews[0]);
 
 const isProjectPath = (filePath: string): boolean =>
   Boolean(activeProject && isWithin(filePath, activeProject.root));
@@ -710,13 +760,14 @@ const loadFile = async (filePath: string): Promise<OpenFile> => {
 };
 
 const refreshDirtyMark = (file: OpenFile): void => {
-  const tab = [...tabsHost.children].find((child) => (child as HTMLElement).dataset.path === file.path);
-  const mark = tab?.querySelector('.dirty-dot');
-  mark?.classList.toggle('visible', isDirty(file));
+  groupViews.forEach((view) => {
+    const tab = [...view.tabsHost.children].find((child) => (child as HTMLElement).dataset.path === file.path);
+    tab?.querySelector('.dirty-dot')?.classList.toggle('visible', isDirty(file));
+  });
 };
 
-// Opens a tab on a model that matches the file on disk, without switching to it.
-const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
+// Keeps a file open, on a model that matches it on disk, for its tabs to show.
+const addDocument = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
   const file: OpenFile = { kind: 'file', path: filePath, name: baseName(filePath), model, savedVersion: model.getAlternativeVersionId(), readOnly };
   openFiles.set(filePath, file);
   model.onDidChangeContent(() => {
@@ -728,6 +779,14 @@ const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boo
     }
   });
   clangd.track(model);
+  return file;
+};
+
+// Opens a tab on a model that matches the file on disk, on the side being
+// worked in, without switching to it.
+const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
+  const file = addDocument(filePath, model, readOnly);
+  layout.add(filePath);
   return file;
 };
 
@@ -765,12 +824,13 @@ const revealLocation = async (uri: monaco.Uri, selection?: monaco.IRange | monac
   const filePath = uriPath(uri);
   if (!(await openFile(filePath, baseName(filePath)))) return false;
   if (!selection) return true;
+  const target = currentEditor();
   if ('startLineNumber' in selection) {
-    editor.setSelection(selection);
-    editor.revealRangeInCenterIfOutsideViewport(selection);
+    target.setSelection(selection);
+    target.revealRangeInCenterIfOutsideViewport(selection);
   } else {
-    editor.setPosition(selection);
-    editor.revealPositionInCenterIfOutsideViewport(selection);
+    target.setPosition(selection);
+    target.revealPositionInCenterIfOutsideViewport(selection);
   }
   return true;
 };
@@ -866,7 +926,7 @@ const ensureDiffEditor = (): monaco.editor.IStandaloneDiffEditor => {
 };
 
 const activeDiff = (): DiffTab | undefined => {
-  const tab = activeFilePath ? openFiles.get(activeFilePath) : undefined;
+  const tab = activeTab();
   return tab?.kind === 'diff' ? tab : undefined;
 };
 
@@ -920,7 +980,7 @@ const fillDiff = async (tab: DiffTab): Promise<void> => {
   tab.rightLabel = versionLabel(tab.target, right, tab.file);
   tab.message = [left, right].some((version) => version.binary) ? t('diffBinary')
     : [left, right].some((version) => version.tooLarge) ? t('diffTooLarge') : '';
-  if (activeFilePath === tab.path) showDiffTab(tab);
+  if (layout.groups.some((group) => group.active === tab.path)) showGroups();
 };
 
 interface DiffRequest {
@@ -956,6 +1016,7 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
     message: '',
   };
   openFiles.set(key, tab);
+  layout.add(key);
   await fillDiff(tab);
   if (ticket === navigation) activateFile(key);
   else renderTabs();
@@ -1205,10 +1266,10 @@ const commitPane = new CommitView({
   openFile: (filePath) => { void openFile(filePath, baseName(filePath)); },
   openConflict: (filePath) => {
     void openFile(filePath, baseName(filePath)).then((opened) => {
-      const line = opened ? (editor.getModel()?.getLinesContent().findIndex((text) => text.startsWith('<<<<<<<')) ?? -1) : -1;
+      const line = opened ? (currentEditor().getModel()?.getLinesContent().findIndex((text) => text.startsWith('<<<<<<<')) ?? -1) : -1;
       if (line < 0) return;
-      editor.revealLineInCenter(line + 1);
-      editor.setPosition({ lineNumber: line + 1, column: 1 });
+      currentEditor().revealLineInCenter(line + 1);
+      currentEditor().setPosition({ lineNumber: line + 1, column: 1 });
     });
   },
   deleteFile: deleteProjectFile,
@@ -1250,11 +1311,10 @@ monaco.editor.registerEditorOpener({
 });
 
 const switchSourceHeader = async (): Promise<void> => {
-  const model = editor.getModel();
+  const model = currentEditor().getModel();
   const target = model && await clangd.switchSourceHeader(model);
   if (target) await revealLocation(target);
 };
-editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
 
 // The right-click menu, and the same from the keyboard at the cursor.
 const editorMenuHooks: EditorMenuHooks = {
@@ -1262,16 +1322,29 @@ const editorMenuHooks: EditorMenuHooks = {
   switchSourceHeader: () => { void switchSourceHeader(); },
   commandPalette: () => commandPalette.open(),
 };
-// As Monaco's own menu did: focus, and the cursor at the click unless it is in the selection.
-editor.onContextMenu((event) => {
-  editor.focus();
-  const position = event.target.position;
-  if (position && !editor.getSelection()?.containsPosition(position)) editor.setPosition(position);
-  showMenu(event.event.browserEvent, editorMenu(editor, editorMenuHooks));
-});
-const showEditorMenuHere = (): void => showMenu(editorMenuPoint(editor), editorMenu(editor, editorMenuHooks));
-editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F10, showEditorMenuHere);
-editor.addCommand(monaco.KeyCode.ContextMenu, showEditorMenuHere);
+// What every side's editor has: its keys, its right-click menu, and making its
+// side the one worked in when it takes focus.
+const setUpEditor = (view: GroupView): void => {
+  const target = view.editor;
+  target.onDidFocusEditorWidget(() => {
+    const group = groupViews.indexOf(view);
+    if (group < 0 || group === layout.focused) return;
+    layout.focus(group);
+    updateButtons();
+  });
+  target.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
+  // As Monaco's own menu did: focus, and the cursor at the click unless it is in the selection.
+  target.onContextMenu((event) => {
+    target.focus();
+    const position = event.target.position;
+    if (position && !target.getSelection()?.containsPosition(position)) target.setPosition(position);
+    showMenu(event.event.browserEvent, editorMenu(target, editorMenuHooks));
+  });
+  const showMenuHere = (): void => showMenu(editorMenuPoint(target), editorMenu(target, editorMenuHooks));
+  target.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F10, showMenuHere);
+  target.addCommand(monaco.KeyCode.ContextMenu, showMenuHere);
+};
+setUpEditor(groupViews[0]);
 
 const selectTreeEntry = (entry: GlistFileEntry, row: HTMLButtonElement): void => {
   fileTree.querySelectorAll('.tree-row.selected').forEach((selectedRow) => {
@@ -1610,39 +1683,34 @@ const openCommandPrompt = async (): Promise<void> => {
 };
 
 const closeFilesUnderEntry = (entryPath: string): void => {
-  let activeWasDeleted = false;
-  openFiles.forEach((file, filePath) => {
-    if (file.kind !== 'file' || !isWithin(filePath, entryPath)) return;
-    if (activeFilePath === filePath) activeWasDeleted = true;
-    file.model.dispose();
-    openFiles.delete(filePath);
-  });
-  if (activeWasDeleted) {
-    activeFilePath = null;
-    const next = [...openFiles.keys()].at(-1);
-    if (next) activateFile(next);
-    else showNoTab();
-  }
+  const closing = fileTabs().filter((file) => isWithin(file.path, entryPath));
+  layout.remove((key) => closing.some((file) => file.path === key));
+  showGroups();
+  closing.forEach(forgetDocument);
   renderTabs();
   updateButtons();
 };
 
-// Follows a rename on disk. Renamed tabs keep their place in the tab strip.
+// Follows a rename on disk. Renamed tabs keep their place in the tab strips,
+// and where they were scrolled to.
 const relocateOpenFiles = (oldPath: string, newPath: string): void => {
-  const tabs = [...openFiles.entries()];
-  openFiles.clear();
-  tabs.forEach(([filePath, file]) => {
-    if (file.kind !== 'file' || !isWithin(filePath, oldPath)) { openFiles.set(filePath, file); return; }
-    const nextPath = `${newPath}${filePath.slice(oldPath.length)}`;
+  fileTabs().filter((file) => isWithin(file.path, oldPath)).forEach((file) => {
+    const nextPath = `${newPath}${file.path.slice(oldPath.length)}`;
     const nextUri = pathUri(nextPath);
     // Only a clangd preview of a file that used to be at the new path can be there.
     monaco.editor.getModel(nextUri)?.dispose();
-    addTab(nextPath, monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, nextUri), false);
+    addDocument(nextPath, monaco.editor.createModel(file.model.getValue(), languageForFile(nextPath).id, nextUri), false);
+    openFiles.delete(file.path);
+    layout.rename(file.path, nextPath);
+    groupViews.forEach((view) => {
+      const state = view.editor.getModel() === file.model ? view.editor.saveViewState() : view.viewStates.get(file.path);
+      view.viewStates.delete(file.path);
+      if (state !== undefined) view.viewStates.set(nextPath, state);
+      if (view.shown === file.path) view.shown = nextPath;
+    });
     file.model.dispose();
-    if (activeFilePath === filePath) activeFilePath = nextPath;
   });
-  const active = activeFile();
-  if (active) editor.setModel(active.model);
+  showGroups();
   renderTabs();
 };
 
@@ -1691,9 +1759,12 @@ const deleteSelectedEntry = async (): Promise<void> => {
 };
 
 const disposeOpenFiles = (): void => {
-  showNoTab();
+  layout.clear();
+  showGroups();
   openFiles.forEach(disposeTab);
-  openFiles.clear(); activeFilePath = null; renderTabs();
+  openFiles.clear();
+  groupViews.forEach((view) => view.viewStates.clear());
+  renderTabs();
   monaco.editor.getModels().forEach((model) => model.dispose());
 };
 
@@ -1934,10 +2005,10 @@ const configureMenus = (): void => {
         item(t('save'), saveActiveFile, { shortcut: 'Ctrl+S', disabled: !activeFile() }),
       ],
       edit: [
-        item(t('undo'), () => editor.trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFile() }),
-        item(t('redo'), () => editor.trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFile() }),
+        item(t('undo'), () => currentEditor().trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFile() }),
+        item(t('redo'), () => currentEditor().trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFile() }),
         { kind: 'separator' },
-        item(t('find'), () => editor.getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFile() }),
+        item(t('find'), () => currentEditor().getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFile() }),
       ],
       view: [
         { kind: 'heading', label: t('layout') },
@@ -2475,12 +2546,13 @@ window.addEventListener('keydown', (event) => {
 const commandPalette = new CommandPalette(() => {
   if (!activeFile()) return menuCommands();
   const category = t('editorCommands');
-  const own = editorCommands(editor, editorMenuHooks);
+  const target = currentEditor();
+  const own = editorCommands(target, editorMenuHooks);
   const listed = new Set([...own.map((command) => command.id), 'editor.action.quickCommand', 'actions.find']);
-  const rest = editor.getSupportedActions()
+  const rest = target.getSupportedActions()
     .filter((action) => action.label && !listed.has(action.id))
     .sort((left, right) => left.label.localeCompare(right.label))
-    .map((action) => ({ label: action.label, category, run: () => { editor.focus(); void action.run(); } }));
+    .map((action) => ({ label: action.label, category, run: () => { target.focus(); void action.run(); } }));
   return [...menuCommands(), ...own.map((command) => ({ ...command, category })), ...rest];
 });
 
