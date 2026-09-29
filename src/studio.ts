@@ -12,6 +12,7 @@ import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
 import { createGitService } from './git-service';
+import { createPluginService } from './plugins';
 
 // What the backend needs from whoever hosts it: the Electron main process or
 // the browser preview server.
@@ -1328,6 +1329,15 @@ const installAgentFromSettings = async (agent: unknown): Promise<ProcessResult> 
   }
 };
 
+// GlistPlugins' plugins, installed beside the engine (see plugins.ts).
+const plugins = createPluginService({
+  workspace: () => (activeProjectRoot ? findAncestorWith(activeProjectRoot, path.join('GlistEngine', 'engine')) : null)
+    ?? path.dirname(projectsDirectory()),
+  projectCmake: () => (activeProjectRoot ? path.join(activeProjectRoot, 'CMakeLists.txt') : null),
+  environment: () => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory())),
+  language: () => language,
+});
+
 // Git, for the Commit view and the Git panel (see git-service.ts).
 const git = createGitService({
   projectRoot: () => activeProjectRoot,
@@ -1395,4 +1405,5 @@ export const studio: Handlers = {
   debuggerStatus,
   installDebugger: installDebuggerFromSettings,
   ...git.handlers,
+  ...plugins,
 };

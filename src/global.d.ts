@@ -43,6 +43,44 @@ interface GlistPathEntry {
   exists?: boolean;
 }
 
+// A plugin in the Plugins view: one GlistPlugins publishes, one installed in glistplugins, or both.
+interface GlistPlugin {
+  name: string;
+  description: string;
+  // Its page on GitHub; empty for one GlistPlugins does not publish.
+  url: string;
+  installed: boolean;
+  folder?: string;
+  // Named in the open project's PLUGINS.
+  used?: boolean;
+  // A git repository, and whether its origin is GlistPlugins, the only kind updated from there.
+  repository?: boolean;
+  official?: boolean;
+  branch?: string | null;
+  defaultBranch?: string;
+  // Files changed and not committed, commits of its own, and commits on GlistPlugins it does not have.
+  changed?: number;
+  ahead?: number;
+  behind?: number;
+}
+
+interface GlistPluginList {
+  plugins: GlistPlugin[];
+  folder: string;
+  gitFound: boolean;
+  // Why GlistPlugins' list could not be read.
+  error?: string;
+}
+
+interface GlistPluginResult {
+  success: boolean;
+  message: string;
+  // An update would put the user's work aside: asked again with keep to go on.
+  confirm?: { changed: number; ahead: number };
+  // Where the user's work went: a stash, and a branch.
+  kept?: { stash?: string; branch?: string };
+}
+
 interface GlistProjectInfo {
   root: string;
   name: string;
@@ -392,6 +430,12 @@ interface Window {
     stopTerminal(session: GlistTerminalSession): Promise<void>;
     listAgents(): Promise<GlistAgentStatus[]>;
     glistStatus(): Promise<GlistInstallStatus>;
+    // The Plugins view; refresh asks GlistPlugins again rather than using the last answer.
+    listPlugins(refresh?: boolean): Promise<GlistPluginList>;
+    checkPluginUpdates(): Promise<GlistPlugin[]>;
+    installPlugin(name: string): Promise<GlistPluginResult>;
+    updatePlugin(name: string, keep?: boolean): Promise<GlistPluginResult>;
+    usePlugin(name: string, use: boolean): Promise<GlistPluginResult>;
     updateState(): Promise<GlistUpdateState>;
     checkForUpdates(): Promise<GlistUpdateState>;
     // Quits, asking about unsaved files as usual, and installs the downloaded update.

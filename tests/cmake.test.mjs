@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { cmakeInputs, hasGlistSourceLists, pluginsInCmake, synchronizeCmake } from '../src/cmake.ts';
+import { cmakeInputs, hasGlistSourceLists, pluginsInCmake, setPluginUsed, synchronizeCmake } from '../src/cmake.ts';
 
 const template = readFileSync(new URL('../glistapp-template/GlistApp/CMakeLists.txt', import.meta.url), 'utf8');
 assert.equal(hasGlistSourceLists(template), true);
@@ -70,5 +70,17 @@ set(CMAKE_MAKEFILE_OUTPUTS
   "Makefile"
   )`), ['CMakeCache.txt', '/home/ada/dev/glist/GlistEngine/engine/CMakeLists.txt', '/home/ada/dev/glist/myglistapps/App/CMakeLists.txt', 'CMakeFiles/4.4.3/CMakeSystem.cmake']);
 assert.deepEqual(cmakeInputs(''), []);
+
+// Adding a plugin to PLUGINS and taking it out, keeping the file as it is written.
+assert.equal(setPluginUsed('set(PLUGINS)\n', 'gipX', true), 'set(PLUGINS gipX)\n');
+assert.equal(setPluginUsed('set(PLUGINS gipA)\n', 'gipX', true), 'set(PLUGINS gipA gipX)\n');
+assert.equal(setPluginUsed('set(PLUGINS\n    gipA\n)\n', 'gipX', true), 'set(PLUGINS\n    gipA gipX\n)\n');
+assert.equal(setPluginUsed('# set(PLUGINS old)\nset(PLUGINS gipA)\n', 'gipX', true), '# set(PLUGINS old)\nset(PLUGINS gipA gipX)\n');
+assert.equal(setPluginUsed('set(PLUGINS gipA gipX)\n', 'gipx', true), 'set(PLUGINS gipA gipX)\n', 'already named, in any case');
+assert.equal(setPluginUsed('project(A)\n', 'gipX', true), null, 'nothing to add to');
+assert.equal(setPluginUsed('set(PLUGINS gipA gipX gipB)\n', 'gipX', false), 'set(PLUGINS gipA gipB)\n');
+assert.equal(setPluginUsed('set(PLUGINS gipX)\nlist(APPEND PLUGINS gipX)\n', 'gipX', false), 'set(PLUGINS)\nlist(APPEND PLUGINS)\n');
+assert.equal(setPluginUsed('set(PLUGINS gipXtra gipX)\n', 'gipX', false), 'set(PLUGINS gipXtra)\n', 'only the whole name');
+assert.deepEqual(pluginsInCmake(setPluginUsed(template, 'gipDemo', true)), ['gipDemo']);
 
 console.log('CMake synchronization tests passed.');

@@ -831,3 +831,23 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .notice-actions button:first-child { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
 .notice-close { display: grid; width: 22px; height: 22px; padding: 0; place-items: center; border: 0; border-radius: 4px; color: var(--ui-fg-muted); background: transparent; cursor: pointer; }
 .notice-close:hover { color: var(--ui-fg-strong); background: var(--ui-hover); }
+
+/* The Plugins view */
+.plugins-view { display: flex; flex-direction: column; }
+.plugins-view[hidden] { display: none; }
+.plugins-search { margin: 8px 10px 4px; height: 26px; padding: 0 8px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-bg); font: inherit; font-size: 12px; }
+.plugins-list { flex: 1; overflow: auto; padding-bottom: 12px; }
+.plugins-heading { padding: 10px 12px 4px; color: var(--ui-fg-muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.plugins-message { margin: 8px 12px; color: var(--ui-fg-muted); font-size: 12px; line-height: 1.4; }
+.plugin-row { padding: 8px 12px; border-bottom: 1px solid var(--ui-border); }
+.plugin-name { color: var(--ui-fg-strong); font-size: 12px; font-weight: 600; }
+.plugin-description { display: -webkit-box; margin-top: 2px; overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.plugin-state { margin-top: 3px; color: var(--ui-fg-muted); font-size: 11px; }
+.plugin-state.update { color: var(--ui-accent); }
+.plugin-actions { display: flex; gap: 6px; margin-top: 6px; }
+.plugin-actions button { height: 24px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); font-size: 11px; cursor: pointer; }
+.plugin-actions button.primary { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
+.plugin-actions button:disabled { cursor: default; opacity: .5; }
+.plugin-working { color: var(--ui-fg-muted); font-size: 11px; }
+.activity-button.has-updates { position: relative; }
+.activity-button.has-updates::after { position: absolute; top: 8px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--ui-accent); content: ''; }
