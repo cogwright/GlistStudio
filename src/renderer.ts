@@ -629,22 +629,47 @@ const isProjectPath = (filePath: string): boolean =>
 const readContents = (filePath: string): Promise<string> => (isProjectPath(filePath)
   ? window.glistAPI.readFile(filePath) : window.glistAPI.readWorkspaceFile(filePath));
 
+// The engine's and plugins' folders the open project names. Neither builds on
+// its own, so their work happens from an app, and their files can be edited
+// here; other files in the Glist folder, such as zbin's, stay read-only.
+let dependencyFolders: string[] = [];
+let dependenciesKnown: Promise<void> = Promise.resolve();
+
+const learnDependencies = (): Promise<void> => {
+  dependenciesKnown = window.glistAPI.listDependencies()
+    .then((dependencies) => { dependencyFolders = dependencies.filter((dependency) => dependency.exists).map((dependency) => dependency.path); })
+    .catch(() => { dependencyFolders = []; });
+  return dependenciesKnown;
+};
+
+// The engine's or plugin's folder a file is in, if any.
+const dependencyFolderOf = (filePath: string): string | undefined => dependencyFolders.find((folder) => isWithin(filePath, folder));
+
+const isEditablePath = (filePath: string): boolean => isProjectPath(filePath) || Boolean(dependencyFolderOf(filePath));
+
+// The first change to the engine or a plugin in a session says that it is shared.
+const warnedShared = new Set<string>();
+// Tabs being read again from disk, which is not a change anyone made.
+const reloading = new Set<OpenFile>();
+
 // clangd and the explorer may spell one path differently, the URI does not.
 const findOpenFile = (uri: monaco.Uri): OpenFile | undefined =>
   fileTabs().find((file) => file.model.uri.toString() === uri.toString());
 
-// Gives a file a tab without switching to it. Files outside the project open read-only.
+// Gives a file a tab without switching to it. Files outside the project, the
+// engine and its plugins open read-only.
 const loadFile = async (filePath: string): Promise<OpenFile> => {
   const uri = pathUri(filePath);
   let file = findOpenFile(uri);
   if (file) return file;
+  await dependenciesKnown;
   const contents = await readContents(filePath);
   file = findOpenFile(uri);
   if (file) return file;
   // clangd may already hold a model of this file for a preview.
   const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
   if (model.getValue() !== contents) model.setValue(contents);
-  const added = addTab(filePath, model, !isProjectPath(filePath));
+  const added = addTab(filePath, model, !isEditablePath(filePath));
   renderTabs();
   return added;
 };
@@ -659,7 +684,14 @@ const refreshDirtyMark = (file: OpenFile): void => {
 const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
   const file: OpenFile = { kind: 'file', path: filePath, name: baseName(filePath), model, savedVersion: model.getAlternativeVersionId(), readOnly };
   openFiles.set(filePath, file);
-  model.onDidChangeContent(() => refreshDirtyMark(file));
+  model.onDidChangeContent(() => {
+    refreshDirtyMark(file);
+    const folder = dependencyFolderOf(file.path);
+    if (folder && !warnedShared.has(folder) && isDirty(file) && !reloading.has(file)) {
+      warnedShared.add(folder);
+      notify({ text: t('sharedEdit').replace('{name}', baseName(folder)) });
+    }
+  });
   clangd.track(model);
   return file;
 };
@@ -671,7 +703,7 @@ const saveFile = async (file: OpenFile): Promise<void> => {
   file.savedVersion = version;
   clangd.saved(file.model);
   refreshDirtyMark(file);
-  if (baseName(file.path) === 'CMakeLists.txt' && isProjectPath(file.path)) void refreshDependencies();
+  if (baseName(file.path) === 'CMakeLists.txt' && isProjectPath(file.path)) void learnDependencies().then(refreshDependencies);
   void git.refresh();
 };
 
@@ -724,7 +756,7 @@ const clangd = new ClangdClient({
         // Opening the file for real resets the text, which is not an edit.
         if (event.isFlush) return;
         watcher.dispose();
-        if (findOpenFile(uri) || !isProjectPath(filePath)) return;
+        if (findOpenFile(uri) || !isEditablePath(filePath)) return;
         addTab(filePath, model, false).savedVersion = cleanVersion;
         renderTabs();
       });
@@ -937,13 +969,15 @@ const showCommitView = (): void => {
   commitPane.focusMessage();
 };
 
-// Open files changed on disk are read again, unless they have unsaved changes.
+// Open files changed on disk are read again, unless they have unsaved changes:
+// the engine's too, so a tab shows what Update Engine and Plugins brought in
+// and saving it later does not put the old text back.
 const reloadOpenFiles = async (): Promise<void> => {
   for (const file of fileTabs()) {
-    if (file.readOnly || !isProjectPath(file.path) || isDirty(file)) continue;
+    if (isDirty(file)) continue;
     let contents: string;
     try {
-      contents = await window.glistAPI.readFile(file.path);
+      contents = await readContents(file.path);
     } catch {
       // Gone, such as a file the branch checked out does not have.
       closeFile(file.path);
@@ -953,9 +987,11 @@ const reloadOpenFiles = async (): Promise<void> => {
     if (isDirty(file) || file.model.isDisposed()) continue;
     if (file.model.getValue() !== contents) {
       // As an edit, so Undo can bring back what was there.
+      reloading.add(file);
       file.model.pushStackElement();
       file.model.pushEditOperations([], [{ range: file.model.getFullModelRange(), text: contents }], () => null);
       file.model.pushStackElement();
+      reloading.delete(file);
     }
     file.savedVersion = file.model.getAlternativeVersionId();
     refreshDirtyMark(file);
@@ -1672,6 +1708,9 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   document.title = `${selected.name} - Glist Studio`;
   studioTerminal.projectChanged();
   agentTerminal.projectChanged();
+  dependencyFolders = [];
+  warnedShared.clear();
+  void learnDependencies();
   gitPanel.reload();
   void git.projectChanged().then(() => commitPane.restoreMessage());
   await loadProjectTree(); updateButtons();

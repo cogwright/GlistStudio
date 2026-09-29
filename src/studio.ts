@@ -705,7 +705,27 @@ const listWorkspaceDirectory = async (directoryPath: string): Promise<FileEntry[
   return listEntries(realDirectory, directoryPath);
 };
 
+// A file in the engine or a plugin the open project names. Neither builds on its
+// own, so their work happens from an app; other workspace files stay read-only.
+const dependencyFile = async (filePath: string): Promise<string> => {
+  const target = path.resolve(filePath);
+  const directory = path.dirname(target);
+  if (existsSync(directory)) {
+    const real = existsSync(target) ? await fs.realpath(target) : path.join(await fs.realpath(directory), path.basename(target));
+    for (const dependency of await listDependencies()) {
+      if (!dependency.exists) continue;
+      const folder = await fs.realpath(dependency.path);
+      if (real !== folder && isInside(folder, real)) return real;
+    }
+  }
+  throw new Error(msg('outsideProject'));
+};
+
 const writeProjectFile = async (filePath: string, contents: string): Promise<boolean> => {
+  if (!isInside(path.resolve(requireProjectRoot()), path.resolve(filePath))) {
+    await fs.writeFile(await dependencyFile(filePath), contents, 'utf8');
+    return true;
+  }
   // A file deleted behind the editor's back is written again, into a folder that still exists.
   const target = existsSync(filePath)
     ? await assertExistingPathInProject(filePath)

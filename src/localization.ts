@@ -289,6 +289,7 @@ const en = {
   pushedRepository: '{name}: pushed to {target}.',
   updatedRepository: '{name}: updated from {upstream}.',
   sharedChanges: 'Changes in {name}, which every project that uses it shares. They are committed to its own repository.',
+  sharedEdit: '{name} is shared by every project that uses it, so saving changes it for all of them.',
   tookTheirs: '{name}: their version was taken.',
 } as const;
 
@@ -582,6 +583,7 @@ const tr: Record<TranslationKey, string> = {
   pushedRepository: '{name}: {target} deposuna gönderildi.',
   updatedRepository: '{name}: {upstream} ile güncellendi.',
   sharedChanges: '{name} içindeki değişiklikler; onu kullanan her proje bunları paylaşır. Kendi deposuna commit edilirler.',
+  sharedEdit: '{name}, onu kullanan tüm projelerce paylaşılıyor; kaydetmek hepsi için değiştirir.',
   tookTheirs: '{name}: onların sürümü alındı.',
 };
 
