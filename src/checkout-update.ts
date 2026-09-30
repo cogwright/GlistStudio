@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { githubRepository } from './git-protection';
+import { languages, type Language, type Words } from './languages';
 
 // Updating a copy of the engine or of a plugin from where it is published:
 // GlistEngine/GlistEngine, GlistPlugins/<name>, or a plugin listed from
@@ -34,23 +35,8 @@ export interface CheckoutContext {
   site: string;
   // Whether a remote's branch is protected, as Settings > Git and GitHub say.
   isProtected(folder: string, remote: string, branch: string): Promise<boolean>;
-  language(): 'en' | 'tr';
+  language(): Language;
 }
-
-const messages = {
-  en: {
-    notFromSource: '{name} was not installed from {source}, and none of its remotes is {source}, so it is not updated from there.',
-    otherBranch: '{name} is on the branch {branch}; updates are for {main}.',
-    detached: '{name} is on a commit rather than a branch, so it is not updated.',
-    conflicts: 'The changes in {name} conflict with the new ones from {source}.',
-  },
-  tr: {
-    notFromSource: '{name}, {source} kaynağından kurulmadı ve uzak depolarının hiçbiri {source} değil, bu yüzden oradan güncellenmez.',
-    otherBranch: '{name} {branch} dalında; güncellemeler {main} dalı için.',
-    detached: '{name} bir dalda değil, bir commit üzerinde; bu yüzden güncellenmez.',
-    conflicts: '{name} içindeki değişiklikler, {source} kaynağından gelen yenileriyle çakışıyor.',
-  },
-} as const;
 
 const lines = (result: GitResult): string[] => result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
 const lastLine = (result: GitResult, fallback: string): string =>
@@ -66,8 +52,8 @@ export const isSourceAddress = (address: string, source: string, site = 'https:/
 
 export const createCheckouts = (context: CheckoutContext) => {
   const { git } = context;
-  const say = (key: keyof typeof messages.en, values: Record<string, string>): string =>
-    Object.entries(values).reduce((text: string, [name, value]) => text.split(`{${name}}`).join(value), messages[context.language()][key]);
+  const say = (key: keyof Words['updates'], values: Record<string, string>): string =>
+    Object.entries(values).reduce((text: string, [name, value]) => text.split(`{${name}}`).join(value), languages[context.language()].updates[key]);
   // Each source's default branch, once asked of the remote.
   const defaults = new Map<string, string>();
 

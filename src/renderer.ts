@@ -45,6 +45,7 @@ import { PathSettings } from './path-settings';
 import { EnvironmentSettings } from './environment-settings';
 import { RunArguments } from './run-arguments';
 import { terminalTheme } from './themes';
+import { isLanguage, languages } from './languages';
 import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
 import './index.css';
 
@@ -367,8 +368,8 @@ const refreshLanguage = (): void => {
   runArguments.describe();
   if (!activeProject) {
     projectRootLabel.textContent = t('projectPlaceholder');
-    if (output.textContent === '' || output.textContent.includes('Glist Studio is ready')
-      || output.textContent.includes('Glist Studio hazır')) clearOutput(t('initialOutput'));
+    if (output.textContent === '' || Object.values(languages)
+      .some((words) => output.textContent === words.interface.initialOutput)) clearOutput(t('initialOutput'));
   }
   if (!isBuildRunning && !isRunRunning) setProcessStatus(t('ready'), false);
 };
@@ -2682,9 +2683,10 @@ element<HTMLButtonElement>('#open-settings').addEventListener('click', () => ope
 // Its words, in a language just chosen.
 settingsLanguage.addEventListener('change', () => { void aboutView.refresh(); });
 element<HTMLButtonElement>('#settings-close').addEventListener('click', () => settingsDialog.close());
+settingsLanguage.replaceChildren(...Object.entries(languages).map(([code, words]) => new Option(words.name, code)));
 settingsLanguage.value = getLanguage();
 settingsLanguage.addEventListener('change', () => {
-  const next = settingsLanguage.value === 'tr' ? 'tr' : 'en';
+  const next = isLanguage(settingsLanguage.value) ? settingsLanguage.value : 'en';
   applyLanguage(next);
   refreshLanguage();
   scheduleMenuSync();

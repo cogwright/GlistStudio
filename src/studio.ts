@@ -13,6 +13,7 @@ import { renderCppClass } from './class-template';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
 import { createGitService } from './git-service';
 import { createCheckouts, gitRunner } from './checkout-update';
+import { isLanguage, languages, type Language, type Words } from './languages';
 import { createPluginService } from './plugins';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 
@@ -68,98 +69,12 @@ interface ProcessResult {
   message: string;
 }
 
-type AppLanguage = 'en' | 'tr';
 type ProjectTemplate = 'GlistApp' | 'GlistConsoleApp' | 'GlistGUIApp';
 
 const templateNames = new Set<ProjectTemplate>(['GlistApp', 'GlistConsoleApp', 'GlistGUIApp']);
-let language: AppLanguage = 'en';
+let language: Language = 'en';
 
-const messages = {
-  en: {
-    noProject: 'Open a Glist project first.', invalidName: 'Enter a valid file or folder name.',
-    outsideProject: 'Files outside the project cannot be accessed.',
-    folderRequired: 'Select a folder to create an item.', rootDelete: 'The project root cannot be deleted.',
-    alreadyExists: 'An item with this name already exists.',
-    invalidClass: 'Enter a valid C++ class name (letters, numbers and underscores).',
-    classSource: 'CMakeLists.txt does not contain source/header lists for this class.',
-    invalidTemplate: 'Select a valid project template.',
-    projectExists: 'A project with this name already exists.',
-    openTitle: 'Open Glist project',
-    newTitle: 'Create Glist project',
-    buildRunning: 'A build is already running.', configuring: 'Configuring', building: 'Building', ready: 'Ready',
-    configureFailed: 'CMake configuration stopped with code', buildFailed: 'Build stopped with code',
-    buildSucceeded: 'Build completed successfully.', buildStartFailed: 'Could not start build',
-    buildFolderMoved: 'This build folder was made for {folder}, so it is made again for this project. The first build takes longer.',
-    configured: 'CMake configured.',
-    notRunnable: '{name} is not a program, so it can be built but not run.',
-    appRunning: 'The application is already running.', runCancelled: 'Run cancelled',
-    executableMissing: 'Build completed, but no executable was found.', launched: 'launched',
-    debugCancelled: 'Debugging cancelled',
-    debuggerMissing: 'No debugger was found. Install LLVM (for lldb-dap) or GDB 14 or newer, and make sure it is on PATH.',
-    debuggerFailed: 'The debugger could not be started',
-    debuggerMissingWindows: 'No debugger is installed yet. Glist\'s tools have none on Windows; install GDB in Settings, under Debugger.',
-    debuggerInstalled: 'GDB is installed.', debuggerInstallFailed: 'GDB could not be installed',
-    debuggerInstallRunning: 'GDB is already being installed.',
-    launchFailed: 'Could not launch application', stopped: 'Running process stopped.',
-    nothingToStop: 'No running process to stop.', fileRequired: 'The selected path is not a file.',
-    fileTooLarge: 'Files larger than 5 MB cannot be opened in this version.',
-    copyIntoSelf: 'A folder cannot be copied into itself or one of its subfolders.',
-    clangdMissing: 'clangd could not be started, so C++ code intelligence is off',
-    unsavedChanges: 'Some files have unsaved changes.', saveAndClose: 'Save and Close',
-    closeWithoutSaving: 'Close Without Saving', cancel: 'Cancel',
-    terminalMissing: 'No terminal was found. Set the TERMINAL environment variable to the one you use.',
-    terminalFailed: 'The terminal could not be started',
-    agentMissing: 'This agent is not installed. Install it in Settings, under Agents.',
-    agentInstallRunning: 'An agent is already being installed.',
-    agentInstalled: 'Installed.', agentInstallFailed: 'The installation stopped',
-    installerMissing: 'Glist Engine\'s installer could not be downloaded',
-    pathFolderTitle: 'Add a folder to PATH',
-    askpassPrompt: 'Glist Engine\'s installer needs your password to install the tools it uses.',
-  },
-  tr: {
-    noProject: 'Önce bir Glist projesi açın.', invalidName: 'Geçerli bir dosya veya klasör adı girin.',
-    outsideProject: 'Proje klasörü dışındaki dosyalara erişilemez.',
-    folderRequired: 'Öğe oluşturmak için bir klasör seçin.', rootDelete: 'Proje kök klasörü silinemez.',
-    alreadyExists: 'Bu adda bir öğe zaten var.',
-    invalidClass: 'Geçerli bir C++ sınıf adı girin (harf, sayı ve alt çizgi).',
-    classSource: 'CMakeLists.txt içinde sınıf için kaynak/başlık listeleri bulunamadı.',
-    invalidTemplate: 'Geçerli bir proje şablonu seçin.',
-    projectExists: 'Bu adda bir proje zaten var.',
-    openTitle: 'Glist projesi aç',
-    newTitle: 'Glist projesi oluştur',
-    buildRunning: 'Bir derleme zaten çalışıyor.', configuring: 'Yapılandırılıyor', building: 'Derleniyor', ready: 'Hazır',
-    configureFailed: 'CMake yapılandırması durdu, çıkış kodu', buildFailed: 'Derleme durdu, çıkış kodu',
-    buildSucceeded: 'Derleme başarıyla tamamlandı.', buildStartFailed: 'Derleme başlatılamadı',
-    buildFolderMoved: 'Bu derleme klasörü {folder} için oluşturulmuştu; bu proje için yeniden oluşturuluyor. İlk derleme daha uzun sürer.',
-    configured: 'CMake yapılandırıldı.',
-    notRunnable: '{name} bir program olmadığı için derlenebilir ama çalıştırılamaz.',
-    appRunning: 'Uygulama zaten çalışıyor.', runCancelled: 'Çalıştırma iptal edildi',
-    executableMissing: 'Derleme tamamlandı ancak çalıştırılabilir dosya bulunamadı.', launched: 'başlatıldı',
-    debugCancelled: 'Hata ayıklama iptal edildi',
-    debuggerMissing: 'Hata ayıklayıcı bulunamadı. LLVM (lldb-dap için) ya da GDB 14 veya daha yenisini kurun ve PATH’te olduğundan emin olun.',
-    debuggerFailed: 'Hata ayıklayıcı başlatılamadı',
-    debuggerMissingWindows: 'Henüz kurulu bir hata ayıklayıcı yok. Glist araçlarında Windows için yok; GDB’yi Ayarlar’da, Hata Ayıklayıcı altında kurun.',
-    debuggerInstalled: 'GDB kuruldu.', debuggerInstallFailed: 'GDB kurulamadı',
-    debuggerInstallRunning: 'GDB zaten kuruluyor.',
-    launchFailed: 'Uygulama başlatılamadı', stopped: 'Çalışan işlem durduruldu.',
-    nothingToStop: 'Durdurulacak işlem yok.', fileRequired: 'Seçilen yol bir dosya değil.',
-    fileTooLarge: '5 MB üzerindeki dosyalar bu sürümde açılamıyor.',
-    copyIntoSelf: 'Bir klasör kendi içine veya alt klasörlerinden birine kopyalanamaz.',
-    clangdMissing: 'clangd başlatılamadı, C++ kod desteği kapalı',
-    unsavedChanges: 'Bazı dosyalarda kaydedilmemiş değişiklikler var.', saveAndClose: 'Kaydet ve Kapat',
-    closeWithoutSaving: 'Kaydetmeden Kapat', cancel: 'İptal',
-    terminalMissing: 'Terminal bulunamadı. Kullandığınız terminali TERMINAL ortam değişkeniyle belirtin.',
-    terminalFailed: 'Terminal başlatılamadı',
-    agentMissing: 'Bu ajan kurulu değil. Ayarlar’da, Ajanlar altında kurabilirsiniz.',
-    agentInstallRunning: 'Zaten bir ajan kuruluyor.',
-    agentInstalled: 'Kuruldu.', agentInstallFailed: 'Kurulum durdu',
-    installerMissing: 'Glist Engine’in kurulum programı indirilemedi',
-    pathFolderTitle: 'PATH’e klasör ekle',
-    askpassPrompt: 'Glist Engine’in kurulum programı, kullandığı araçları kurmak için parolanızı istiyor.',
-  },
-} as const;
-
-export const msg = (key: keyof typeof messages.en): string => messages[language][key];
+export const msg = (key: keyof Words['studio']): string => languages[language].studio[key];
 
 const ignoredDirectories = new Set([
   '.git', '.webpack', 'node_modules', 'out', 'build',
@@ -1493,8 +1408,8 @@ const updateEngine = (choice?: unknown, resolve?: unknown): Promise<GlistCheckou
   engineFolder(), 'GlistEngine', engineSource, choice === 'keep' || choice === 'replace' ? choice : undefined, { resolve: resolve === true },
 );
 
-const setLanguage = (nextLanguage: AppLanguage): AppLanguage => {
-  language = nextLanguage === 'tr' ? 'tr' : 'en';
+const setLanguage = (nextLanguage: Language): Language => {
+  language = isLanguage(nextLanguage) ? nextLanguage : 'en';
   return language;
 };
 

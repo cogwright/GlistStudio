@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createCheckouts, gitRunner } from './checkout-update';
 import { pluginsInCmake, setPluginUsed } from './cmake';
 import { defaultProtection, matchesBranch } from './git-protection';
+import { languages, type Language, type Words } from './languages';
 
 // The Plugins view: the plugins GlistPlugins publishes, the ones installed in
 // glistplugins beside the engine, installing one with git, and updating those
@@ -19,30 +20,13 @@ export interface PluginContext {
   // GitHub's API, or a test server; and where GlistPlugins' repositories are cloned from.
   api?: string;
   site?: string;
-  language(): 'en' | 'tr';
+  language(): Language;
   // Tests list their own; see extraRepositories and hiddenPlugins.
   extras?: string[];
   hidden?: string[];
   // Whether a remote's branch is protected; by default main and master are.
   isProtected?(folder: string, remote: string, branch: string): Promise<boolean>;
 }
-
-const messages = {
-  en: {
-    badName: 'This is not a plugin name.',
-    notPublished: '{name} is not in the plugin list.',
-    installedAlready: '{name} is already in glistplugins.',
-    noProject: 'Open a project first.',
-    noPluginList: 'CMakeLists.txt has no set(PLUGINS ...) to add it to.',
-  },
-  tr: {
-    badName: 'Bu bir eklenti adı değil.',
-    notPublished: '{name} eklenti listesinde yok.',
-    installedAlready: '{name} zaten glistplugins içinde.',
-    noProject: 'Önce bir proje açın.',
-    noPluginList: 'CMakeLists.txt içinde eklentinin ekleneceği bir set(PLUGINS ...) yok.',
-  },
-} as const;
 
 const organization = 'GlistPlugins';
 
@@ -62,8 +46,8 @@ interface Repository { name: string; description: string; url: string; defaultBr
 const validName = (name: unknown): name is string => typeof name === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(name);
 
 export const createPluginService = (context: PluginContext) => {
-  const say = (key: keyof typeof messages.en, values: Record<string, string> = {}): string =>
-    Object.entries(values).reduce((text: string, [name, value]) => text.replace(`{${name}}`, value), messages[context.language()][key]);
+  const say = (key: keyof Words['plugins'], values: Record<string, string> = {}): string =>
+    Object.entries(values).reduce((text: string, [name, value]) => text.replace(`{${name}}`, value), languages[context.language()].plugins[key]);
   const extras = context.extras ?? extraRepositories;
   const hidden = new Set((context.hidden ?? hiddenPlugins).map((name) => name.toLowerCase()));
   const api = context.api ?? 'https://api.github.com';

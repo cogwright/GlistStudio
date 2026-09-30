@@ -7,6 +7,7 @@ import {
   parseTags, stashFormat, tagFormat, type GitFileChange,
 } from './git';
 import { createHostProtection, defaultProtection, matchesBranch, protectionFrom } from './git-protection';
+import { languages, type Language, type Words } from './languages';
 
 // Git for the Commit view and the Git panel, by running the git program in the
 // open project's repository. Anything that changes the repository runs one at
@@ -27,77 +28,12 @@ export interface GitContext {
   home(): string;
   // Where Clone puts a repository.
   projectsDirectory(): string;
-  language(): 'en' | 'tr';
+  language(): Language;
   // GitHub's API, for the branches it protects; a test server in tests.
   githubApi?: string;
 }
 
-const messages = {
-  en: {
-    noProject: 'Open a project first.',
-    notRepository: 'This project is not in a Git repository.',
-    alreadyRepository: 'This project is already in a Git repository.',
-    messageRequired: 'Write a commit message first.',
-    nothingSelected: 'Choose the files to commit.',
-    rebaseCommit: 'A rebase is in progress: resolve the conflicts, then choose Continue.',
-    unresolved: 'Resolve the conflicts first, and mark the files resolved.',
-    invalidName: 'This name cannot be used.',
-    invalidRevision: 'This is not a commit, branch or tag.',
-    invalidUrl: 'Enter the address of a repository, such as https://github.com/user/project.git.',
-    outsideRepository: 'This file is not in the repository.',
-    nothingInProgress: 'Nothing is in progress.',
-    projectExists: 'A folder with this name already exists there.',
-    identity: 'Git needs your name and email for commits. Set them in Settings, under Git.',
-    conflicts: 'There are conflicts to resolve.',
-    localChanges: 'Your changes to some files would be lost. Commit or stash them first.',
-    notMerged: 'This branch has commits that are in no other branch.',
-    rejected: 'The remote has commits this branch does not have yet. Update the project, then push again.',
-    auth: 'The remote did not accept the login.',
-    githubToken: 'GitHub does not take account passwords here. Use a personal access token as the password (github.com/settings/tokens).',
-    noUpstream: 'This branch is not connected to a remote branch yet. Push it first.',
-    noRemote: 'This repository has no remote. Add one under Git > Remotes.',
-    network: 'The remote could not be reached. Check the address and the internet connection.',
-    done: 'Done.',
-    committed: 'Committed',
-    pushed: 'Pushed.',
-    askpass: 'Git needs a password.',
-    amendPushed: 'The last commit is already pushed, so it cannot be amended. Commit the changes as a new commit instead.',
-    forceProtected: '{branch} is a protected branch, so it cannot be overwritten.',
-  },
-  tr: {
-    noProject: 'Önce bir proje açın.',
-    notRepository: 'Bu proje bir Git deposunda değil.',
-    alreadyRepository: 'Bu proje zaten bir Git deposunda.',
-    messageRequired: 'Önce bir commit mesajı yazın.',
-    nothingSelected: 'Commit edilecek dosyaları seçin.',
-    rebaseCommit: 'Bir rebase sürüyor: çakışmaları çözün, sonra Devam Et\'i seçin.',
-    unresolved: 'Önce çakışmaları çözün ve dosyaları çözüldü olarak işaretleyin.',
-    invalidName: 'Bu ad kullanılamaz.',
-    invalidRevision: 'Bu bir commit, dal veya etiket değil.',
-    invalidUrl: 'https://github.com/kullanici/proje.git gibi bir depo adresi girin.',
-    outsideRepository: 'Bu dosya depoda değil.',
-    nothingInProgress: 'Süren bir işlem yok.',
-    projectExists: 'Orada bu adda bir klasör zaten var.',
-    identity: 'Git, commit\'ler için adınızı ve e-postanızı istiyor. Ayarlar\'da, Git altında girebilirsiniz.',
-    conflicts: 'Çözülmesi gereken çakışmalar var.',
-    localChanges: 'Bazı dosyalardaki değişiklikleriniz kaybolacağı için yapılamadı. Önce onları commit edin ya da saklayın.',
-    notMerged: 'Bu dalda başka hiçbir dalda olmayan commit\'ler var.',
-    rejected: 'Uzak depoda bu dalda henüz olmayan commit\'ler var. Projeyi güncelleyip yeniden gönderin.',
-    auth: 'Uzak depo giriş bilgilerini kabul etmedi.',
-    githubToken: 'GitHub burada hesap parolasını kabul etmiyor. Parola yerine bir personal access token kullanın (github.com/settings/tokens).',
-    noUpstream: 'Bu dal henüz bir uzak dala bağlı değil. Önce gönderin.',
-    noRemote: 'Bu depoya bağlı bir uzak depo yok. Git > Uzak Depolar altından ekleyebilirsiniz.',
-    network: 'Uzak depoya ulaşılamadı. Adresi ve internet bağlantısını kontrol edin.',
-    done: 'Tamamlandı.',
-    committed: 'Commit edildi',
-    pushed: 'Gönderildi.',
-    askpass: 'Git bir parola istiyor.',
-    amendPushed: 'Son commit zaten gönderildiği için düzeltilemez. Değişiklikleri yeni bir commit olarak commit edin.',
-    forceProtected: '{branch} korunan bir dal olduğu için üzerine yazılamaz.',
-  },
-} as const;
-
-type MessageKey = keyof typeof messages.en;
+type MessageKey = keyof Words['git'];
 
 interface Repository {
   // The folder the studio knows it by: the project's, or the engine's or a plugin's.
@@ -138,7 +74,7 @@ const defaultIgnore = '# Built by Glist Studio and CMake\n_build/\n\n# Made by t
 const askpassPrograms = ['zenity', 'kdialog', 'ssh-askpass', '/usr/lib/ssh/ssh-askpass', '/usr/libexec/openssh/ssh-askpass'];
 
 export const createGitService = (context: GitContext) => {
-  const say = (key: MessageKey): string => messages[context.language()][key];
+  const say = (key: MessageKey): string => languages[context.language()].git[key];
   const fail = (key: MessageKey): never => { throw new Error(say(key)); };
 
   // Settings > Git: whether pushed commits are protected, and which branches are.
