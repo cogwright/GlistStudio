@@ -459,6 +459,19 @@ const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'norm
   output.scrollTop = output.scrollHeight;
 };
 
+// What a file operation did, or why it could not, as a notification rather
+// than in the Output panel, which keeps what builds and runs print.
+const noticePath = (target: string): string => (activeProject && isWithin(target, activeProject.root)
+  ? target.slice(activeProject.root.length + 1) || target : target);
+const noticeDone = (key: TranslationKey, target: string): void =>
+  notify({ text: `${t(key)}: ${baseName(target)}`, detail: noticePath(target), kind: 'success' });
+// Electron wraps an error from the main process in words about IPC; the error itself is enough.
+const noticeFailed = (key: TranslationKey, error: unknown, name?: string): void => notify({
+  text: name ? `${t(key)}: ${name}` : t(key),
+  detail: (error instanceof Error ? error.message : String(error)).replace(/^Error invoking remote method '[^']*': (?:Error: )?/, ''),
+  kind: 'error',
+});
+
 const setProcessStatus = (label: string, active: boolean, error = false): void => {
   processStatus.classList.toggle('active', active);
   processStatus.classList.toggle('error', error);
@@ -823,7 +836,7 @@ const openFile = async (filePath: string, name: string): Promise<boolean> => {
     activateFile(file.path);
     return true;
   } catch (error) {
-    appendOutput(`\n${t('fileOpenFailed')}: ${name}: ${error instanceof Error ? error.message : String(error)}\n`, 'error');
+    noticeFailed('fileOpenFailed', error, name);
     return false;
   }
 };
@@ -1244,9 +1257,9 @@ const deleteProjectFile = async (filePath: string): Promise<void> => {
     closeFilesUnderEntry(filePath);
     await reloadOpenCmake();
     await loadProjectTree();
-    appendOutput(`\n✓ ${t('movedToTrash')}: ${filePath}\n`);
+    noticeDone('movedToTrash', filePath);
   } catch (error) {
-    appendOutput(`\n${t('deleteFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('deleteFailed', error);
   }
 };
 
@@ -1636,9 +1649,9 @@ const createFile = async (): Promise<void> => {
     revealTargetDirectory(directory);
     await loadProjectTree();
     await openFile(createdPath, name);
-    appendOutput(`\n✓ ${t('fileCreated')}: ${createdPath}\n`);
+    noticeDone('fileCreated', createdPath);
   } catch (error) {
-    appendOutput(`\n${t('createFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('createFailed', error);
   }
 };
 
@@ -1651,9 +1664,9 @@ const createFolder = async (): Promise<void> => {
     const createdPath = await window.glistAPI.createDirectory(directory, name);
     revealTargetDirectory(directory);
     await loadProjectTree();
-    appendOutput(`\n✓ ${t('folderCreated')}: ${createdPath}\n`);
+    noticeDone('folderCreated', createdPath);
   } catch (error) {
-    appendOutput(`\n${t('createFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('createFailed', error);
   }
 };
 
@@ -1669,16 +1682,16 @@ const createClass = async (): Promise<void> => {
     revealTargetDirectory(directory);
     await loadProjectTree();
     await openFile(created.header, `${className}.h`);
-    appendOutput(`\n✓ ${t('classCreated')}: ${className}\n`);
+    notify({ text: `${t('classCreated')}: ${className}`, kind: 'success' });
   } catch (error) {
-    appendOutput(`\n${t('createFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('createFailed', error);
   }
 };
 
 const copySelectedEntry = (): void => {
   if (!selectedEntry) return;
   copiedEntryPath = selectedEntry.path;
-  appendOutput(`\n✓ ${t('copied')}: ${selectedEntry.path}\n`);
+  noticeDone('copied', selectedEntry.path);
 };
 
 const pasteCopiedEntry = async (): Promise<void> => {
@@ -1694,9 +1707,9 @@ const pasteCopiedEntry = async (): Promise<void> => {
     const copiedPath = await window.glistAPI.copyEntry(copiedEntryPath, directory);
     if (activeProject && directory !== activeProject.root) expandedDirectories.add(directory);
     await loadProjectTree();
-    appendOutput(`\n✓ ${t('pasted')}: ${copiedPath}\n`);
+    noticeDone('pasted', copiedPath);
   } catch (error) {
-    appendOutput(`\n${t('copyFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('copyFailed', error);
   }
 };
 
@@ -1704,14 +1717,14 @@ const showInExplorer = async (): Promise<void> => {
   const target = selectedEntry?.path ?? activeProject?.root;
   if (!target) return;
   try { await window.glistAPI.showInExplorer(target); }
-  catch (error) { appendOutput(`\n${t('showFailed')}: ${errorText(error)}\n`, 'error'); }
+  catch (error) { noticeFailed('showFailed', error); }
 };
 
 const openCommandPrompt = async (): Promise<void> => {
   const target = selectedEntry?.path ?? activeProject?.root;
   if (!target) return;
   try { await window.glistAPI.openCommandPrompt(target); }
-  catch (error) { appendOutput(`\n${t('showFailed')}: ${errorText(error)}\n`, 'error'); }
+  catch (error) { noticeFailed('showFailed', error); }
 };
 
 const closeFilesUnderEntry = (entryPath: string): void => {
@@ -1764,9 +1777,9 @@ const renameSelectedEntry = async (): Promise<void> => {
     await reloadOpenCmake();
     expandedDirectories.clear();
     await loadProjectTree();
-    appendOutput(`\n✓ ${t('renamed')}: ${entry.path} → ${nextPath}\n`);
+    notify({ text: t('renamedTo').replace('{from}', entry.name).replace('{to}', baseName(nextPath)), detail: noticePath(nextPath), kind: 'success' });
   } catch (error) {
-    appendOutput(`\n${t('renameFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('renameFailed', error);
   }
 };
 
@@ -1784,9 +1797,9 @@ const deleteSelectedEntry = async (): Promise<void> => {
     closeFilesUnderEntry(entry.path);
     await reloadOpenCmake();
     await loadProjectTree();
-    appendOutput(`\n✓ ${t('movedToTrash')}: ${entry.path}\n`);
+    noticeDone('movedToTrash', entry.path);
   } catch (error) {
-    appendOutput(`\n${t('deleteFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('deleteFailed', error);
   }
 };
 
@@ -1819,7 +1832,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   void git.projectChanged().then(() => commitPane.restoreMessage());
   await loadProjectTree(); updateButtons();
   clearOutput(`Glist Studio\n${t('openedProject')}: ${selected.root}\n`);
-  if (!selected.hasCMakeProject) appendOutput(`${t('noCmake')}\n`);
+  if (!selected.hasCMakeProject) notify({ text: t('noCmake') });
   void clangd.start(selected.root);
   debug.setProject(selected.root);
   targetPicker.projectChanged(selected.root);
@@ -1831,7 +1844,7 @@ const openProjectWith = async (open: () => Promise<GlistProjectInfo | null>): Pr
     const selected = await open();
     if (selected) await openSelectedProject(selected);
   } catch (error) {
-    appendOutput(`\n${t('projectOpenFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('projectOpenFailed', error);
   }
 };
 
@@ -1903,7 +1916,7 @@ const saveActiveFile = async (): Promise<void> => {
     await saveFile(file);
     setProcessStatus(`${file.name} ${t('saved')}`, false);
   } catch (error) {
-    appendOutput(`\n${t('saveFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('saveFailed', error);
   }
 };
 
@@ -1915,7 +1928,7 @@ const saveProjectFiles = async (): Promise<boolean> => {
     }
     return true;
   } catch (error) {
-    appendOutput(`\n${t('saveFailed')}: ${errorText(error)}\n`, 'error');
+    noticeFailed('saveFailed', error);
     return false;
   }
 };
@@ -1927,17 +1940,38 @@ const whileStarting = async (task: () => Promise<void>): Promise<void> => {
   try { await task(); } finally { isStarting = false; updateButtons(); }
 };
 
+// What the last build printed, to find its first error in.
+let buildLog = '';
+
+// A failed build says so, with the first compiler error and the way to it.
+const noticeBuildFailed = (message: string): void => {
+  // eslint-disable-next-line no-control-regex
+  const plain = buildLog.replace(/\x1b\[[0-9;]*m/g, '');
+  const found = /((?:[A-Za-z]:)?[^\s:()'"<>]+\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|inl)):(\d+)(?::\d+)?:\s*(?:fatal )?error:\s*(.+)/.exec(plain);
+  notify({
+    text: t('buildFailed'),
+    detail: found ? `${baseName(found[1])}:${found[2]}: ${found[3].trim()}` : message.trim(),
+    kind: 'error',
+    actions: [
+      ...(found ? [{ label: t('goToError'), run: () => openOutputLocation(found[1], Number(found[2])) }] : []),
+      { label: t('showOutput'), run: () => showPanel('output') },
+    ],
+  });
+};
+
 const buildProject = async (): Promise<void> => {
   if (!activeProject || isBuildRunning || isStarting) return;
   await whileStarting(async () => {
     if (!(await saveProjectFiles())) return;
     showPanel('output');
     appendOutput('\n── BUILD ────────────────────────────────────────\n');
+    buildLog = '';
     const result = await window.glistAPI.buildProject();
     clangd.buildFinished();
     void targetPicker.refresh();
     appendOutput(result.message, result.success ? 'success' : 'error');
     setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
+    if (!result.success) noticeBuildFailed(result.message);
   });
 };
 
@@ -1946,10 +1980,12 @@ const runProject = async (): Promise<void> => {
   await whileStarting(async () => {
     if (!(await saveProjectFiles())) return;
     showPanel('output');
+    buildLog = '';
     const result = await window.glistAPI.runProject();
     clangd.buildFinished();
     void targetPicker.refresh();
     appendOutput(result.message, result.success ? 'success' : 'error');
+    if (!result.success) noticeBuildFailed(result.message);
   });
 };
 
@@ -1972,6 +2008,7 @@ const stopProject = async (): Promise<void> => {
   if (debugging) await debug.stop();
   const result = await window.glistAPI.stopProject();
   if (result.success || !debugging) appendOutput(result.message, result.success ? 'normal' : 'error');
+  if (!result.success && !debugging) notify({ text: result.message, kind: 'error' });
 };
 
 const configureResizers = (): void => {
@@ -2403,7 +2440,7 @@ element<HTMLFormElement>('#new-project-form').addEventListener('submit', async (
     const selected = await window.glistAPI.createProject(template, name);
     projectDialog.close();
     await openSelectedProject(selected);
-    appendOutput(`\n✓ ${t('projectCreated')}: ${selected.root}\n`);
+    notify({ text: `${t('projectCreated')}: ${baseName(selected.root)}`, detail: selected.root, kind: 'success' });
   } catch (error) {
     errorHost.textContent = errorText(error);
   }
@@ -2466,7 +2503,7 @@ window.addEventListener('beforeunload', (event) => {
   if (hasDirtyFiles()) { event.preventDefault(); event.returnValue = ''; }
 });
 
-window.glistAPI.onBuildOutput((text) => appendOutput(text));
+window.glistAPI.onBuildOutput((text) => { appendOutput(text); buildLog = (buildLog + text).slice(-200000); });
 // Settings > Build: CMake configures again when its files change, unless turned off.
 const autoConfigureInput = element<HTMLInputElement>('#auto-configure');
 autoConfigureInput.checked = ((): boolean => { try { return window.localStorage.getItem('glist-studio-auto-configure') !== 'off'; } catch { return true; } })();
