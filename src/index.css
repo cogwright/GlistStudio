@@ -418,6 +418,21 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .dirty-dot:not(.visible) svg.icon { visibility: hidden; }
 .tab-close { display: grid; width: 18px; height: 18px; place-items: center; border-radius: 4px; color: var(--ui-fg-muted); cursor: pointer; }
 .tab-close:hover { color: var(--ui-fg-strong); background: var(--ui-hover-strong); }
+/* The editor area's sides, each a tab strip over its editor, across the column's tab and editor rows;
+   the left one takes --editor-split of the width. */
+.editor-groups { display: flex; min-width: 0; min-height: 0; grid-row: span 2; }
+.editor-group { display: grid; min-width: 0; min-height: 0; flex: 1 1 0; grid-template-rows: 35px minmax(0,1fr); }
+.editor-group[hidden] { display: none; }
+.editor-groups.split > .editor-group:first-child { flex: 0 0 var(--editor-split, 50%); }
+.group-resizer { position: relative; z-index: 20; flex: 0 0 3px; margin: 0 -1px; background: var(--ui-border); cursor: col-resize; }
+.group-resizer:hover { background: var(--ui-accent); }
+.group-resizer[hidden] { display: none; }
+/* With two sides, the tab in front of the side not worked in is marked more quietly. */
+.editor-groups.split > .editor-group:not(.focused) .editor-tab.active { border-top-color: var(--ui-border-strong); color: var(--ui-fg); }
+/* Where a dragged tab would go: the other side, or a new one on the right. */
+.drop-overlay { position: absolute; inset: 0; z-index: 30; border: 2px solid var(--ui-accent); background: color-mix(in srgb, var(--ui-accent) 16%, transparent); pointer-events: none; }
+.drop-overlay.right { left: 50%; }
+.drop-overlay[hidden] { display: none; }
 .editor-stage { position: relative; min-width: 0; min-height: 0; }
 .editor-host { display: none; width: 100%; height: 100%; }
 .editor-host.visible { display: block; }

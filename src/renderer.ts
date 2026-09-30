@@ -28,7 +28,7 @@ import { GitClient } from './git-client';
 import { branchName, CommitView } from './git-commit-view';
 import { showMenu, type MenuEntry } from './context-menu';
 import { editorCommands, editorMenu, editorMenuPoint, type EditorMenuHooks } from './editor-menu';
-import { EditorLayout } from './editor-layout';
+import { EditorLayout, maxGroups } from './editor-layout';
 import { CommandPalette, type PaletteCommand } from './command-palette';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { PluginsView, pluginTarget } from './plugins-view';
@@ -113,11 +113,9 @@ const fileTree = element<HTMLDivElement>('#file-tree');
 const tabsHost = element<HTMLDivElement>('#editor-tabs');
 const editorHost = element<HTMLDivElement>('#editor-host');
 const welcome = element<HTMLDivElement>('#welcome');
-const diffView = element<HTMLElement>('#diff-view');
-const diffHost = element<HTMLElement>('#diff-host');
-const diffMessage = element<HTMLElement>('#diff-message');
-const diffRollbackButton = element<HTMLButtonElement>('#diff-rollback');
-const diffOpenButton = element<HTMLButtonElement>('#diff-open');
+const groupsHost = element<HTMLElement>('#editor-groups');
+// The diff view as the page starts, for the right side to copy.
+const diffTemplate = element<HTMLElement>('#diff-view').cloneNode(true) as HTMLElement;
 const commitViewElement = element<HTMLElement>('#commit-view');
 const pluginsViewElement = element<HTMLElement>('#plugins-view');
 const commitActivity = element<HTMLButtonElement>('#commit-activity');
@@ -403,7 +401,7 @@ const requestName = (titleKey: TranslationKey, labelKey: TranslationKey, initial
     inputValue.select();
   });
 
-const editor = monaco.editor.create(editorHost, {
+const codeEditorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
   automaticLayout: true,
   // Colors from clangd for functions, types, members and the like.
   'semanticHighlighting.enabled': true,
@@ -420,19 +418,59 @@ const editor = monaco.editor.create(editorHost, {
   tabSize: 4,
   // The studio draws the right-click menu (editor-menu.ts).
   contextmenu: false,
-});
+};
+const editor = monaco.editor.create(editorHost, codeEditorOptions);
+
+// A side's diff view, for a diff tab in front there.
+interface DiffPane {
+  view: HTMLElement;
+  host: HTMLElement;
+  left: HTMLElement;
+  right: HTMLElement;
+  message: HTMLElement;
+  open: HTMLButtonElement;
+  rollback: HTMLButtonElement;
+  // Made the first time the side shows a diff.
+  editor: monaco.editor.IStandaloneDiffEditor | null;
+}
+const diffPane = (view: HTMLElement): DiffPane => {
+  const part = <T extends HTMLElement>(name: string): T => view.querySelector(`[data-diff="${name}"]`) as T;
+  return { view, host: part('host'), left: part('left'), right: part('right'), message: part('message'), open: part('open'), rollback: part('rollback'), editor: null };
+};
 
 // One side of the editor area as it is drawn: its tab strip, and the editor
-// under it showing the file in front there.
+// or diff view under it showing the tab in front there.
 interface GroupView {
+  element: HTMLElement;
   tabsHost: HTMLElement;
+  stage: HTMLElement;
   host: HTMLElement;
   editor: monaco.editor.IStandaloneCodeEditor;
+  diff: DiffPane;
+  // Where a dragged tab would go.
+  overlay: HTMLElement;
   // The tab shown, and where each of its tabs was scrolled to and its cursor.
   shown: string | null;
   viewStates: Map<string, monaco.editor.ICodeEditorViewState | null>;
 }
-const groupViews: GroupView[] = [{ tabsHost, host: editorHost, editor, shown: null, viewStates: new Map() }];
+const dropOverlay = (stage: HTMLElement): HTMLElement => {
+  const overlay = document.createElement('div');
+  overlay.className = 'drop-overlay';
+  overlay.hidden = true;
+  stage.append(overlay);
+  return overlay;
+};
+const groupViews: GroupView[] = [{
+  element: tabsHost.parentElement as HTMLElement,
+  tabsHost,
+  stage: editorHost.parentElement as HTMLElement,
+  host: editorHost,
+  editor,
+  diff: diffPane(element('#diff-view')),
+  overlay: dropOverlay(editorHost.parentElement as HTMLElement),
+  shown: null,
+  viewStates: new Map(),
+}];
 // The editor of the side being worked in.
 const currentEditor = (): monaco.editor.IStandaloneCodeEditor => (groupViews[layout.focused] ?? groupViews[0]).editor;
 
@@ -526,7 +564,13 @@ const updateButtons = (): void => {
 // scrolled to last there, a diff in the diff view, and the welcome screen once
 // no tab is left.
 const showGroups = (): void => {
+  const split = layout.groups.length > 1;
+  if (split) secondGroupView();
+  groupsHost.classList.toggle('split', split);
+  if (groupResizer) groupResizer.hidden = !split;
   groupViews.forEach((view, index) => {
+    view.element.hidden = index >= layout.groups.length;
+    view.element.classList.toggle('focused', index === layout.focused);
     const key = layout.groups[index]?.active ?? null;
     const tab = key ? openFiles.get(key) : undefined;
     const model = view.editor.getModel();
@@ -537,20 +581,18 @@ const showGroups = (): void => {
     if (!tab) {
       view.editor.setModel(null);
       view.host.classList.remove('visible');
-      if (index === 0) {
-        diffEditor?.setModel(null);
-        diffView.hidden = true;
-        welcome.hidden = false;
-      }
+      view.diff.editor?.setModel(null);
+      view.diff.view.hidden = true;
+      if (index === 0) welcome.hidden = false;
       return;
     }
     if (index === 0) welcome.hidden = true;
     if (tab.kind === 'diff') {
       view.host.classList.remove('visible');
-      showDiffTab(tab);
+      showDiffTab(view, tab);
       return;
     }
-    if (index === 0) diffView.hidden = true;
+    view.diff.view.hidden = true;
     if (model !== tab.model) {
       view.editor.setModel(tab.model);
       view.editor.restoreViewState(view.viewStates.get(tab.path) ?? null);
@@ -575,7 +617,7 @@ const activateFile = (filePath: string, group = layout.focused): void => {
 
 const disposeTab = (tab: EditorTab): void => {
   if (tab.kind === 'file') { tab.model.dispose(); return; }
-  if (diffEditor?.getModel()?.modified === tab.modified) diffEditor.setModel(null);
+  groupViews.forEach((view) => { if (view.diff.editor?.getModel()?.modified === tab.modified) view.diff.editor.setModel(null); });
   tab.original.dispose();
   tab.modified.dispose();
 };
@@ -604,6 +646,7 @@ const closeFile = (filePath: string, group = layout.focused): void => {
 
 const clearTabDropIndicators = (): void => {
   groupViews.forEach((view) => {
+    view.overlay.hidden = true;
     view.tabsHost.classList.remove('drop-at-end');
     view.tabsHost.querySelectorAll('.drop-before, .drop-after').forEach((tab) => {
       tab.classList.remove('drop-before', 'drop-after');
@@ -652,6 +695,7 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   }
   tab.append(kind, label, dirty, close);
   tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path, group); });
+  tab.addEventListener('contextmenu', (event) => showMenu(event, tabMenu(file.path, group)));
   tab.addEventListener('dragstart', (event) => {
     draggedTab = { key: file.path, group };
     suppressTabClick = true;
@@ -714,7 +758,6 @@ const listenForTabDrops = (view: GroupView): void => {
     clearTabDropIndicators();
   });
 };
-listenForTabDrops(groupViews[0]);
 
 const isProjectPath = (filePath: string): boolean =>
   Boolean(activeProject && isWithin(filePath, activeProject.root));
@@ -922,13 +965,13 @@ const debug = new Debugger({
   },
 });
 
-// Diff tabs share one diff editor, made the first time one opens.
-let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null;
+// Each side makes its diff editor the first time it shows a diff tab.
 let diffInline = ((): boolean => { try { return window.localStorage.getItem('glist-studio-diff-inline') === 'on'; } catch { return false; } })();
 
-const ensureDiffEditor = (): monaco.editor.IStandaloneDiffEditor => {
-  if (diffEditor) return diffEditor;
-  diffEditor = monaco.editor.createDiffEditor(diffHost, {
+const ensureDiffEditor = (view: GroupView): monaco.editor.IStandaloneDiffEditor => {
+  const pane = view.diff;
+  if (pane.editor) return pane.editor;
+  const viewer = monaco.editor.createDiffEditor(pane.host, {
     automaticLayout: true,
     readOnly: true,
     originalEditable: false,
@@ -938,28 +981,37 @@ const ensureDiffEditor = (): monaco.editor.IStandaloneDiffEditor => {
     contextmenu: false,
     ...editorFonts(loadFonts()),
   });
-  onFontsChange((fonts) => diffEditor?.updateOptions(editorFonts(fonts)));
-  [diffEditor.getOriginalEditor(), diffEditor.getModifiedEditor()].forEach((side) => {
+  pane.editor = viewer;
+  onFontsChange((fonts) => viewer.updateOptions(editorFonts(fonts)));
+  [viewer.getOriginalEditor(), viewer.getModifiedEditor()].forEach((side) => {
     side.onContextMenu((event) => showMenu(event.event.browserEvent, editorMenu(side, editorMenuHooks, false)));
+    side.onDidFocusEditorWidget(() => focusGroup(groupViews.indexOf(view)));
   });
-  return diffEditor;
+  return viewer;
 };
 
-const activeDiff = (): DiffTab | undefined => {
-  const tab = activeTab();
+// The diffs in front on either side.
+const diffsInFront = (): DiffTab[] => [...new Set(layout.groups.map((group) => group.active))]
+  .map((key) => (key ? openFiles.get(key) : undefined))
+  .filter((tab): tab is DiffTab => tab?.kind === 'diff');
+
+// The diff a side shows, for its toolbar.
+const shownDiff = (view: GroupView): DiffTab | undefined => {
+  const tab = view.shown ? openFiles.get(view.shown) : undefined;
   return tab?.kind === 'diff' ? tab : undefined;
 };
 
-const showDiffTab = (tab: DiffTab): void => {
-  diffView.hidden = false;
-  const viewer = ensureDiffEditor();
-  element<HTMLElement>('#diff-left').textContent = tab.leftLabel;
-  element<HTMLElement>('#diff-right').textContent = tab.rightLabel;
-  diffMessage.hidden = !tab.message;
-  diffMessage.textContent = tab.message;
+const showDiffTab = (view: GroupView, tab: DiffTab): void => {
+  const pane = view.diff;
+  pane.view.hidden = false;
+  const viewer = ensureDiffEditor(view);
+  pane.left.textContent = tab.leftLabel;
+  pane.right.textContent = tab.rightLabel;
+  pane.message.hidden = !tab.message;
+  pane.message.textContent = tab.message;
   const change = git.changeOf(tab.file);
-  diffRollbackButton.hidden = tab.target !== null || !change || change.state === 'untracked' || change.state === 'conflict';
-  diffOpenButton.disabled = tab.target === null && change?.state === 'deleted';
+  pane.rollback.hidden = tab.target !== null || !change || change.state === 'untracked' || change.state === 'conflict';
+  pane.open.disabled = tab.target === null && change?.state === 'deleted';
   if (viewer.getModel()?.modified === tab.modified) return;
   viewer.setModel({ original: tab.original, modified: tab.modified });
   // A diff opens at its first change, once it is known.
@@ -1048,25 +1100,32 @@ const openWorkingDiff = (filePath: string): Promise<void> => {
   return openGitDiff({ file: filePath, from: change?.from, base: git.repositoryOf(filePath)?.head ? 'HEAD' : null, target: null });
 };
 
-element<HTMLButtonElement>('#diff-previous').addEventListener('click', () => diffEditor?.goToDiff('previous'));
-element<HTMLButtonElement>('#diff-next').addEventListener('click', () => diffEditor?.goToDiff('next'));
-element<HTMLButtonElement>('#diff-layout').addEventListener('click', () => {
-  diffInline = !diffInline;
-  try { window.localStorage.setItem('glist-studio-diff-inline', diffInline ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
-  diffEditor?.updateOptions({ renderSideBySide: !diffInline });
-});
-diffOpenButton.addEventListener('click', () => {
-  const tab = activeDiff();
-  if (!tab) return;
-  const line = diffEditor?.getModifiedEditor().getPosition()?.lineNumber
-    ?? diffEditor?.getModifiedEditor().getVisibleRanges()[0]?.startLineNumber ?? 1;
-  void revealLocation(pathUri(tab.file), { lineNumber: line, column: 1 });
-});
-diffRollbackButton.addEventListener('click', () => {
-  const tab = activeDiff();
-  if (!tab || !window.confirm(t('confirmRollbackOne').replace('{name}', tab.name))) return;
-  void git.run({ kind: 'rollback', paths: [tab.file] }, { root: git.rootOf(tab.file) });
-});
+// A side's diff toolbar: step through the changes, one column or two, open
+// the file there, or put the file back as it was committed.
+const wireDiffPane = (view: GroupView): void => {
+  const pane = view.diff;
+  const button = (name: string): HTMLButtonElement => pane.view.querySelector(`[data-diff="${name}"]`) as HTMLButtonElement;
+  button('previous').addEventListener('click', () => pane.editor?.goToDiff('previous'));
+  button('next').addEventListener('click', () => pane.editor?.goToDiff('next'));
+  button('layout').addEventListener('click', () => {
+    diffInline = !diffInline;
+    try { window.localStorage.setItem('glist-studio-diff-inline', diffInline ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
+    groupViews.forEach((other) => other.diff.editor?.updateOptions({ renderSideBySide: !diffInline }));
+  });
+  pane.open.addEventListener('click', () => {
+    const tab = shownDiff(view);
+    if (!tab) return;
+    const line = pane.editor?.getModifiedEditor().getPosition()?.lineNumber
+      ?? pane.editor?.getModifiedEditor().getVisibleRanges()[0]?.startLineNumber ?? 1;
+    focusGroup(groupViews.indexOf(view));
+    void revealLocation(pathUri(tab.file), { lineNumber: line, column: 1 });
+  });
+  pane.rollback.addEventListener('click', () => {
+    const tab = shownDiff(view);
+    if (!tab || !window.confirm(t('confirmRollbackOne').replace('{name}', tab.name))) return;
+    void git.run({ kind: 'rollback', paths: [tab.file] }, { root: git.rootOf(tab.file) });
+  });
+};
 
 // Git: all of it hidden and silent until it is turned on in Settings.
 const git = new GitClient({
@@ -1124,8 +1183,7 @@ const reloadOpenFiles = async (): Promise<void> => {
     file.savedVersion = file.model.getAlternativeVersionId();
     refreshDirtyMark(file);
   }
-  const diff = activeDiff();
-  if (diff) await fillDiff(diff);
+  for (const diff of diffsInFront()) await fillDiff(diff);
 };
 
 // After git changed files: the open ones, and the explorer's list of them.
@@ -1368,12 +1426,7 @@ const setUpEditor = (view: GroupView): void => {
   onFontsChange((fonts) => target.updateOptions(editorFonts(fonts)));
   debug.attach(target);
   gitEditor.attach(target);
-  target.onDidFocusEditorWidget(() => {
-    const group = groupViews.indexOf(view);
-    if (group < 0 || group === layout.focused) return;
-    layout.focus(group);
-    updateButtons();
-  });
+  target.onDidFocusEditorWidget(() => focusGroup(groupViews.indexOf(view)));
   target.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
   // As Monaco's own menu did: focus, and the cursor at the click unless it is in the selection.
   target.onContextMenu((event) => {
@@ -1386,7 +1439,145 @@ const setUpEditor = (view: GroupView): void => {
   target.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.F10, showMenuHere);
   target.addCommand(monaco.KeyCode.ContextMenu, showMenuHere);
 };
-setUpEditor(groupViews[0]);
+
+// Makes a side the one worked in: its editor gets the commands, and its tab in front is marked so.
+const focusGroup = (group: number): void => {
+  if (group < 0 || group >= layout.groups.length || group === layout.focused) return;
+  layout.focus(group);
+  groupViews.forEach((view, index) => view.element.classList.toggle('focused', index === layout.focused));
+  updateButtons();
+};
+
+// Dragging a tab over a side's editor: onto the other side it moves there, and
+// onto the right half of the only side it makes a new side there. Monaco would
+// otherwise take the drop as text and type the file's path in.
+const listenForEditorDrops = (view: GroupView): void => {
+  const target = (event: DragEvent): 'whole' | 'right' | null => {
+    const group = groupViews.indexOf(view);
+    if (!draggedTab || group >= layout.groups.length) return null;
+    if (group !== draggedTab.group) return 'whole';
+    const bounds = view.stage.getBoundingClientRect();
+    return layout.groups.length < maxGroups && (layout.groups[group]?.tabs.length ?? 0) > 1
+      && event.clientX > bounds.left + bounds.width / 2 ? 'right' : null;
+  };
+  view.stage.addEventListener('dragover', (event) => {
+    if (!draggedTab) return;
+    event.stopPropagation();
+    const place = target(event);
+    view.overlay.hidden = !place;
+    view.overlay.classList.toggle('right', place === 'right');
+    if (!place) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  }, true);
+  view.stage.addEventListener('dragleave', (event) => {
+    if (!view.stage.contains(event.relatedTarget as Node | null)) view.overlay.hidden = true;
+  }, true);
+  view.stage.addEventListener('drop', (event) => {
+    if (!draggedTab) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const place = target(event);
+    view.overlay.hidden = true;
+    const group = groupViews.indexOf(view);
+    if (place) moveTab(draggedTab.key, draggedTab.group, place === 'right' ? group + 1 : group);
+  }, true);
+};
+
+// Everything a side has, for the left one now and the right one when it is made.
+const setUpGroupView = (view: GroupView): void => {
+  setUpEditor(view);
+  listenForTabDrops(view);
+  listenForEditorDrops(view);
+  wireDiffPane(view);
+  // A click anywhere in a side makes it the one worked in.
+  view.element.addEventListener('pointerdown', () => focusGroup(groupViews.indexOf(view)), true);
+};
+setUpGroupView(groupViews[0]);
+
+// Where the left side ends, as a share of the area, dragged and kept.
+const splitKey = 'glist-studio-editor-split';
+const setSplit = (percent: number): void => groupsHost.style.setProperty('--editor-split', `${Math.min(85, Math.max(15, percent))}%`);
+setSplit(((): number => { try { return Number(window.localStorage.getItem(splitKey)) || 50; } catch { return 50; } })());
+let groupResizer: HTMLElement | null = null;
+
+// The right side, made the first time something opens there: a tab strip, an
+// editor with the left one's settings, and a copy of the diff view.
+const secondGroupView = (): GroupView => {
+  if (groupViews[1]) return groupViews[1];
+  const resizer = document.createElement('div');
+  resizer.className = 'group-resizer';
+  resizer.addEventListener('pointerdown', () => {
+    const bounds = groupsHost.getBoundingClientRect();
+    const onMove = (moveEvent: PointerEvent): void => setSplit(((moveEvent.clientX - bounds.left) / bounds.width) * 100);
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      try { window.localStorage.setItem(splitKey, groupsHost.style.getPropertyValue('--editor-split').replace('%', '')); } catch { /* Storage may be unavailable. */ }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+  groupResizer = resizer;
+  const group = document.createElement('div');
+  group.className = 'editor-group';
+  const strip = document.createElement('div');
+  strip.className = 'editor-tabs';
+  const stage = document.createElement('div');
+  stage.className = 'editor-stage';
+  const host = document.createElement('div');
+  host.className = 'editor-host';
+  const diffView = diffTemplate.cloneNode(true) as HTMLElement;
+  [diffView, ...diffView.querySelectorAll('[id]')].forEach((node) => node.removeAttribute('id'));
+  placeIcons(diffView);
+  stage.append(host, diffView);
+  group.append(strip, stage);
+  groupsHost.append(resizer, group);
+  const view: GroupView = {
+    element: group,
+    tabsHost: strip,
+    stage,
+    host,
+    editor: monaco.editor.create(host, codeEditorOptions),
+    diff: diffPane(diffView),
+    overlay: dropOverlay(stage),
+    shown: null,
+    viewStates: new Map(),
+  };
+  groupViews.push(view);
+  setUpGroupView(view);
+  return view;
+};
+
+// Opens the tab's file on the other side too, where it was scrolled to here.
+const splitTab = (key: string, group = layout.focused): void => {
+  const source = groupViews[group];
+  const state = source?.shown === key && source.editor.getModel() ? source.editor.saveViewState() : source?.viewStates.get(key);
+  layout.split(key, group);
+  if (layout.groups.length > 1) secondGroupView();
+  const target = groupViews[layout.focused];
+  if (state && target && target.shown !== key && !target.viewStates.has(key)) target.viewStates.set(key, state);
+  showGroups();
+  renderTabs();
+  updateButtons();
+  if (openFiles.get(key)?.kind === 'file') currentEditor().focus();
+};
+
+// A tab's right-click menu: close it or others, and put it on the other side.
+const tabMenu = (key: string, group: number): MenuEntry[] => {
+  const tabs = layout.groups[group]?.tabs ?? [];
+  const other = layout.groups.length > 1 ? 1 - group : 1;
+  const closeTabs = (keys: string[]): void => keys.forEach((each) => closeFile(each, group));
+  return [
+    { label: t('close'), run: () => closeFile(key, group) },
+    { label: t('closeOthers'), run: () => closeTabs(tabs.filter((each) => each !== key)), disabled: tabs.length < 2 },
+    { label: t('closeAll'), run: () => closeTabs([...tabs]) },
+    'separator',
+    { label: t(group === 0 ? 'splitRight' : 'splitLeft'), run: () => splitTab(key, group) },
+    ...(layout.groups.length > 1 || tabs.length > 1
+      ? [{ label: t(group === 0 ? 'moveRight' : 'moveLeft'), run: () => moveTab(key, group, other) }] : []),
+  ];
+};
 
 const selectTreeEntry = (entry: GlistFileEntry, row: HTMLButtonElement): void => {
   fileTree.querySelectorAll('.tree-row.selected').forEach((selectedRow) => {
@@ -2092,6 +2283,7 @@ const configureMenus = (): void => {
         item(t(shell.classList.contains('sidebar-hidden') || sidebarView !== 'explorer' ? 'showExplorer' : 'hideExplorer'),
           toggleExplorer, { shortcut: 'Ctrl+B' }),
         item(t(panelShowing('output') ? 'hideOutput' : 'showOutput'), () => togglePanel('output'), { shortcut: 'Ctrl+J' }),
+        item(t('splitEditor'), () => { if (layout.activeKey) splitTab(layout.activeKey); }, { shortcut: 'Ctrl+\\', disabled: !layout.activeKey }),
         item(t(panelShowing('terminal') ? 'hideTerminal' : 'showTerminal'), () => togglePanel('terminal'), {
           shortcut: isMac ? 'Control+`' : 'Ctrl+`',
         }),
@@ -2616,8 +2808,7 @@ git.onStatus((status) => {
   scheduleMenuSync();
   renderBranchChip(status?.repository ?? null);
   fileTree.querySelectorAll<HTMLElement>('.tree-row[data-path]').forEach(decorateTreeRow);
-  const diff = activeDiff();
-  if (diff && diff.target === null) void fillDiff(diff);
+  diffsInFront().filter((diff) => diff.target === null).forEach((diff) => { void fillDiff(diff); });
 });
 applyGitEnabled(git.enabled);
 if (git.enabled) {
@@ -2651,6 +2842,18 @@ const commandPalette = new CommandPalette(() => {
     .map((action) => ({ label: action.label, category, run: () => { target.focus(); void action.run(); } }));
   return [...menuCommands(), ...own.map((command) => ({ ...command, category })), ...rest];
 });
+
+// Ctrl+\ opens the tab in front on the other side too, as in VS Code. In a
+// terminal Ctrl+\ stops the program, so it stays there; a Mac's Cmd+\ does not clash.
+window.addEventListener('keydown', (event) => {
+  if (!primaryKey(event) || event.altKey || event.shiftKey || event.key !== '\\' || document.querySelector('dialog[open]')) return;
+  if (!isMac && document.activeElement?.closest('.terminal-host')) return;
+  const key = layout.activeKey;
+  if (!key) return;
+  event.preventDefault();
+  event.stopPropagation();
+  splitTab(key);
+}, { capture: true });
 
 // Ctrl+P, Ctrl+Shift+P or F1 opens it from anywhere, before the editor sees
 // them. In a terminal Ctrl+P recalls the previous line, so it stays there;
