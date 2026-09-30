@@ -393,14 +393,13 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 
 .vertical-resizer, .horizontal-resizer { position: relative; z-index: 20; background: transparent; }
 .vertical-resizer { cursor: col-resize; }
-.horizontal-resizer { height: 3px; cursor: row-resize; }
+.horizontal-resizer { grid-row: 4; height: 3px; cursor: row-resize; }
 .vertical-resizer:hover, .horizontal-resizer:hover { background: var(--ui-accent); }
 
 .editor-column { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto 35px minmax(0,1fr) 3px var(--panel-height); background: var(--ui-bg); }
 /* Above the tabs until the project's first build: the editor cannot know the engine's files yet.
-   Hidden, it keeps its row at no height, so the column's rows stay in place. */
+   Hidden, it leaves its row empty at no height; the rows below are placed by number, so they stay put. */
 .build-notice { grid-row: 1; display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 12px; border-bottom: 1px solid color-mix(in srgb, var(--ui-warning) 45%, transparent); color: var(--ui-fg-strong); background: color-mix(in srgb, var(--ui-warning) 18%, var(--ui-chrome)); font-size: 12px; }
-.build-notice[hidden] { visibility: hidden; height: 0; padding: 0; border: 0; overflow: hidden; }
 .build-notice svg.icon { flex: none; color: var(--ui-warning); }
 .build-notice span { flex: 1; min-width: 0; }
 .editor-tabs { display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--ui-border); background: var(--ui-chrome); }
@@ -420,7 +419,7 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .tab-close:hover { color: var(--ui-fg-strong); background: var(--ui-hover-strong); }
 /* The editor area's sides, each a tab strip over its editor, across the column's tab and editor rows;
    the left one takes --editor-split of the width. */
-.editor-groups { display: flex; min-width: 0; min-height: 0; grid-row: span 2; }
+.editor-groups { display: flex; min-width: 0; min-height: 0; grid-row: 2 / span 2; }
 .editor-group { display: grid; min-width: 0; min-height: 0; flex: 1 1 0; grid-template-rows: 35px minmax(0,1fr); }
 .editor-group[hidden] { display: none; }
 .editor-groups.split > .editor-group:first-child { flex: 0 0 var(--editor-split, 50%); }
@@ -445,7 +444,7 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .shortcut-list { display: flex; margin-top: 18px; gap: 18px; color: var(--ui-fg-muted); font-size: 11px; }
 kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-strong); border-radius: 3px; color: var(--ui-fg-muted); background: var(--ui-raised); font: inherit; }
 
-.output-panel { display: flex; min-height: 0; flex-direction: column; overflow: hidden; border-top: 1px solid var(--ui-border); background: var(--ui-chrome); }
+.output-panel { grid-row: 5; display: flex; min-height: 0; flex-direction: column; overflow: hidden; border-top: 1px solid var(--ui-border); background: var(--ui-chrome); }
 .output-heading { flex: 0 0 auto; padding: 0 8px 0 12px; border-bottom: 1px solid var(--ui-border); }
 .output-tabs, .output-tools { display: flex; height: 100%; align-items: center; gap: 7px; }
 .output-tab { position: relative; height: 100%; padding: 0 4px; border: 0; color: var(--ui-fg-muted); background: transparent; font-size: 11px; cursor: pointer; }
