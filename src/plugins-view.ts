@@ -16,8 +16,6 @@ export interface PluginsHooks {
   updates: CheckoutUpdateHooks;
 }
 
-const checkEvery = 6 * 60 * 60 * 1000;
-
 // A plugin as something to update.
 export const pluginTarget = ({ name, source = 'GlistPlugins' }: GlistPlugin): CheckoutTarget => ({
   name,
@@ -28,7 +26,6 @@ export const pluginTarget = ({ name, source = 'GlistPlugins' }: GlistPlugin): Ch
 export class PluginsView {
   private list: GlistPluginList | null = null;
   private busy = new Set<string>();
-  private told = '';
 
   constructor(
     private readonly host: HTMLElement,
@@ -39,7 +36,7 @@ export class PluginsView {
   ) {
     search.addEventListener('input', () => this.render());
     // Refresh asks GlistPlugins for its list again and each plugin's source for new commits.
-    refresh.addEventListener('click', () => { void this.load(true).then(() => this.check(false)); });
+    refresh.addEventListener('click', () => { void this.load(true).then(() => this.checkUpdates()); });
   }
 
   async load(askGlistPlugins = false): Promise<void> {
@@ -47,27 +44,15 @@ export class PluginsView {
     this.render();
   }
 
-  // Fetches installed plugins' new commits; in the background, says so once per set.
-  private async check(announce: boolean): Promise<void> {
+  // Fetches installed plugins' new commits, and gives the ones to bring in.
+  async checkUpdates(): Promise<GlistPlugin[]> {
     const outdated = await window.glistAPI.checkPluginUpdates().catch((): GlistPlugin[] => []);
     await this.load();
-    const names = outdated.map((plugin) => plugin.name);
-    if (!announce || names.length === 0 || names.join() === this.told) return;
-    this.told = names.join();
-    notify({
-      text: t('updatesNotice').replace('{names}', names.join(', ')),
-      actions: [{ label: t('updateButton'), run: () => { void this.updateAll(outdated); } }],
-    });
+    return outdated;
   }
 
-  watch(): void {
-    window.setTimeout(() => { void this.check(true); }, 20000);
-    window.setInterval(() => { void this.check(true); }, checkEvery);
-  }
-
-  private async updateAll(plugins: GlistPlugin[]): Promise<void> {
+  async updateAll(plugins: GlistPlugin[]): Promise<void> {
     for (const plugin of plugins) await this.run(plugin.name, () => updateCheckout(pluginTarget(plugin), this.hooks.updates, true));
-    this.told = '';
   }
 
   private async run(name: string, task: () => Promise<unknown>): Promise<void> {

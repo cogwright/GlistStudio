@@ -32,6 +32,7 @@ import { EditorLayout } from './editor-layout';
 import { CommandPalette, type PaletteCommand } from './command-palette';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { PluginsView, pluginTarget } from './plugins-view';
+import { EngineView, engineTarget } from './engine-view';
 import { updateCheckout, type CheckoutTarget, type CheckoutUpdateHooks } from './checkout-updates';
 import { GitEditor } from './git-editor';
 import { describeDebugger, installGdb, setUpDebuggerSettings } from './debugger-settings';
@@ -120,6 +121,7 @@ const diffRollbackButton = element<HTMLButtonElement>('#diff-rollback');
 const diffOpenButton = element<HTMLButtonElement>('#diff-open');
 const commitViewElement = element<HTMLElement>('#commit-view');
 const pluginsViewElement = element<HTMLElement>('#plugins-view');
+const engineViewElement = element<HTMLElement>('#engine-view');
 const commitActivity = element<HTMLButtonElement>('#commit-activity');
 const gitTab = element<HTMLButtonElement>('#git-tab');
 const gitPanelElement = element<HTMLElement>('#git-panel');
@@ -163,7 +165,7 @@ let scheduleMenuSync: () => void = () => undefined;
 let draggedTab: { key: string; group: number } | null = null;
 let suppressTabClick = false;
 
-type SidebarView = 'explorer' | 'debug' | 'commit' | 'plugins';
+type SidebarView = 'explorer' | 'debug' | 'commit' | 'engine' | 'plugins';
 let sidebarView: SidebarView = 'explorer';
 
 const setSidebarVisible = (visible: boolean): void => {
@@ -181,9 +183,11 @@ const showView = (view: SidebarView): void => {
   debugView.hidden = view !== 'debug';
   commitViewElement.hidden = view !== 'commit';
   pluginsViewElement.hidden = view !== 'plugins';
+  engineViewElement.hidden = view !== 'engine';
   setSidebarVisible(true);
   if (view === 'commit') void git.refresh();
   if (view === 'plugins') void pluginsView.load();
+  if (view === 'engine') void engineView.load();
 };
 
 // The button of the view already showing hides the side bar.
@@ -743,7 +747,43 @@ const pluginsView = new PluginsView(
     updates: checkoutHooks,
   },
 );
-pluginsView.watch();
+
+// The Engine view: the engine the project uses, where it stands against GlistEngine, and Update.
+const engineView = new EngineView(
+  element<HTMLElement>('#engine-info'), element<HTMLButtonElement>('#engine-refresh'), element<HTMLElement>('#engine-activity'),
+  {
+    updates: checkoutHooks,
+    install: () => { void showGlistInstaller(); },
+    showInGit: (folder) => { showPanel('git'); gitPanel.showRepository(folder, 'log'); },
+    changed: () => { void learnDependencies(); void loadProjectTree(); void git.refresh(); },
+  },
+);
+
+// In the background: new commits for the engine and the installed plugins,
+// asked for 20 seconds after the start and then every six hours, and said
+// once for each set of them.
+let toldUpdates = '';
+const checkSourceUpdates = async (): Promise<void> => {
+  const [engineBehind, plugins] = await Promise.all([engineView.load(true), pluginsView.checkUpdates()]);
+  const names = [...(engineBehind ? ['GlistEngine'] : []), ...plugins.map((plugin) => plugin.name)];
+  if (names.length === 0 || names.join() === toldUpdates) return;
+  toldUpdates = names.join();
+  notify({
+    text: t('updatesNotice').replace('{names}', names.join(', ')),
+    actions: [{
+      label: t('updateButton'),
+      run: () => {
+        void (async () => {
+          if (engineBehind) await engineView.update();
+          await pluginsView.updateAll(plugins);
+          toldUpdates = '';
+        })();
+      },
+    }],
+  });
+};
+window.setTimeout(() => { void checkSourceUpdates(); }, 20000);
+window.setInterval(() => { void checkSourceUpdates(); }, 6 * 60 * 60 * 1000);
 
 const learnDependencies = (): Promise<void> => {
   dependenciesKnown = window.glistAPI.listDependencies()
@@ -1207,7 +1247,7 @@ const fetchAll = (): Promise<GlistGitResult> => git.run({ kind: 'fetch' }, { bus
 const updateDependencies = async (): Promise<void> => {
   const listed = await window.glistAPI.listPlugins().catch((): GlistPluginList | null => null);
   const targets: CheckoutTarget[] = git.dependencies.map((repository) => (repository.kind === 'engine'
-    ? { name: repository.name, source: 'GlistEngine/GlistEngine', run: (choice, resolve) => window.glistAPI.updateEngine(choice, resolve) }
+    ? engineTarget
     : pluginTarget(listed?.plugins.find((plugin) => plugin.name === repository.name) ?? { name: repository.name, description: '', url: '', installed: true })));
   if (targets.length === 0 || !window.confirm(t('confirmUpdateDependencies').replace('{names}', targets.map((target) => target.name).join(', ')))) return;
   const upToDate: string[] = [];
@@ -1832,6 +1872,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   dependencyFolders = [];
   warnedShared.clear();
   void learnDependencies();
+  void engineView.load();
   gitPanel.reload();
   void git.projectChanged().then(() => commitPane.restoreMessage());
   await loadProjectTree(); updateButtons();
