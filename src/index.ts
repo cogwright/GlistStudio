@@ -163,7 +163,7 @@ const registerIpcHandlers = (): void => {
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   ipcMain.handle(invokeChannels.updateState, () => updateState());
-  ipcMain.handle(invokeChannels.checkForUpdates, () => checkForUpdates());
+  ipcMain.handle(invokeChannels.checkForUpdates, (_event, previews?: unknown) => checkForUpdates(previews));
   ipcMain.handle(invokeChannels.installUpdate, () => installUpdate());
   ipcMain.handle(invokeChannels.openUpdatePage, () => openUpdatePage());
   ipcMain.handle(invokeChannels.setZoomFactor, (event, factor: number) => {
