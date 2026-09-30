@@ -31,7 +31,8 @@ import { editorCommands, editorMenu, editorMenuPoint, type EditorMenuHooks } fro
 import { EditorLayout } from './editor-layout';
 import { CommandPalette, type PaletteCommand } from './command-palette';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
-import { PluginsView } from './plugins-view';
+import { PluginsView, pluginTarget } from './plugins-view';
+import { updateCheckout, type CheckoutTarget, type CheckoutUpdateHooks } from './checkout-updates';
 import { GitEditor } from './git-editor';
 import { describeDebugger, installGdb, setUpDebuggerSettings } from './debugger-settings';
 import { GitPanel, type GitPanelView } from './git-panel';
@@ -709,6 +710,12 @@ const readContents = (filePath: string): Promise<string> => (isProjectPath(fileP
 let dependencyFolders: string[] = [];
 let dependenciesKnown: Promise<void> = Promise.resolve();
 
+// How updates of the engine and plugins reach the Git tools, for a conflict to resolve there.
+const checkoutHooks: CheckoutUpdateHooks = {
+  gitTools: () => git.enabled,
+  showConflicts: () => { void git.refresh().then(() => showView('commit')); },
+};
+
 // The Plugins view: GlistPlugins' plugins to install, add to the project and update.
 const pluginsView = new PluginsView(
   element<HTMLElement>('#plugins-list'), element<HTMLInputElement>('#plugins-search'),
@@ -716,6 +723,7 @@ const pluginsView = new PluginsView(
   {
     hasProject: () => Boolean(activeProject),
     projectChanged: () => { void learnDependencies(); void loadProjectTree(); void git.refresh(); },
+    updates: checkoutHooks,
   },
 );
 pluginsView.watch();
@@ -1176,19 +1184,21 @@ const updateProject = async (): Promise<void> => {
 
 const fetchAll = (): Promise<GlistGitResult> => git.run({ kind: 'fetch' }, { busy: 'fetching', success: t('fetched') });
 
-// The engine and plugins, from their remotes. They are shared by every project, so
-// this is its own command and asks first, instead of being part of Update Project.
+// The engine and the project's plugins, each from where it is published, as
+// the Plugins view updates them. They are shared by every project, so this is
+// its own command and asks first, instead of being part of Update Project.
 const updateDependencies = async (): Promise<void> => {
-  const targets = git.dependencies.filter((repository) => repository.upstream);
-  if (targets.length === 0) { notify({ text: t('noDependencyUpstream') }); return; }
-  if (!window.confirm(t('confirmUpdateDependencies').replace('{names}', targets.map((repository) => repository.name).join(', ')))) return;
-  for (const repository of targets) {
-    await git.run({ kind: 'pull', rebase: git.updateByRebase }, {
-      root: repository.folder,
-      busy: 'updating',
-      success: t('updatedRepository').replace('{name}', repository.name).replace('{upstream}', repository.upstream ?? ''),
-    });
+  const listed = await window.glistAPI.listPlugins().catch((): GlistPluginList | null => null);
+  const targets: CheckoutTarget[] = git.dependencies.map((repository) => (repository.kind === 'engine'
+    ? { name: repository.name, source: 'GlistEngine/GlistEngine', run: (choice, resolve) => window.glistAPI.updateEngine(choice, resolve) }
+    : pluginTarget(listed?.plugins.find((plugin) => plugin.name === repository.name) ?? { name: repository.name, description: '', url: '', installed: true })));
+  if (targets.length === 0 || !window.confirm(t('confirmUpdateDependencies').replace('{names}', targets.map((target) => target.name).join(', ')))) return;
+  const upToDate: string[] = [];
+  for (const target of targets) {
+    if ((await updateCheckout(target, checkoutHooks, true)).upToDate) upToDate.push(target.name);
   }
+  if (upToDate.length > 0) notify({ text: t('dependenciesUpToDate').replace('{names}', upToDate.join(', ')), kind: 'success' });
+  void git.refresh();
 };
 
 const checkoutRef = async (ref: string, root?: string): Promise<void> => {

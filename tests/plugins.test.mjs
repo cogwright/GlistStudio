@@ -109,16 +109,16 @@ try {
   assert.equal((await service.updatePlugin('gipDemo')).success, true);
   assert.equal(readFileSync(path.join(plugin, 'gipDemo.h'), 'utf8'), '// two\n');
 
-  // With work of the user's own, the update asks first, then keeps it: a stash and a branch.
+  // With work of the user's own, the update asks first; replacing keeps it on a stash and a branch.
   publish('// three\n', 'Three');
   writeFileSync(path.join(plugin, 'mine.cpp'), 'int mine;\n');
   git(plugin, 'add', 'mine.cpp');
   git(plugin, 'commit', '-q', '-m', 'Mine');
   writeFileSync(path.join(plugin, 'gipDemo.h'), '// edited\n');
   const asked = await service.updatePlugin('gipDemo');
-  assert.deepEqual([asked.success, asked.confirm], [false, { changed: 1, ahead: 1 }]);
+  assert.deepEqual([asked.success, asked.confirm], [false, { changed: 1, ahead: 1, keepBy: 'rebase' }]);
   assert.equal(readFileSync(path.join(plugin, 'gipDemo.h'), 'utf8'), '// edited\n', 'nothing changed before the answer');
-  const updated = await service.updatePlugin('gipDemo', true);
+  const updated = await service.updatePlugin('gipDemo', 'replace');
   assert.equal(updated.success, true, updated.message);
   assert.equal(readFileSync(path.join(plugin, 'gipDemo.h'), 'utf8'), '// three\n');
   assert.equal(existsSync(path.join(plugin, 'mine.cpp')), false);
