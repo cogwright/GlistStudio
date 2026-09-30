@@ -59,6 +59,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   listAgents: 'agents:list',
   glistStatus: 'glist:status',
   aboutInfo: 'app:about',
+  setAppMenu: 'app:set-menu',
   listPlugins: 'plugins:list',
   checkPluginUpdates: 'plugins:check',
   installPlugin: 'plugins:install',
@@ -106,4 +107,5 @@ export const eventChannels: Record<EventMethod, string> = {
   onUpdateState: 'update:changed',
   onGitChanged: 'git:changed',
   onGitConsole: 'git:console',
+  onMenuCommand: 'app:menu-command',
 };

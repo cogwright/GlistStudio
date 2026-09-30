@@ -157,6 +157,8 @@ const activeFile = (): OpenFile | undefined => {
   return tab?.kind === 'file' ? tab : undefined;
 };
 const expandedDirectories = new Set<string>();
+// Sends the menus to macOS's menu bar again, a moment after what they offer changed; set up with the menus.
+let scheduleMenuSync: () => void = () => undefined;
 let draggedTab: { key: string; group: number } | null = null;
 let suppressTabClick = false;
 
@@ -327,6 +329,7 @@ const setZoom = (percentage: number): void => {
   zoomPercentage = closest;
   try { window.localStorage.setItem('glist-studio-zoom', String(closest)); } catch { /* Storage may be unavailable. */ }
   void window.glistAPI.setZoomFactor(closest / 100);
+  scheduleMenuSync();
   studioTerminal.setScale(pageZoom());
   showZoom();
 };
@@ -486,6 +489,7 @@ const languageForFile = (filePath: string): { id: string; label: string } => {
 const isDirty = (tab: EditorTab): boolean => tab.kind === 'file' && tab.model.getAlternativeVersionId() !== tab.savedVersion;
 
 const updateButtons = (): void => {
+  scheduleMenuSync();
   const hasProject = Boolean(activeProject);
   saveButton.disabled = !activeFile();
   buildButton.disabled = !hasProject || isBuildRunning || isStarting;
@@ -2003,6 +2007,8 @@ const configureMenus = (): void => {
     shortcut?: string;
     hint?: string;
     disabled?: boolean;
+    // In macOS's menu bar, the system's own item instead.
+    role?: 'undo' | 'redo';
     action: () => void;
   }
 
@@ -2030,8 +2036,8 @@ const configureMenus = (): void => {
         item(t('save'), saveActiveFile, { shortcut: 'Ctrl+S', disabled: !activeFile() }),
       ],
       edit: [
-        item(t('undo'), () => currentEditor().trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFile() }),
-        item(t('redo'), () => currentEditor().trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFile() }),
+        item(t('undo'), () => currentEditor().trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFile(), role: 'undo' }),
+        item(t('redo'), () => currentEditor().trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFile(), role: 'redo' }),
         { kind: 'separator' },
         item(t('find'), () => currentEditor().getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFile() }),
       ],
@@ -2227,6 +2233,44 @@ const configureMenus = (): void => {
     button.setAttribute('aria-expanded', 'true');
   };
   showMenuAt = (target, menu) => { closeMenu(); void openMenu(target, menu); };
+
+  // On macOS the same menus go to the system's menu bar, and the title bar
+  // keeps only its buttons. Each item's action waits here for its id.
+  const nativeActions = new Map<string, () => void>();
+  const syncNativeMenu = async (): Promise<void> => {
+    nativeActions.clear();
+    const menus: GlistAppMenu[] = menuButtons.filter((button) => button.classList.contains('menu-button') && !button.hidden && button.dataset.menu)
+      .map((button) => {
+        const name = button.dataset.menu ?? '';
+        const items = menuItems(name).map((entry, index): GlistAppMenuItem => {
+          if (entry.kind !== 'item') return { kind: entry.kind, label: entry.kind === 'heading' ? entry.label : undefined };
+          const id = `${name}:${index}`;
+          nativeActions.set(id, entry.action);
+          return {
+            kind: 'item', id, label: entry.hint ? `${entry.label} (${entry.hint})` : entry.label,
+            shortcut: entry.shortcut, enabled: !entry.disabled, ...(entry.role ? { role: entry.role } : {}),
+          };
+        });
+        return { name, label: button.textContent ?? name, items };
+      });
+    const words: GlistAppMenuWords = {
+      about: t('aboutMenu'), settings: `${t('settings')}...`, services: t('macServices'), hide: t('macHide'), hideOthers: t('macHideOthers'),
+      showAll: t('macShowAll'), quit: t('macQuit'), cut: t('cut'), copy: t('copy'), paste: t('paste'), selectAll: t('selectAll'), window: t('macWindow'),
+    };
+    const native = await window.glistAPI.setAppMenu(menus, words).catch(() => false);
+    document.documentElement.classList.toggle('native-menu', native);
+  };
+  let menuTimer = 0;
+  scheduleMenuSync = () => {
+    window.clearTimeout(menuTimer);
+    menuTimer = window.setTimeout(() => { void syncNativeMenu(); }, 80);
+  };
+  window.glistAPI.onMenuCommand((id) => {
+    if (id === 'app:about') openSettings('about');
+    else if (id === 'app:settings') openSettings();
+    else nativeActions.get(id)?.();
+  });
+  scheduleMenuSync();
   menuCommands = () => menuButtons.filter((button) => button.dataset.menu && button.dataset.menu !== 'branches' && !button.hidden)
     .flatMap((button) => menuItems(button.dataset.menu ?? '')
       .filter((entry): entry is MenuAction => entry.kind === 'item')
@@ -2364,6 +2408,7 @@ settingsLanguage.addEventListener('change', () => {
   const next = settingsLanguage.value === 'tr' ? 'tr' : 'en';
   applyLanguage(next);
   refreshLanguage();
+  scheduleMenuSync();
   // Monaco's own words follow at the next start; saying so once is enough.
   if (next !== editorLanguage) notify({ text: t('editorLanguageRestart') });
   agentSettings.render();
@@ -2517,10 +2562,12 @@ const applyGitEnabled = (enabled: boolean): void => {
     if (sidebarView === 'commit') showView('explorer');
     if (panelView === 'git') showPanel('output');
   }
+  scheduleMenuSync();
 };
 
 git.onEnabled(applyGitEnabled);
 git.onStatus((status) => {
+  scheduleMenuSync();
   renderBranchChip(status?.repository ?? null);
   fileTree.querySelectorAll<HTMLElement>('.tree-row[data-path]').forEach(decorateTreeRow);
   const diff = activeDiff();

@@ -83,6 +83,25 @@ interface GlistPluginResult {
   kept?: { stash?: string; branch?: string };
 }
 
+// The title bar's menus, for macOS's own menu bar: the words shown, and the
+// ids sent back when an item is chosen. Undo and redo are the system's own.
+interface GlistAppMenuItem {
+  kind: 'item' | 'separator' | 'heading';
+  id?: string;
+  label?: string;
+  // As the menus write it: Ctrl+S, Shift+F5, Control+`.
+  shortcut?: string;
+  enabled?: boolean;
+  role?: 'undo' | 'redo';
+}
+interface GlistAppMenu {
+  name: string;
+  label: string;
+  items: GlistAppMenuItem[];
+}
+// The system's items in the words of the studio's language.
+type GlistAppMenuWords = Record<'about' | 'settings' | 'services' | 'hide' | 'hideOthers' | 'showAll' | 'quit' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'window', string>;
+
 interface GlistProjectInfo {
   root: string;
   name: string;
@@ -464,6 +483,9 @@ interface Window {
     listAgents(): Promise<GlistAgentStatus[]>;
     glistStatus(): Promise<GlistInstallStatus>;
     aboutInfo(): Promise<GlistAbout>;
+    // True where the menus went to the system's menu bar, on macOS.
+    setAppMenu(menus: GlistAppMenu[], words: GlistAppMenuWords): Promise<boolean>;
+    onMenuCommand(callback: (id: string) => void): () => void;
     // The Plugins view; refresh asks GlistPlugins again rather than using the last answer.
     listPlugins(refresh?: boolean): Promise<GlistPluginList>;
     checkPluginUpdates(): Promise<GlistPlugin[]>;
