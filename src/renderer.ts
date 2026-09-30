@@ -13,7 +13,7 @@ import { AgentSettings } from './agent-settings';
 import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
-import { codeFontStack, loadFonts, onFontsChange, panelFontSize, setUpFontSettings, type FontSettings } from './fonts';
+import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
 import { formatOutput, newOutputStyle } from './output-format';
 import { fileIconElement } from './file-icons';
 import { icon, placeIcons, type IconName } from './icons';
@@ -875,7 +875,7 @@ const clangd = new ClangdClient({
 });
 
 const debug = new Debugger({
-  editor,
+  currentEditor,
   openLocation: (filePath, line) => revealLocation(pathUri(filePath), { lineNumber: line, column: 1 }),
   log: (text, kind) => appendOutput(text, kind),
   changed: () => updateButtons(),
@@ -899,13 +899,6 @@ const debug = new Debugger({
 let diffEditor: monaco.editor.IStandaloneDiffEditor | null = null;
 let diffInline = ((): boolean => { try { return window.localStorage.getItem('glist-studio-diff-inline') === 'on'; } catch { return false; } })();
 
-const diffFonts = (fonts: FontSettings): monaco.editor.IDiffEditorOptions => ({
-  fontFamily: codeFontStack(fonts),
-  fontSize: fonts.codeSize,
-  lineHeight: Math.round(fonts.codeSize * 1.57),
-  fontLigatures: fonts.ligatures,
-});
-
 const ensureDiffEditor = (): monaco.editor.IStandaloneDiffEditor => {
   if (diffEditor) return diffEditor;
   diffEditor = monaco.editor.createDiffEditor(diffHost, {
@@ -916,9 +909,9 @@ const ensureDiffEditor = (): monaco.editor.IStandaloneDiffEditor => {
     minimap: { enabled: false },
     scrollBeyondLastLine: false,
     contextmenu: false,
-    ...diffFonts(loadFonts()),
+    ...editorFonts(loadFonts()),
   });
-  onFontsChange((fonts) => diffEditor?.updateOptions(diffFonts(fonts)));
+  onFontsChange((fonts) => diffEditor?.updateOptions(editorFonts(fonts)));
   [diffEditor.getOriginalEditor(), diffEditor.getModifiedEditor()].forEach((side) => {
     side.onContextMenu((event) => showMenu(event.event.browserEvent, editorMenu(side, editorMenuHooks, false)));
   });
@@ -1289,7 +1282,7 @@ const gitPanel = new GitPanel(gitPanelElement, git, {
   checkout: (ref, root) => { void checkoutRef(ref, root); },
 });
 
-const gitEditor = new GitEditor(editor, git, {
+const gitEditor = new GitEditor(currentEditor, git, {
   pathOf: (model) => findOpenFile(model.uri)?.path ?? null,
   readOnly: (model) => findOpenFile(model.uri)?.readOnly ?? true,
   openDiff: (filePath) => { void openWorkingDiff(filePath); },
@@ -1338,10 +1331,14 @@ const editorMenuHooks: EditorMenuHooks = {
     ] : [];
   },
 };
-// What every side's editor has: its keys, its right-click menu, and making its
-// side the one worked in when it takes focus.
+// What every side's editor has: the code font, breakpoints and Git's marks,
+// its keys, its right-click menu, and making its side the one worked in when
+// it takes focus.
 const setUpEditor = (view: GroupView): void => {
   const target = view.editor;
+  onFontsChange((fonts) => target.updateOptions(editorFonts(fonts)));
+  debug.attach(target);
+  gitEditor.attach(target);
   target.onDidFocusEditorWidget(() => {
     const group = groupViews.indexOf(view);
     if (group < 0 || group === layout.focused) return;
@@ -2371,7 +2368,7 @@ settingsLanguage.addEventListener('change', () => {
   gitPanel.reload();
   void window.glistAPI.setLanguage(next);
 });
-setUpFontSettings(editor, {
+setUpFontSettings({
   code: element<HTMLInputElement>('#font-code'),
   codeSize: element<HTMLInputElement>('#font-code-size'),
   ligatures: element<HTMLInputElement>('#font-ligatures'),
