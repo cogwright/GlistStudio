@@ -920,6 +920,17 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .plugin-description { display: -webkit-box; margin-top: 2px; overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .plugin-state { margin-top: 3px; color: var(--ui-fg-muted); font-size: 11px; }
 .plugin-state.update { color: var(--ui-accent); }
+/* The Engine view: the engine's facts, where it stands, and GlistEngine's new commits. */
+.engine-card { padding: 10px 12px; }
+.engine-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 12px; margin: 10px 0 8px; font-size: 12px; }
+.engine-facts dt { color: var(--ui-fg-muted); }
+.engine-facts dd { min-width: 0; margin: 0; color: var(--ui-fg); overflow-wrap: anywhere; }
+.engine-facts code, .engine-incoming code { color: var(--ui-accent); font-family: var(--font-code); }
+.engine-when { color: var(--ui-fg-muted); }
+.engine-card .plugins-heading { padding: 14px 0 4px; }
+.engine-incoming { margin: 0; padding: 0; list-style: none; font-size: 11px; line-height: 1.5; }
+.engine-incoming li { overflow: hidden; color: var(--ui-fg); text-overflow: ellipsis; white-space: nowrap; }
+.engine-git { margin-top: 14px; }
 .plugin-action { display: inline-flex; height: 22px; align-items: center; gap: 4px; padding: 0 8px 0 6px; border: 1px solid var(--ui-accent); border-radius: 4px; color: var(--ui-accent); background: transparent; font-size: 11px; white-space: nowrap; cursor: pointer; }
 .plugin-action svg.icon { width: 13px; height: 13px; }
 .plugin-action:hover { background: color-mix(in srgb, var(--ui-accent) 15%, transparent); }
