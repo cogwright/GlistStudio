@@ -471,7 +471,8 @@ interface Window {
     updatePlugin(name: string, keep?: boolean): Promise<GlistPluginResult>;
     usePlugin(name: string, use: boolean): Promise<GlistPluginResult>;
     updateState(): Promise<GlistUpdateState>;
-    checkForUpdates(): Promise<GlistUpdateState>;
+    // Previews: prereleases too.
+    checkForUpdates(previews?: boolean): Promise<GlistUpdateState>;
     // Quits, asking about unsaved files as usual, and installs the downloaded update.
     installUpdate(): Promise<void>;
     openUpdatePage(): Promise<void>;

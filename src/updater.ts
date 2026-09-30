@@ -3,7 +3,7 @@ import path from 'node:path';
 import { app, shell } from 'electron';
 import { studioHome } from './studio';
 import {
-  assetFor, download, installMacApp, isNewer, latestTag, releaseAt, replaceAppImage, runWindowsSetup, stageMacApp,
+  assetFor, download, installMacApp, isNewer, latestTag, newestTag, releaseAt, replaceAppImage, runWindowsSetup, stageMacApp,
 } from './update-release';
 
 // Glist Studio updating itself from its published GitHub releases. A newer
@@ -54,12 +54,13 @@ const placeToInstall = (): Place | null => {
 
 const updatesFolder = (): string => path.join(studioHome(), 'updates');
 
-const check = async (): Promise<GlistUpdateState> => {
+// Previews: prereleases too, for those who asked for them in Settings.
+const check = async (previews: boolean): Promise<GlistUpdateState> => {
   if (!app.isPackaged) return publish({ state: 'unavailable' });
   if (staged) return publish({ state: 'ready', version: staged.version });
   publish({ state: 'checking' });
   try {
-    const tag = await latestTag(source);
+    const tag = previews ? await newestTag(source) : await latestTag(source);
     if (!tag || !isNewer(tag, app.getVersion())) {
       // What an earlier version downloaded has been installed, or is no longer the latest.
       await fs.rm(updatesFolder(), { recursive: true, force: true });
@@ -100,8 +101,8 @@ export const setUpdateListener = (next: (update: GlistUpdateState) => void): voi
 export const updateState = (): GlistUpdateState => (app.isPackaged ? { ...state, current: app.getVersion() } : { state: 'unavailable' });
 
 // A check already running is joined rather than started again.
-export const checkForUpdates = (): Promise<GlistUpdateState> => {
-  if (!checking) checking = check().finally(() => { checking = null; });
+export const checkForUpdates = (previews?: unknown): Promise<GlistUpdateState> => {
+  if (!checking) checking = check(previews === true).finally(() => { checking = null; });
   return checking;
 };
 

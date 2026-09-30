@@ -6,7 +6,7 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  assetFor, download, installMacApp, isNewer, latestTag, releaseAt, replaceAppImage, stageMacApp,
+  assetFor, download, installMacApp, isNewer, latestTag, newestTag, releaseAt, replaceAppImage, stageMacApp,
 } from '../src/update-release.ts';
 
 // Updating from GitHub releases, against a local server that answers as
@@ -23,6 +23,13 @@ assert.equal(isNewer('v0.0.4', '0.0.4-dev.12'), true, 'a release after its prere
 assert.equal(isNewer('v0.0.4', '0.0.5-dev.1'), false);
 assert.equal(isNewer('v0.0.3', '0.0.4-dev.1'), false);
 assert.equal(isNewer('v0.0.4', '0.0.4'), false);
+// Previews among themselves, by SemVer: dev.12 after dev.2, and a release after both.
+assert.equal(isNewer('v0.0.5-dev.12', '0.0.5-dev.2'), true);
+assert.equal(isNewer('v0.0.5-dev.2', '0.0.5-dev.12'), false);
+assert.equal(isNewer('v0.0.5-dev.2', '0.0.5-dev.2'), false);
+assert.equal(isNewer('v0.0.5-dev.1', '0.0.4'), true, 'a preview of the next version after this release');
+assert.equal(isNewer('v0.0.5-beta', '0.0.5-alpha'), true);
+assert.equal(isNewer('v0.0.5-dev.1.1', '0.0.5-dev.1'), true);
 
 const names = [
   'Glist-Studio-0.0.3-linux-aarch64.AppImage', 'Glist-Studio-0.0.3-linux-x86_64.AppImage', 'Glist-Studio-0.0.3-macos-universal.dmg',
@@ -45,6 +52,11 @@ const server = http.createServer((request, response) => {
   if (request.url === '/owner/repo/releases/latest') {
     response.writeHead(302, { Location: latest ? `/owner/repo/releases/tag/${latest}` : '/owner/repo/releases' });
     response.end();
+  } else if (request.url === '/owner/repo/releases.atom') {
+    // Newest first, as GitHub lists them: previews and releases alike.
+    response.writeHead(200, { 'Content-Type': 'application/atom+xml' });
+    response.end(['v0.0.5-dev.2', 'v0.0.5-dev.12', 'v0.0.4', 'v0.0.5-dev.1'].map((tag) =>
+      `<entry><link rel="alternate" type="text/html" href="${base}/owner/repo/releases/tag/${tag}"/></entry>`).join(''));
   } else if (request.url.startsWith('/owner/repo/releases')) {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end(request.method === 'HEAD' ? undefined : '<html></html>');
@@ -73,6 +85,7 @@ const source = { site: base, api: `${base}/api`, repository: 'owner/repo' };
 
 try {
   assert.equal(await latestTag(source), 'v0.0.3');
+  assert.equal(await newestTag(source), 'v0.0.5-dev.12', 'the newest by version, previews included');
   latest = '';
   assert.equal(await latestTag(source), null, 'no published release yet');
   latest = 'v0.0.3';

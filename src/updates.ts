@@ -6,6 +6,7 @@ import { t } from './localization';
 // decides when to check and says what came of it.
 
 const storageKey = 'glist-studio-auto-update';
+const previewsKey = 'glist-studio-update-previews';
 const checkEvery = 6 * 60 * 60 * 1000;
 
 let supported = false;
@@ -15,6 +16,11 @@ const told = new Set<string>();
 
 const automatic = (): boolean => {
   try { return window.localStorage.getItem(storageKey) !== 'off'; } catch { return true; }
+};
+
+// Prereleases too, built from every change before a release; off unless chosen.
+const previews = (): boolean => {
+  try { return window.localStorage.getItem(previewsKey) === 'on'; } catch { return false; }
 };
 
 const describe = (update: GlistUpdateState): void => {
@@ -48,7 +54,7 @@ export const canUpdate = (): boolean => supported;
 
 export const checkForUpdates = (): void => {
   asked = true;
-  void window.glistAPI.checkForUpdates();
+  void window.glistAPI.checkForUpdates(previews());
 };
 
 export const setUpUpdates = async (): Promise<void> => {
@@ -57,6 +63,7 @@ export const setUpUpdates = async (): Promise<void> => {
   supported = current.state !== 'unavailable';
   const section = document.querySelector<HTMLElement>('#update-settings');
   const toggle = document.querySelector<HTMLInputElement>('#auto-update');
+  const previewToggle = document.querySelector<HTMLInputElement>('#update-previews');
   const version = document.querySelector<HTMLElement>('#update-version');
   if (section) section.hidden = !supported;
   if (!supported) return;
@@ -65,10 +72,17 @@ export const setUpUpdates = async (): Promise<void> => {
     toggle.checked = automatic();
     toggle.addEventListener('change', () => {
       try { window.localStorage.setItem(storageKey, toggle.checked ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
-      if (toggle.checked) void window.glistAPI.checkForUpdates();
+      if (toggle.checked) void window.glistAPI.checkForUpdates(previews());
     });
   }
-  const quietly = (): void => { if (automatic()) void window.glistAPI.checkForUpdates(); };
+  if (previewToggle) {
+    previewToggle.checked = previews();
+    previewToggle.addEventListener('change', () => {
+      try { window.localStorage.setItem(previewsKey, previewToggle.checked ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
+      if (previewToggle.checked && automatic()) void window.glistAPI.checkForUpdates(true);
+    });
+  }
+  const quietly = (): void => { if (automatic()) void window.glistAPI.checkForUpdates(previews()); };
   // A moment after starting, so opening the last project comes first.
   window.setTimeout(quietly, 10000);
   window.setInterval(quietly, checkEvery);

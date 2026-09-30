@@ -36,16 +36,41 @@ export interface Release {
 const numbers = (version: string): number[] =>
   version.replace(/^v/, '').split(/[.+-]/).slice(0, 3).map((part) => Number.parseInt(part, 10) || 0);
 
+// What follows the dash: dev.12 in 0.0.4-dev.12, as main's prereleases are numbered.
+const prereleaseOf = (version: string): string => {
+  const core = version.replace(/^v/, '').split('+')[0];
+  const dash = core.indexOf('-');
+  return dash < 0 ? '' : core.slice(dash + 1);
+};
+
+// Two prereleases of the same version, by SemVer's rules: part by part,
+// numbers as numbers and before words, and fewer parts before more.
+const comparePrereleases = (left: string, right: string): number => {
+  const [a, b] = [left.split('.'), right.split('.')];
+  const numeric = /^\d+$/;
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    if (a[index] === undefined) return -1;
+    if (b[index] === undefined) return 1;
+    if (numeric.test(a[index]) && numeric.test(b[index])) {
+      const difference = Number(a[index]) - Number(b[index]);
+      if (difference !== 0) return Math.sign(difference);
+    } else if (numeric.test(a[index]) !== numeric.test(b[index])) return numeric.test(a[index]) ? -1 : 1;
+    else if (a[index] !== b[index]) return a[index] < b[index] ? -1 : 1;
+  }
+  return 0;
+};
+
 // Whether a version is newer than another, by major, minor and patch; with
-// those equal, a release is newer than its own prereleases.
+// those equal, a release is newer than its own prereleases, and a later
+// prerelease newer than an earlier one: 0.0.4 after 0.0.4-dev.12 after 0.0.4-dev.2.
 export const isNewer = (candidate: string, current: string): boolean => {
   const [next, now] = [numbers(candidate), numbers(current)];
   for (let index = 0; index < 3; index += 1) {
     if ((next[index] ?? 0) !== (now[index] ?? 0)) return (next[index] ?? 0) > (now[index] ?? 0);
   }
-  // 0.0.4 after 0.0.4-dev.12, which main's prereleases are numbered like.
-  const prerelease = (version: string): boolean => version.replace(/^v/, '').split('+')[0].includes('-');
-  return prerelease(current) && !prerelease(candidate);
+  const [nextPre, nowPre] = [prereleaseOf(candidate), prereleaseOf(current)];
+  if (!nowPre) return false;
+  return !nextPre || comparePrereleases(nextPre, nowPre) > 0;
 };
 
 // The tag of the latest published release, from where github.com sends
@@ -59,6 +84,15 @@ export const latestTag = async (source: ReleaseSource): Promise<string | null> =
   if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
   const tag = /\/releases\/tag\/([^/?#]+)$/.exec(response.url)?.[1];
   return tag ? decodeURIComponent(tag) : null;
+};
+
+// The newest release, previews included, from the repository's releases feed:
+// like /releases/latest it is not rate limited the way the API is.
+export const newestTag = async (source: ReleaseSource): Promise<string | null> => {
+  const response = await fetch(`${source.site}/${source.repository}/releases.atom`, { headers: { 'User-Agent': userAgent } });
+  if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
+  const tags = [...(await response.text()).matchAll(/\/releases\/tag\/([^"<>\s/?#]+)/g)].map((match) => decodeURIComponent(match[1]));
+  return tags.reduce<string | null>((best, tag) => (!best || isNewer(tag, best) ? tag : best), null);
 };
 
 export const releaseAt = async (source: ReleaseSource, tag: string): Promise<Release> => {
