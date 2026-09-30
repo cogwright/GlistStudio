@@ -396,7 +396,13 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .horizontal-resizer { height: 3px; cursor: row-resize; }
 .vertical-resizer:hover, .horizontal-resizer:hover { background: var(--ui-accent); }
 
-.editor-column { display: grid; min-width: 0; min-height: 0; grid-template-rows: 35px minmax(0,1fr) 3px var(--panel-height); background: var(--ui-bg); }
+.editor-column { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto 35px minmax(0,1fr) 3px var(--panel-height); background: var(--ui-bg); }
+/* Above the tabs until the project's first build: the editor cannot know the engine's files yet.
+   Hidden, it keeps its row at no height, so the column's rows stay in place. */
+.build-notice { grid-row: 1; display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 12px; border-bottom: 1px solid color-mix(in srgb, var(--ui-warning) 45%, transparent); color: var(--ui-fg-strong); background: color-mix(in srgb, var(--ui-warning) 18%, var(--ui-chrome)); font-size: 12px; }
+.build-notice[hidden] { visibility: hidden; height: 0; padding: 0; border: 0; overflow: hidden; }
+.build-notice svg.icon { flex: none; color: var(--ui-warning); }
+.build-notice span { flex: 1; min-width: 0; }
 .editor-tabs { display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--ui-border); background: var(--ui-chrome); }
 .editor-tab { position: relative; display: flex; min-width: 120px; max-width: 210px; height: 35px; align-items: center; gap: 7px; padding: 0 8px 0 12px; border: 0; border-right: 1px solid var(--ui-border); color: var(--ui-fg-muted); background: var(--ui-chrome); cursor: pointer; }
 .editor-tab.active { border-top: 1px solid var(--ui-accent); color: var(--ui-fg-strong); background: var(--ui-bg); }
@@ -466,7 +472,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 
 #app-shell.sidebar-hidden .workspace { grid-template-columns: 48px 0 0 minmax(0,1fr); }
 #app-shell.sidebar-hidden .sidebar, #app-shell.sidebar-hidden .vertical-resizer { visibility: hidden; }
-#app-shell.output-hidden .editor-column { grid-template-rows: 35px minmax(0,1fr) 0 0; }
+#app-shell.output-hidden .editor-column { grid-template-rows: auto 35px minmax(0,1fr) 0 0; }
 #app-shell.output-hidden .output-panel, #app-shell.output-hidden .horizontal-resizer { display: none; }
 
 .context-menu {

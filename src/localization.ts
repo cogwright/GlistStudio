@@ -377,6 +377,7 @@ const en = {
   showTargets: 'Show all targets',
   showTargetsHint: 'Adds a list beside Run of every target CMake builds, the engine\'s and plugins\' too, as CLion has. Build, Run and Debug then use the one chosen.',
   targetChoice: 'Target to build and run', targetLibrary: 'library', targetStep: 'build step',
+  buildNotice: 'Build this project once so the editor can find Glist Engine\'s files. Until then it shows no errors in the code.',
   noTargets: 'No targets yet: build once', otherTargets: 'Other',
 } as const;
 
@@ -758,6 +759,7 @@ const tr: Record<TranslationKey, string> = {
   showTargets: 'Tüm hedefleri göster',
   showTargetsHint: 'Çalıştır\'ın yanına, motorunkiler ve eklentilerinkiler dahil, CMake\'in derlediği tüm hedeflerin listesini ekler; CLion\'daki gibi. Derle, Çalıştır ve Hata Ayıkla seçilen hedefi kullanır.',
   targetChoice: 'Derlenip çalıştırılacak hedef', targetLibrary: 'kütüphane', targetStep: 'derleme adımı',
+  buildNotice: 'Düzenleyicinin Glist Engine dosyalarını bulabilmesi için bu projeyi bir kez derleyin. O zamana kadar koddaki hataları göstermez.',
   noTargets: 'Henüz hedef yok: bir kez derleyin', otherTargets: 'Diğer',
 };
 

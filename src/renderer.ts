@@ -129,6 +129,7 @@ const output = element<HTMLPreElement>('#output');
 const projectRootLabel = element<HTMLDivElement>('#project-root-label');
 const processStatus = element<HTMLSpanElement>('#process-status');
 const clangdStatus = element<HTMLSpanElement>('#clangd-status');
+const buildNotice = element<HTMLElement>('#build-notice');
 const inputDialog = element<HTMLDialogElement>('#input-dialog');
 const inputForm = element<HTMLFormElement>('#input-form');
 const inputValue = element<HTMLInputElement>('#input-dialog-value');
@@ -891,6 +892,7 @@ const clangd = new ClangdClient({
     try { return (await loadFile(filePath)).model; } catch { return null; }
   },
   log: (text) => appendOutput(`\n${text}\n`),
+  buildNeeded: (needed) => { buildNotice.hidden = !needed; },
   status: (text, busy) => {
     clangdStatus.hidden = !text;
     clangdStatus.classList.toggle('active', busy);
