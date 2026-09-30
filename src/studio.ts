@@ -1210,8 +1210,8 @@ const agentPlaces = (env: NodeJS.ProcessEnv): AgentPlaces => ({
 // Whether Glist is set up where the install scripts put it, or where the
 // projects folder this studio was given points.
 // A password the installer needs for sudo is asked for by the system, never
-// typed into the studio: sudo, run without a terminal, hands the question to
-// the program in SUDO_ASKPASS. macOS shows its own dialog; Linux uses the
+// typed into the studio: sudo, run without a terminal and with DISPLAY set,
+// hands the question to the program in SUDO_ASKPASS. macOS shows its own dialog; Linux uses the
 // desktop's password dialog, and only without one falls back to the terminal.
 const linuxAskpassPrograms = [
   'zenity', 'kdialog', 'ssh-askpass', '/usr/lib/ssh/ssh-askpass', '/usr/libexec/openssh/ssh-askpass',
@@ -1335,6 +1335,9 @@ const startTerminal = async (session: unknown, columns: number, rows: number, ag
       await fs.writeFile(askpass, askpassScript(), { encoding: 'utf8', mode: 0o700 });
       await fs.chmod(askpass, 0o700);
       env.SUDO_ASKPASS = askpass;
+      // Without a terminal, sudo turns to SUDO_ASKPASS only when DISPLAY is set,
+      // which macOS never sets and a Wayland desktop may not.
+      env.DISPLAY = env.DISPLAY || ':0';
       return startWithoutTerminal(name, program, directory, env);
     }
   }
