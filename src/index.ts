@@ -1,6 +1,6 @@
 import { cpSync, existsSync, mkdirSync, promises as fs } from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron';
 import { eventChannels, invokeChannels, type Handler, type InvokeMethod } from './api';
 import {
   defaultProjectsDirectory, initializeStudio, msg, openProjectAt, projectsDirectory, stopClangd, stopDebugging, stopProcesses,
@@ -70,6 +70,64 @@ initializeStudio({
   },
 });
 
+// A shortcut as the menus write it, as Electron takes it: Ctrl is Cmd on a
+// Mac and Control is Control; Ctrl++ is Plus.
+const accelerator = (shortcut: unknown): string | undefined => {
+  if (typeof shortcut !== 'string' || !shortcut) return undefined;
+  const plus = shortcut.endsWith('++');
+  const parts = (plus ? shortcut.slice(0, -2) : shortcut).split('+').filter(Boolean);
+  const key = plus ? 'Plus' : parts.pop();
+  const names: Record<string, string> = { Ctrl: 'CmdOrCtrl', Cmd: 'Cmd', Control: 'Ctrl', Shift: 'Shift', Alt: 'Alt' };
+  return [...parts.map((part) => names[part] ?? part), key].join('+');
+};
+
+// On macOS the title bar's menus go to the system's menu bar. The renderer
+// sends them again whenever what they offer changes, and hears back what was
+// chosen. The shortcuts only show there: the renderer keeps handling the keys.
+// Edit has the system's Undo, Redo, Cut, Copy, Paste and Select All, which
+// text fields need.
+const setAppMenu = (sender: Electron.WebContents, menus: GlistAppMenu[], words: GlistAppMenuWords): boolean => {
+  if (process.platform !== 'darwin' || !Array.isArray(menus)) return false;
+  const send = (id: string): void => { if (!sender.isDestroyed()) sender.send(eventChannels.onMenuCommand, id); };
+  const headers = Number.parseInt(process.getSystemVersion(), 10) >= 14;
+  const word = (key: keyof GlistAppMenuWords): string => (typeof words?.[key] === 'string' ? words[key] : key);
+  const items = (menu: GlistAppMenu): MenuItemConstructorOptions[] => menu.items.flatMap((item): MenuItemConstructorOptions[] => {
+    const label = String(item.label ?? '');
+    if (item.kind === 'separator') return [{ type: 'separator' }];
+    if (item.kind === 'heading') return [headers ? { type: 'header', label } : { label, enabled: false }];
+    if (item.role === 'undo' || item.role === 'redo') {
+      return item.role === 'undo' ? [{ role: 'undo', label }] : [{ role: 'redo', label }, { type: 'separator' },
+        { role: 'cut', label: word('cut') }, { role: 'copy', label: word('copy') }, { role: 'paste', label: word('paste') },
+        { role: 'selectAll', label: word('selectAll') }];
+    }
+    let shortcut: string | undefined;
+    try { shortcut = accelerator(item.shortcut); } catch { shortcut = undefined; }
+    return [{ label, enabled: item.enabled !== false, accelerator: shortcut, registerAccelerator: false, click: () => send(String(item.id)) }];
+  });
+  const template: MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { label: word('about'), click: () => send('app:about') },
+        { type: 'separator' },
+        { label: word('settings'), accelerator: 'Cmd+,', click: () => send('app:settings') },
+        { type: 'separator' },
+        { role: 'services', label: word('services') },
+        { type: 'separator' },
+        { role: 'hide', label: word('hide') },
+        { role: 'hideOthers', label: word('hideOthers') },
+        { role: 'unhide', label: word('showAll') },
+        { type: 'separator' },
+        { role: 'quit', label: word('quit') },
+      ],
+    },
+    ...menus.map((menu): MenuItemConstructorOptions => ({ label: String(menu.label), submenu: items(menu) })),
+    { role: 'windowMenu', label: word('window') },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  return true;
+};
+
 const registerIpcHandlers = (): void => {
   Object.entries(studio).forEach(([method, handler]: [string, Handler]) => {
     ipcMain.handle(invokeChannels[method as InvokeMethod], (_event, ...args) => handler(...args));
@@ -97,6 +155,7 @@ const registerIpcHandlers = (): void => {
     return openProjectAt(result.filePaths[0]);
   });
   ipcMain.handle(invokeChannels.openEngineSite, () => shell.openExternal('https://www.glistengine.com/'));
+  ipcMain.handle(invokeChannels.setAppMenu, (event, menus: GlistAppMenu[], words: GlistAppMenuWords) => setAppMenu(event.sender, menus, words));
   ipcMain.handle(invokeChannels.chooseFolder, async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const options = { title: msg('pathFolderTitle'), properties: ['openDirectory' as const] };

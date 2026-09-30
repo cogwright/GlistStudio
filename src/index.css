@@ -125,6 +125,9 @@ html[data-window-controls="right"] .topbar { padding-right: 138px; }
 .titlebar-left { min-width: 0; gap: 6px; }
 .app-icon { width: 20px; height: 20px; object-fit: contain; margin-right: 2px; -webkit-app-region: no-drag; }
 .menubar { gap: 0; -webkit-app-region: no-drag; }
+/* On macOS the menus are in the system's menu bar, and the title bar has
+   nothing beside the window buttons, as in other Mac apps. */
+html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 
 .menu-button {
   height: 26px;

@@ -73,6 +73,8 @@ Object.assign(api, {
     return project;
   },
   openEngineSite: async () => { window.open('https://www.glistengine.com/', '_blank', 'noopener'); },
+  // A page keeps its menus in its own title bar.
+  setAppMenu: async (): Promise<boolean> => false,
   // There is no folder picker for the server's disk, so ask for a path.
   chooseFolder: async (): Promise<string | null> => window.prompt('Folder on the host') || null,
   // The browser version runs from source, which updates through git.
