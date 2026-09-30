@@ -600,7 +600,22 @@
     "findMatches": "{count} correspondances",
     "findOneFile": "1 fichier",
     "findFiles": "{count} fichiers",
-    "findLimited": "Seules les {count} premières sont affichées."
+    "findLimited": "Seules les {count} premières sont affichées.",
+    "searchEverywhere": "Rechercher partout",
+    "doubleShift": "Double Shift",
+    "searchEverywherePlaceholder": "Fichiers, classes, fonctions et commandes",
+    "searchEverywhereHint": "Tapez pour rechercher des fichiers, des classes, des fonctions et des commandes. Tab passe d'un type à l'autre.",
+    "searchAll": "Tout",
+    "searchFiles": "Fichiers",
+    "searchSymbols": "Symboles",
+    "searchCommands": "Commandes",
+    "searchMoreFiles": "Plus de fichiers",
+    "searchMoreSymbols": "Plus de symboles",
+    "searchMoreCommands": "Plus de commandes",
+    "searchSymbolsHint": "Tapez le nom d'une classe, d'une fonction ou d'une variable.",
+    "searchSymbolsBuild": "Compilez le projet une fois; ses classes et ses fonctions pourront ensuite être recherchées.",
+    "searchSymbolsOff": "Les symboles viennent de clangd, qui n'est pas lancé.",
+    "searchNothing": "Aucun résultat."
   },
   "platforms": {
     "darwin": {

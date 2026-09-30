@@ -3,9 +3,11 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { filesIn, searchFolders } from '../src/file-search.ts';
+import { fuzzyMatch } from '../src/fuzzy.ts';
+import { declarationAt } from '../src/symbol-signature.ts';
 import { findInText, queryPattern } from '../src/text-search.ts';
 
-// Find in Files. Run with jiti.
+// Find in Files, and Search Everywhere's files and symbols. Run with jiti.
 
 // Text: as typed, whole words, case, regular expressions.
 const find = (text, query) => findInText(text, queryPattern(query)).map((match) => [match.line, match.column, match.length]);
@@ -27,6 +29,38 @@ const [far] = findInText(`${'x'.repeat(500)}needle${'y'.repeat(500)}`, queryPatt
 assert.equal(far.preview.slice(far.previewStart, far.previewStart + 6), 'needle');
 assert.ok(far.preview.length <= 246 && far.previewStart === 40);
 assert.equal(findInText('a a a a', queryPattern({ text: 'a' }), 2).length, 2);
+
+// Letters in order, starts of words counting for more.
+const rank = (query, names) => names
+  .map((name) => ({ name, match: fuzzyMatch(query, name) }))
+  .filter((entry) => entry.match)
+  .sort((left, right) => right.match.score - left.match.score)
+  .map((entry) => entry.name);
+assert.deepEqual(rank('gcan', ['gCameraAnimation.h', 'gCanvas.cpp', 'main.cpp']), ['gCanvas.cpp', 'gCameraAnimation.h']);
+assert.deepEqual(rank('gc', ['GameCanvas.cpp', 'gCanvas.h', 'logic.cpp']), ['gCanvas.h', 'GameCanvas.cpp', 'logic.cpp']);
+assert.deepEqual(rank('main', ['gMainMenu.cpp', 'main.cpp']), ['main.cpp', 'gMainMenu.cpp']);
+assert.equal(fuzzyMatch('xyz', 'gCanvas.cpp'), null);
+assert.equal(fuzzyMatch('canvasx', 'canvas'), null);
+assert.deepEqual(fuzzyMatch('gcc', 'gCanvas.cpp').positions, [0, 1, 8]);
+// Accents and the dotless i do not matter.
+assert.ok(fuzzyMatch('oyun', 'Oyun.cpp') && fuzzyMatch('cizim', 'Çizim.cpp') && fuzzyMatch('ilk', 'İlk.h'));
+
+// Signatures, from the declaration's line.
+const header = [
+  'class gCanvas : public gBaseCanvas {',
+  'public:',
+  '  void draw(int x,',
+  '            int y) override; // draws',
+  '  int size = 3;',
+  '};',
+  '#define GLIST_VERSION 2',
+].join('\n');
+assert.equal(declarationAt(header, 0, 6), 'class gCanvas : public gBaseCanvas');
+assert.equal(declarationAt(header, 2, 7), 'void draw(int x, int y) override');
+assert.equal(declarationAt(header, 4, 6), 'int size = 3');
+assert.equal(declarationAt(header, 6, 8), '#define GLIST_VERSION 2');
+assert.equal(declarationAt('void gCanvas::setup() {\n}', 0, 14), 'void gCanvas::setup()');
+assert.equal(declarationAt('', 3, 0), '');
 
 // Files: the folders' own, without Git's, the builds' and binary ones.
 const root = mkdtempSync(path.join(tmpdir(), 'glist-search-'));

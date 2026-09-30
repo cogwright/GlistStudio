@@ -535,6 +535,28 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .command-palette-row.disabled .command-palette-category, .command-palette-row.disabled kbd { color: var(--ui-fg-faint); }
 .command-palette-empty { padding: 8px 10px; color: var(--ui-fg-muted); }
 
+/* Search Everywhere: the palette's look, with a row of kinds above and a heading over each kind in All. */
+.search-everywhere { width: min(760px, calc((100vw - 40px) / var(--page-zoom, 1))); max-height: min(560px, calc((100vh - 96px) / var(--page-zoom, 1))); }
+.search-tabs { display: flex; flex: none; gap: 2px; margin-bottom: 6px; }
+.search-tab { padding: 3px 10px; border: 0; border-radius: 4px; color: var(--ui-fg-muted); background: transparent; font: inherit; font-size: 12px; cursor: pointer; }
+.search-tab:hover { color: var(--ui-fg-strong); background: var(--ui-hover); }
+.search-tab.active { color: var(--ui-fg-strong); background: var(--ui-hover-strong); box-shadow: inset 0 -2px var(--ui-accent); }
+.search-heading { display: block; padding: 8px 10px 3px; color: var(--ui-fg-muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.search-heading:first-child { padding-top: 2px; }
+.search-note { display: block; padding: 6px 10px; color: var(--ui-fg-muted); }
+.search-row .search-name { flex: none; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-row .search-name b { color: var(--ui-accent); font-weight: 700; }
+.search-row.selected .search-name b { color: inherit; text-decoration: underline; }
+.search-signature { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--ui-fg-muted); font-family: var(--font-code); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.search-detail { flex: 1 1 0; min-width: 0; overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.search-signature + .search-detail { flex: 0 1 auto; max-width: 35%; }
+.search-more { color: var(--ui-accent); }
+.search-symbol-icon { display: grid; flex: none; place-items: center; color: var(--ui-fg-muted); }
+.search-symbol-icon.type { color: var(--file-orange); }
+.search-symbol-icon.function { color: var(--file-purple); }
+.search-symbol-icon.data { color: var(--file-blue); }
+.search-row.selected .search-signature, .search-row.selected .search-detail, .search-row.selected .search-symbol-icon, .search-row.selected .search-more { color: inherit; }
+
 /* Find in Files: the search, its matches, and the code around the chosen one below. */
 .find-in-files { top: 48px; width: min(980px, calc((100vw - 40px) / var(--page-zoom, 1))); height: min(720px, calc((100vh - 80px) / var(--page-zoom, 1))); margin: 0 auto; padding: 0; overflow: hidden; border: 1px solid var(--ui-border-strong); border-radius: 8px; color: var(--ui-fg); background: var(--ui-raised); box-shadow: 0 12px 40px var(--ui-shadow); }
 .find-in-files[open] { display: grid; grid-template-rows: auto auto minmax(80px, 1fr) minmax(120px, 1.2fr); }

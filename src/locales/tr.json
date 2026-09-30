@@ -600,7 +600,22 @@
     "findMatches": "{count} eşleşme",
     "findOneFile": "1 dosya",
     "findFiles": "{count} dosya",
-    "findLimited": "Yalnızca ilk {count} tanesi gösteriliyor."
+    "findLimited": "Yalnızca ilk {count} tanesi gösteriliyor.",
+    "searchEverywhere": "Her Yerde Ara",
+    "doubleShift": "Çift Shift",
+    "searchEverywherePlaceholder": "Dosyalar, sınıflar, fonksiyonlar ve komutlar",
+    "searchEverywhereHint": "Dosya, sınıf, fonksiyon ve komut aramak için yazın. Tab türler arasında geçer.",
+    "searchAll": "Tümü",
+    "searchFiles": "Dosyalar",
+    "searchSymbols": "Semboller",
+    "searchCommands": "Komutlar",
+    "searchMoreFiles": "Daha fazla dosya",
+    "searchMoreSymbols": "Daha fazla sembol",
+    "searchMoreCommands": "Daha fazla komut",
+    "searchSymbolsHint": "Bir sınıfın, fonksiyonun ya da değişkenin adını yazın.",
+    "searchSymbolsBuild": "Projeyi bir kez derleyin; ardından sınıfları ve fonksiyonları aranabilir.",
+    "searchSymbolsOff": "Semboller clangd'den gelir ve clangd çalışmıyor.",
+    "searchNothing": "Hiçbir şey bulunamadı."
   },
   "platforms": {
     "darwin": {

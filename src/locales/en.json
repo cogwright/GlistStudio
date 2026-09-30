@@ -600,7 +600,22 @@
     "findMatches": "{count} matches",
     "findOneFile": "1 file",
     "findFiles": "{count} files",
-    "findLimited": "Only the first {count} are shown."
+    "findLimited": "Only the first {count} are shown.",
+    "searchEverywhere": "Search Everywhere",
+    "doubleShift": "Double Shift",
+    "searchEverywherePlaceholder": "Files, classes, functions and commands",
+    "searchEverywhereHint": "Type to search files, classes, functions and commands. Tab moves between the kinds.",
+    "searchAll": "All",
+    "searchFiles": "Files",
+    "searchSymbols": "Symbols",
+    "searchCommands": "Commands",
+    "searchMoreFiles": "More files",
+    "searchMoreSymbols": "More symbols",
+    "searchMoreCommands": "More commands",
+    "searchSymbolsHint": "Type the name of a class, function or variable.",
+    "searchSymbolsBuild": "Build the project once, then its classes and functions can be searched.",
+    "searchSymbolsOff": "Symbols come from clangd, which is not running.",
+    "searchNothing": "Nothing found."
   },
   "platforms": {
     "darwin": {
