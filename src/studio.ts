@@ -105,7 +105,6 @@ const messages = {
     fileTooLarge: 'Files larger than 5 MB cannot be opened in this version.',
     copyIntoSelf: 'A folder cannot be copied into itself or one of its subfolders.',
     clangdMissing: 'clangd could not be started, so C++ code intelligence is off',
-    clangdNoDatabase: 'clangd: build once so it can find the engine headers.',
     unsavedChanges: 'Some files have unsaved changes.', saveAndClose: 'Save and Close',
     closeWithoutSaving: 'Close Without Saving', cancel: 'Cancel',
     terminalMissing: 'No terminal was found. Set the TERMINAL environment variable to the one you use.',
@@ -147,7 +146,6 @@ const messages = {
     fileTooLarge: '5 MB üzerindeki dosyalar bu sürümde açılamıyor.',
     copyIntoSelf: 'Bir klasör kendi içine veya alt klasörlerinden birine kopyalanamaz.',
     clangdMissing: 'clangd başlatılamadı, C++ kod desteği kapalı',
-    clangdNoDatabase: 'clangd: motor başlıklarını bulabilmesi için projeyi bir kez derleyin.',
     unsavedChanges: 'Bazı dosyalarda kaydedilmemiş değişiklikler var.', saveAndClose: 'Kaydet ve Kapat',
     closeWithoutSaving: 'Kaydetmeden Kapat', cancel: 'İptal',
     terminalMissing: 'Terminal bulunamadı. Kullandığınız terminali TERMINAL ortam değişkeniyle belirtin.',
@@ -1130,7 +1128,8 @@ const startClangd = async (): Promise<GlistClangdStatus> => {
   if (toolchain.toolBin) args.push(`--query-driver=${path.join(toolchain.toolBin, '*').replace(/\\/g, '/')}`);
   const status = await clangd.start({ command: 'clangd', args, cwd: projectRoot, env: processEnvironment(toolchain) });
   if (!status.running) return { running: false, message: `${msg('clangdMissing')}: ${status.message}` };
-  return { running: true, message: compileCommands ? '' : msg('clangdNoDatabase'), compileCommands };
+  // Without them, the renderer says to build once (clangd.ts, buildNeeded).
+  return { running: true, message: '', compileCommands };
 };
 
 export const stopClangd = (): void => clangd.stop();

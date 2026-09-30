@@ -17,6 +17,8 @@ export interface ClangdHost {
   openForEdit(uri: monaco.Uri): Promise<monaco.editor.ITextModel | null>;
   log(text: string): void;
   status(text: string | null, busy: boolean): void;
+  // Whether the project has yet to be built once, for clangd to know its files.
+  buildNeeded?(needed: boolean): void;
 }
 
 interface Message {
@@ -166,8 +168,9 @@ export class ClangdClient {
     const status = await window.glistAPI.startClangd();
     if (session !== this.session) return;
     if (status.message) this.host.log(status.message);
-    if (!status.running) return;
+    if (!status.running) { this.host.buildNeeded?.(false); return; }
     this.restartAfterBuild = !status.compileCommands;
+    this.host.buildNeeded?.(!status.compileCommands);
     this.host.status('clangd', true);
     const rootUri = pathUri(rootPath).toString();
     let result: InitializeResult;
@@ -396,8 +399,10 @@ export class ClangdClient {
     if (method === 'textDocument/publishDiagnostics') {
       const { uri, diagnostics } = params as PublishDiagnosticsParams;
       const model = monaco.editor.getModel(parseUri(uri));
+      // Before the first build clangd guesses the flags and cannot find the
+      // engine's headers, so nearly all it would say is wrong: nothing is shown.
       if (model && this.documents.has(model.uri.toString())) {
-        monaco.editor.setModelMarkers(model, owner, diagnostics.map(toMarker));
+        monaco.editor.setModelMarkers(model, owner, this.restartAfterBuild ? [] : diagnostics.map(toMarker));
       }
     } else if (method === '$/progress') {
       const { token, value } = params as Progress;
