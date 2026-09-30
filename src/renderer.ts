@@ -30,6 +30,7 @@ import { showMenu, type MenuEntry } from './context-menu';
 import { editorCommands, editorMenu, editorMenuPoint, type EditorMenuHooks } from './editor-menu';
 import { EditorLayout, maxGroups } from './editor-layout';
 import { CommandPalette, type PaletteCommand } from './command-palette';
+import { FindInFiles } from './find-in-files';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { PluginsView, pluginTarget } from './plugins-view';
 import { EngineView, engineTarget } from './engine-view';
@@ -949,31 +950,34 @@ const revealLocation = async (uri: monaco.Uri, selection?: monaco.IRange | monac
   return true;
 };
 
+// A model for a file without a tab, for a peek view or Find in Files' preview.
+const loadModel = async (uri: monaco.Uri): Promise<monaco.editor.ITextModel | null> => {
+  const existing = monaco.editor.getModel(uri);
+  if (existing) return existing;
+  try {
+    const filePath = uriPath(uri);
+    const contents = await readContents(filePath);
+    const loaded = monaco.editor.getModel(uri);
+    if (loaded) return loaded;
+    const model = monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
+    // A peek view can edit this model; give it a tab then, so the change can be saved.
+    const cleanVersion = model.getAlternativeVersionId();
+    const watcher = model.onDidChangeContent((event) => {
+      // Opening the file for real resets the text, which is not an edit.
+      if (event.isFlush) return;
+      watcher.dispose();
+      if (findOpenFile(uri) || !isEditablePath(filePath)) return;
+      addTab(filePath, model, false).savedVersion = cleanVersion;
+      renderTabs();
+    });
+    return model;
+  } catch {
+    return null;
+  }
+};
+
 const clangd = new ClangdClient({
-  loadModel: async (uri) => {
-    const existing = monaco.editor.getModel(uri);
-    if (existing) return existing;
-    try {
-      const filePath = uriPath(uri);
-      const contents = await readContents(filePath);
-      const loaded = monaco.editor.getModel(uri);
-      if (loaded) return loaded;
-      const model = monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
-      // A peek view can edit this model; give it a tab then, so the change can be saved.
-      const cleanVersion = model.getAlternativeVersionId();
-      const watcher = model.onDidChangeContent((event) => {
-        // Opening the file for real resets the text, which is not an edit.
-        if (event.isFlush) return;
-        watcher.dispose();
-        if (findOpenFile(uri) || !isEditablePath(filePath)) return;
-        addTab(filePath, model, false).savedVersion = cleanVersion;
-        renderTabs();
-      });
-      return model;
-    } catch {
-      return null;
-    }
-  },
+  loadModel,
   openForEdit: async (uri) => {
     const filePath = uriPath(uri);
     if (!isProjectPath(filePath)) return null;
@@ -2323,6 +2327,7 @@ const configureMenus = (): void => {
         item(t('redo'), () => currentEditor().trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFile(), role: 'redo' }),
         { kind: 'separator' },
         item(t('find'), () => currentEditor().getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFile() }),
+        item(t('findInFilesMenu'), () => findInFiles.open(), { shortcut: 'Ctrl+Shift+F', disabled: !activeProject }),
       ],
       view: [
         { kind: 'heading', label: t('layout') },
@@ -2890,6 +2895,21 @@ const commandPalette = new CommandPalette(() => {
   return [...menuCommands(), ...own.map((command) => ({ ...command, category })), ...rest];
 });
 
+// Find in Files, on Ctrl+Shift+F.
+const findInFiles = new FindInFiles({
+  search: (query) => window.glistAPI.searchText(query),
+  unsaved: () => [...openFiles.values()].flatMap((tab) => (tab.kind === 'file' && isDirty(tab) ? [{ path: tab.path, text: tab.model.getValue() }] : [])),
+  model: (filePath) => loadModel(pathUri(filePath)),
+  open: (filePath, range) => { void revealLocation(pathUri(filePath), range); },
+  selection: () => {
+    if (!activeFile()) return '';
+    const target = currentEditor();
+    const selection = target.getSelection();
+    if (!selection || selection.isEmpty() || selection.startLineNumber !== selection.endLineNumber) return '';
+    return target.getModel()?.getValueInRange(selection) ?? '';
+  },
+});
+
 // Ctrl+\ opens the tab in front on the other side too, as in VS Code. In a
 // terminal Ctrl+\ stops the program, so it stays there; a Mac's Cmd+\ does not clash.
 window.addEventListener('keydown', (event) => {
@@ -2913,6 +2933,15 @@ window.addEventListener('keydown', (event) => {
   event.preventDefault();
   event.stopPropagation();
   commandPalette.toggle();
+}, { capture: true });
+
+// Ctrl+Shift+F finds text in the project's files, from anywhere.
+window.addEventListener('keydown', (event) => {
+  if (!primaryKey(event) || !event.shiftKey || event.altKey || event.key.toLowerCase() !== 'f') return;
+  if (!activeProject || document.querySelector('dialog[open]')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  findInFiles.open();
 }, { capture: true });
 
 // Settings > Git: turning it on, and the name and email commits are signed with.

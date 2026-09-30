@@ -583,7 +583,24 @@
     "targetStep": "étape de compilation",
     "buildNotice": "Compilez ce projet une fois pour que l'éditeur trouve les fichiers de Glist Engine. D'ici là, il n'affiche aucune erreur dans le code.",
     "noTargets": "Pas encore de cibles: compilez une fois",
-    "otherTargets": "Autres"
+    "otherTargets": "Autres",
+    "findInFiles": "Rechercher dans les fichiers",
+    "findInFilesMenu": "Rechercher dans les fichiers...",
+    "findInFilesPlaceholder": "Texte à rechercher dans les fichiers",
+    "findMatchCase": "Respecter la casse",
+    "findWholeWords": "Mot entier",
+    "findRegex": "Expression régulière",
+    "findScopeProject": "Dans le projet",
+    "findScopeAll": "Dans le projet, le moteur et les plugins",
+    "findSearching": "Recherche...",
+    "findNothing": "Aucune correspondance.",
+    "findInvalidRegex": "Cette expression régulière n'est pas valide.",
+    "findSummary": "{matches} dans {files}",
+    "findOneMatch": "1 correspondance",
+    "findMatches": "{count} correspondances",
+    "findOneFile": "1 fichier",
+    "findFiles": "{count} fichiers",
+    "findLimited": "Seules les {count} premières sont affichées."
   },
   "platforms": {
     "darwin": {

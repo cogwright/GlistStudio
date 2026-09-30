@@ -583,7 +583,24 @@
     "targetStep": "derleme adımı",
     "buildNotice": "Düzenleyicinin Glist Engine dosyalarını bulabilmesi için bu projeyi bir kez derleyin. O zamana kadar koddaki hataları göstermez.",
     "noTargets": "Henüz hedef yok: bir kez derleyin",
-    "otherTargets": "Diğer"
+    "otherTargets": "Diğer",
+    "findInFiles": "Dosyalarda Bul",
+    "findInFilesMenu": "Dosyalarda Bul...",
+    "findInFilesPlaceholder": "Dosyalarda aranacak metin",
+    "findMatchCase": "Büyük/Küçük Harf Eşleşsin",
+    "findWholeWords": "Tam Sözcük",
+    "findRegex": "Düzenli İfade",
+    "findScopeProject": "Projede",
+    "findScopeAll": "Projede, motorda ve eklentilerde",
+    "findSearching": "Aranıyor...",
+    "findNothing": "Eşleşme yok.",
+    "findInvalidRegex": "Bu düzenli ifade geçerli değil.",
+    "findSummary": "{files} içinde {matches}",
+    "findOneMatch": "1 eşleşme",
+    "findMatches": "{count} eşleşme",
+    "findOneFile": "1 dosya",
+    "findFiles": "{count} dosya",
+    "findLimited": "Yalnızca ilk {count} tanesi gösteriliyor."
   },
   "platforms": {
     "darwin": {

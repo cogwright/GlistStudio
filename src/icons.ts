@@ -55,6 +55,9 @@ import chevronUp from '@vscode/codicons/src/icons/chevron-up.svg';
 import chevronDown from '@vscode/codicons/src/icons/chevron-down.svg';
 import info from '@vscode/codicons/src/icons/info.svg';
 import errorIcon from '@vscode/codicons/src/icons/error.svg';
+import caseSensitive from '@vscode/codicons/src/icons/case-sensitive.svg';
+import wholeWord from '@vscode/codicons/src/icons/whole-word.svg';
+import regex from '@vscode/codicons/src/icons/regex.svg';
 
 // Interface icons: Codicons, the set VS Code uses (CC BY 4.0, see THIRD_PARTY_NOTICES.md).
 // They are inline SVG, so they take the color of the text around them.
@@ -62,6 +65,7 @@ const icons = {
   add,
   'arrow-down': arrowDown,
   'arrow-up': arrowUp,
+  'case-sensitive': caseSensitive,
   check,
   'chevron-down': chevronDown,
   'chevron-right': chevronRight,
@@ -100,6 +104,7 @@ const icons = {
   package: packageIcon,
   play,
   refresh,
+  regex,
   remote,
   'repo-fetch': repoFetch,
   'repo-pull': repoPull,
@@ -114,6 +119,7 @@ const icons = {
   tools,
   trash,
   warning,
+  'whole-word': wholeWord,
   'zoom-in': zoomIn,
   'zoom-out': zoomOut,
 };
