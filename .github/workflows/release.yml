@@ -132,7 +132,7 @@ jobs:
       - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Glist Studio ${GITHUB_REF_NAME#v}"
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Glist Studio ${GITHUB_REF_NAME}"
 
   prerelease:
     name: Prerelease
