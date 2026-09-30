@@ -60,7 +60,19 @@ const config: ForgeConfig = {
     new MakerSquirrel({
       setupIcon: './assets/glistengine.ico',
     }),
-    new MakerDMG({ icon: './assets/glistengine.icns', format: 'ULFO' }, ['darwin']),
+    // The disk image's window: the background at its size (dmg-background.svg,
+    // rendered at 1x and 2x), the app left of the arrow and Applications right.
+    new MakerDMG({
+      icon: './assets/glistengine.icns',
+      background: './assets/dmg-background.png',
+      iconSize: 128,
+      format: 'ULFO',
+      additionalDMGOptions: { window: { size: { width: 640, height: 360 } } },
+      contents: (options) => [
+        { x: 170, y: 150, type: 'file', path: options.appPath },
+        { x: 470, y: 150, type: 'link', path: '/Applications' },
+      ],
+    }, ['darwin']),
     new MakerZIP({}, ['darwin']),
     new MakerAppImage({
       options: {
