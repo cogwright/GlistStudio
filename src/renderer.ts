@@ -779,6 +779,8 @@ let dependenciesKnown: Promise<void> = Promise.resolve();
 const checkoutHooks: CheckoutUpdateHooks = {
   gitTools: () => git.enabled,
   showConflicts: () => { void git.refresh().then(() => showView('commit')); },
+  save: () => saveProjectFiles(),
+  reload: async () => { await reloadFromDisk(); void git.refresh(); },
 };
 
 // The Plugins view: GlistPlugins' plugins to install, add to the project and update.

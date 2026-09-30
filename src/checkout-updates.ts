@@ -19,6 +19,10 @@ export interface CheckoutUpdateHooks {
   gitTools(): boolean;
   // Conflicts were left in place: show where to resolve them.
   showConflicts(): void;
+  // Before: open files saved, so changes typed are among those kept. False stops the update.
+  save(): Promise<boolean>;
+  // After: open files and the explorer read again, since git changed them on disk.
+  reload(): Promise<void>;
 }
 
 const fill = (key: TranslationKey, values: Record<string, string>): string =>
@@ -26,6 +30,14 @@ const fill = (key: TranslationKey, values: Record<string, string>): string =>
 
 const attempt = (target: CheckoutTarget, choice?: GlistUpdateChoice, resolve?: boolean): Promise<GlistCheckoutResult> =>
   target.run(choice, resolve).catch((error: Error): GlistCheckoutResult => ({ success: false, message: error.message }));
+
+// An update that may change files: saved first, read again after.
+const change = async (target: CheckoutTarget, hooks: CheckoutUpdateHooks, choice?: GlistUpdateChoice, resolve?: boolean): Promise<GlistCheckoutResult> => {
+  if (!(await hooks.save())) return { success: false, message: '' };
+  const result = await attempt(target, choice, resolve);
+  if (!result.confirm && !result.upToDate) await hooks.reload();
+  return result;
+};
 
 // Keep or replace, with what each does to this work.
 const ask = async (target: CheckoutTarget, confirm: NonNullable<GlistCheckoutResult['confirm']>): Promise<GlistUpdateChoice | null> => {
@@ -69,17 +81,18 @@ const report = (target: CheckoutTarget, result: GlistCheckoutResult, hooks: Chec
       detail: t('updateNothingChanged'),
       kind: 'error',
       actions: [
-        { label: fill('updateUseSource', values), run: () => { void attempt(target, 'replace').then((next) => report(target, next, hooks, false)); } },
+        { label: fill('updateUseSource', values), run: () => { void change(target, hooks, 'replace').then((next) => report(target, next, hooks, false)); } },
         ...(hooks.gitTools() ? [{
           label: t('updateResolve'),
-          run: () => { void attempt(target, 'keep', true).then(() => hooks.showConflicts()); },
+          run: () => { void change(target, hooks, 'keep', true).then(() => hooks.showConflicts()); },
         }] : []),
       ],
     });
     return;
   }
   if (!result.success) {
-    notify({ text: fill('checkoutUpdateFailed', values), detail: result.message, kind: 'error' });
+    // Saving failed and said so already.
+    if (result.message) notify({ text: fill('checkoutUpdateFailed', values), detail: result.message, kind: 'error' });
     return;
   }
   const done: Record<NonNullable<GlistCheckoutResult['how']>, TranslationKey> = {
@@ -96,11 +109,11 @@ const report = (target: CheckoutTarget, result: GlistCheckoutResult, hooks: Chec
 // Updates one, asking first when there is work of the user's own. Quiet
 // leaves out the message that it was up to date already, for updates of several.
 export const updateCheckout = async (target: CheckoutTarget, hooks: CheckoutUpdateHooks, quiet = false): Promise<GlistCheckoutResult> => {
-  let result = await attempt(target);
+  let result = await change(target, hooks);
   if (result.confirm) {
     const choice = await ask(target, result.confirm);
     if (!choice) return result;
-    result = await attempt(target, choice);
+    result = await change(target, hooks, choice);
   }
   report(target, result, hooks, quiet);
   return result;
