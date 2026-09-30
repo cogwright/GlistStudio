@@ -355,6 +355,8 @@ scaleReset.addEventListener('click', () => setZoom(defaultZoom));
 zoomIndicator.addEventListener('click', () => setZoom(defaultZoom));
 
 applyLanguage(getLanguage());
+// index.html greets in English; nothing has been written to the output yet.
+output.textContent = t('initialOutput');
 void window.glistAPI.setLanguage(getLanguage());
 void window.glistAPI.getPlatform().then((platform) => {
   setHostPlatform(platform);
