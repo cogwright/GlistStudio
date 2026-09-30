@@ -546,10 +546,10 @@ exit 1
   const pushTarget = (branch: string | null, upstream: string | null, remote: string | null): string | null =>
     (upstream && remote && upstream.startsWith(`${remote}/`) ? upstream.slice(remote.length + 1) : branch);
 
-  const isProtected = async (repo: Repository, remote: string | null, branch: string | null, wait = false): Promise<boolean> => {
+  const isProtected = async (folder: string, remote: string | null, branch: string | null, wait = false): Promise<boolean> => {
     if (!protection.on || !branch) return false;
     if (matchesBranch(branch, protection.branches)) return true;
-    const address = remote ? text(await run(['remote', 'get-url', '--push', remote], { cwd: repo.folder })).trim() : '';
+    const address = remote ? text(await run(['remote', 'get-url', '--push', remote], { cwd: folder })).trim() : '';
     return (await hostProtected(address || null, wait)).includes(branch);
   };
 
@@ -571,7 +571,7 @@ exit 1
       if (result.code === 0) commits = parseLog(text(result));
     }
     const target = parsed.upstream ? pushTarget(parsed.branch, parsed.upstream, remote) : parsed.branch;
-    return { remote, branch: parsed.branch, remotes: remoteNames, commits, protected: await isProtected(repo, remote, target, true) };
+    return { remote, branch: parsed.branch, remotes: remoteNames, commits, protected: await isProtected(repo.folder, remote, target, true) };
   };
 
   // What git printed, in the words people need: its own last lines unless a
@@ -786,7 +786,7 @@ exit 1
       ?? (remoteNames.includes('origin') ? 'origin' : remoteNames[0]);
     if (!remote) fail('noRemote');
     const target = action.remote ? parsed.branch : pushTarget(parsed.branch, parsed.upstream, remote);
-    if (action.force && await isProtected(repo, remote, target, true)) {
+    if (action.force && await isProtected(repo.folder, remote, target, true)) {
       return { success: false, message: say('forceProtected').replace('{branch}', target ?? '') };
     }
     const args = ['push', '--progress', ...(action.force ? ['--force-with-lease'] : []), ...(action.tags ? ['--tags'] : [])];
@@ -958,6 +958,8 @@ exit 1
     },
     // The project changed.
     projectChanged: (): Promise<void> => rewatch(),
+    // Whether a remote's branch is protected, for updates of the engine and plugins.
+    protects: (folder: string, remote: string, branch: string): Promise<boolean> => isProtected(folder, remote, branch, true),
     stop: stopWatching,
   };
 };

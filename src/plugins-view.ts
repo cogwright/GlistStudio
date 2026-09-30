@@ -1,53 +1,29 @@
-import { formDialog } from './git-dialogs';
+import { updateCheckout, type CheckoutTarget, type CheckoutUpdateHooks } from './checkout-updates';
 import { icon, type IconName } from './icons';
-import { t, type TranslationKey } from './localization';
+import { t } from './localization';
 import { notify } from './notifications';
 
 // The Plugins view in the side bar: GlistPlugins' plugins to install into
 // glistplugins with one click, the installed ones to add to the project, and
-// updates for those that came from GlistPlugins. Updates are also checked in
-// the background and offered in a message, which runs the same steps.
+// updates for those whose remotes include where they are published, as the
+// engine's (checkout-updates.ts). Updates are also checked in the background
+// and offered in a message, which runs the same steps.
 
 export interface PluginsHooks {
   hasProject(): boolean;
   // A plugin was added to or taken out of the project, or installed.
   projectChanged(): void;
+  updates: CheckoutUpdateHooks;
 }
 
 const checkEvery = 6 * 60 * 60 * 1000;
 
-// Updates one plugin; with work of the user's own, asks before putting it aside.
-export const updatePlugin = async ({ name, source = 'GlistPlugins' }: GlistPlugin): Promise<boolean> => {
-  const from = (text: string): string => text.replace(/\{source\}/g, source);
-  let result = await window.glistAPI.updatePlugin(name).catch((error: Error): GlistPluginResult => ({ success: false, message: error.message }));
-  if (result.confirm) {
-    const { changed, ahead } = result.confirm;
-    const count = (one: TranslationKey, many: TranslationKey, value: number): string => from(value === 1 ? t(one) : t(many).replace('{count}', String(value)));
-    const work = [
-      ...(changed > 0 ? [count('pluginKeepFile', 'pluginKeepFiles', changed)] : []),
-      ...(ahead > 0 ? [count('pluginKeepCommit', 'pluginKeepCommits', ahead)] : []),
-    ].join(t('pluginKeepAnd'));
-    const how = [...(changed > 0 ? [t('pluginKeepStash')] : []), ...(ahead > 0 ? [t('pluginKeepBranch')] : [])].join(t('pluginKeepAnd'));
-    const answer = await formDialog({
-      title: t('pluginKeepTitle').replace('{name}', name),
-      hint: from(t('pluginKeepHint')).replace(/\{name\}/g, name).replace('{work}', work).replace('{how}', how),
-      fields: [],
-      submit: t('pluginKeepButton'),
-    });
-    if (!answer) return false;
-    result = await window.glistAPI.updatePlugin(name, true).catch((error: Error): GlistPluginResult => ({ success: false, message: error.message }));
-  }
-  if (result.success) {
-    const kept = [
-      ...(result.kept?.stash ? [t('pluginKeptStash').replace('{stash}', result.kept.stash)] : []),
-      ...(result.kept?.branch ? [t('pluginKeptBranch').replace('{branch}', result.kept.branch)] : []),
-    ].join(' ');
-    notify({ text: from(t('pluginUpdated')).replace('{name}', name), kind: 'success', ...(kept ? { detail: kept } : {}) });
-  } else {
-    notify({ text: t('pluginUpdateFailed').replace('{name}', name), detail: result.message, kind: 'error' });
-  }
-  return result.success;
-};
+// A plugin as something to update.
+export const pluginTarget = ({ name, source = 'GlistPlugins' }: GlistPlugin): CheckoutTarget => ({
+  name,
+  source,
+  run: (choice, resolve) => window.glistAPI.updatePlugin(name, choice, resolve),
+});
 
 export class PluginsView {
   private list: GlistPluginList | null = null;
@@ -62,7 +38,8 @@ export class PluginsView {
     private readonly hooks: PluginsHooks,
   ) {
     search.addEventListener('input', () => this.render());
-    refresh.addEventListener('click', () => { void this.load(true); });
+    // Refresh asks GlistPlugins for its list again and each plugin's source for new commits.
+    refresh.addEventListener('click', () => { void this.load(true).then(() => this.check(false)); });
   }
 
   async load(askGlistPlugins = false): Promise<void> {
@@ -70,25 +47,26 @@ export class PluginsView {
     this.render();
   }
 
-  // In the background: GlistPlugins' new commits for installed plugins, said once per set.
+  // Fetches installed plugins' new commits; in the background, says so once per set.
+  private async check(announce: boolean): Promise<void> {
+    const outdated = await window.glistAPI.checkPluginUpdates().catch((): GlistPlugin[] => []);
+    await this.load();
+    const names = outdated.map((plugin) => plugin.name);
+    if (!announce || names.length === 0 || names.join() === this.told) return;
+    this.told = names.join();
+    notify({
+      text: t('updatesNotice').replace('{names}', names.join(', ')),
+      actions: [{ label: t('updateButton'), run: () => { void this.updateAll(outdated); } }],
+    });
+  }
+
   watch(): void {
-    const check = async (): Promise<void> => {
-      const outdated = await window.glistAPI.checkPluginUpdates().catch((): GlistPlugin[] => []);
-      await this.load();
-      const names = outdated.map((plugin) => plugin.name);
-      if (names.length === 0 || names.join() === this.told) return;
-      this.told = names.join();
-      notify({
-        text: t('pluginUpdatesNotice').replace('{names}', names.join(', ')),
-        actions: [{ label: t('updatePlugins'), run: () => { void this.updateAll(outdated); } }],
-      });
-    };
-    window.setTimeout(() => { void check(); }, 20000);
-    window.setInterval(() => { void check(); }, checkEvery);
+    window.setTimeout(() => { void this.check(true); }, 20000);
+    window.setInterval(() => { void this.check(true); }, checkEvery);
   }
 
   private async updateAll(plugins: GlistPlugin[]): Promise<void> {
-    for (const plugin of plugins) await this.run(plugin.name, () => updatePlugin(plugin));
+    for (const plugin of plugins) await this.run(plugin.name, () => updateCheckout(pluginTarget(plugin), this.hooks.updates, true));
     this.told = '';
   }
 
@@ -189,7 +167,9 @@ export class PluginsView {
       }
     } else {
       if (updatable) {
-        actions.append(button('sync', t('updatePlugin'), t('updatePluginTitle').replace('{source}', source), 'primary', () => { void this.run(plugin.name, () => updatePlugin(plugin)); }));
+        actions.append(button('sync', t('updatePlugin'), t('updatePluginTitle').replace('{source}', source), 'primary', () => {
+          void this.run(plugin.name, () => updateCheckout(pluginTarget(plugin), this.hooks.updates));
+        }));
       }
       if (this.hooks.hasProject()) {
         if (plugin.used) {

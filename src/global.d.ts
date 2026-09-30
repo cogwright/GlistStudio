@@ -44,7 +44,48 @@ interface GlistPathEntry {
 }
 
 // A plugin in the Plugins view: one GlistPlugins publishes, one installed in glistplugins, or both.
-interface GlistPlugin {
+type GlistUpdateChoice = 'keep' | 'replace';
+type GlistUpdateHow = 'fast-forward' | 'rebase' | 'merge';
+
+// Where a copy of the engine or a plugin stands against where it is published.
+interface GlistCheckout {
+  // A Git checkout, and its remote that is the source (GlistEngine's,
+  // GlistPlugins' or the listed one's), under any name, if one is.
+  repository: boolean;
+  remote?: string | null;
+  branch?: string | null;
+  defaultBranch?: string;
+  head?: { hash: string; subject: string; date: number } | null;
+  // Files changed and not committed, commits of its own, and commits on the source it does not have.
+  changed?: number;
+  ahead?: number;
+  behind?: number;
+  // The source's new commits, newest first, twenty at most.
+  incoming?: Array<{ hash: string; subject: string }>;
+  // How an update that keeps the user's commits brings the new ones in: a
+  // merge once they are on a protected branch (pushedTo), a rebase otherwise.
+  keepBy?: GlistUpdateHow;
+  pushedTo?: string;
+  // Why the source could not be asked for its new commits.
+  fetchError?: string;
+}
+
+interface GlistCheckoutResult {
+  success: boolean;
+  message: string;
+  upToDate?: boolean;
+  // There is work of the user's own: asked again with a choice to go on.
+  confirm?: { changed: number; ahead: number; keepBy: GlistUpdateHow; pushedTo?: string };
+  // Nothing changed, unless asked to leave the conflict for the Git tools.
+  conflicts?: boolean;
+  how?: GlistUpdateHow | 'replace';
+  // Where replaced work went: a stash, and a branch.
+  kept?: { stash?: string; branch?: string };
+  // Changed files that clashed with the new version, left in a stash by git.
+  stashClash?: boolean;
+}
+
+interface GlistPlugin extends Omit<GlistCheckout, 'repository'> {
   name: string;
   description: string;
   // Its page on GitHub; empty for one the list does not have.
@@ -55,15 +96,9 @@ interface GlistPlugin {
   folder?: string;
   // Named in the open project's PLUGINS.
   used?: boolean;
-  // A git repository, and whether its origin is GlistPlugins, the only kind updated from there.
+  // A git repository, and whether one of its remotes is its source, the only kind updated from there.
   repository?: boolean;
   official?: boolean;
-  branch?: string | null;
-  defaultBranch?: string;
-  // Files changed and not committed, commits of its own, and commits on GlistPlugins it does not have.
-  changed?: number;
-  ahead?: number;
-  behind?: number;
 }
 
 interface GlistPluginList {
@@ -77,10 +112,13 @@ interface GlistPluginList {
 interface GlistPluginResult {
   success: boolean;
   message: string;
-  // An update would put the user's work aside: asked again with keep to go on.
-  confirm?: { changed: number; ahead: number };
-  // Where the user's work went: a stash, and a branch.
-  kept?: { stash?: string; branch?: string };
+}
+
+// The engine beside the open project, or where Glist is installed.
+interface GlistEngineCheckout extends GlistCheckout {
+  folder: string;
+  location: string;
+  found: boolean;
 }
 
 interface GlistProjectInfo {
@@ -468,7 +506,11 @@ interface Window {
     listPlugins(refresh?: boolean): Promise<GlistPluginList>;
     checkPluginUpdates(): Promise<GlistPlugin[]>;
     installPlugin(name: string): Promise<GlistPluginResult>;
-    updatePlugin(name: string, keep?: boolean): Promise<GlistPluginResult>;
+    // Resolve leaves a conflict for the Git tools instead of taking the update back.
+    updatePlugin(name: string, choice?: GlistUpdateChoice, resolve?: boolean): Promise<GlistCheckoutResult>;
+    // The engine's state against GlistEngine; refresh fetches first.
+    engineCheckout(refresh?: boolean): Promise<GlistEngineCheckout>;
+    updateEngine(choice?: GlistUpdateChoice, resolve?: boolean): Promise<GlistCheckoutResult>;
     usePlugin(name: string, use: boolean): Promise<GlistPluginResult>;
     updateState(): Promise<GlistUpdateState>;
     checkForUpdates(): Promise<GlistUpdateState>;

@@ -63,6 +63,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   checkPluginUpdates: 'plugins:check',
   installPlugin: 'plugins:install',
   updatePlugin: 'plugins:update',
+  engineCheckout: 'engine:checkout',
+  updateEngine: 'engine:update',
   usePlugin: 'plugins:use',
   updateState: 'update:state',
   checkForUpdates: 'update:check',

@@ -12,6 +12,7 @@ import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
 import { createGitService } from './git-service';
+import { createCheckouts, gitRunner } from './checkout-update';
 import { createPluginService } from './plugins';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 
@@ -1451,6 +1452,7 @@ const plugins = createPluginService({
   projectCmake: () => (activeProjectRoot ? path.join(activeProjectRoot, 'CMakeLists.txt') : null),
   environment: () => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory())),
   language: () => language,
+  isProtected: (folder, remote, branch) => git.protects(folder, remote, branch),
 });
 
 // Git, for the Commit view and the Git panel (see git-service.ts).
@@ -1466,6 +1468,28 @@ const git = createGitService({
 });
 
 export const stopGit = (): void => git.stop();
+
+// The engine, updated from GlistEngine the way plugins are from GlistPlugins:
+// the open project's, or the one where Glist is installed.
+const engineSource = 'GlistEngine/GlistEngine';
+const engineFolder = (): string => path.join(activeProjectRoot
+  ? findAncestorWith(activeProjectRoot, path.join('GlistEngine', 'engine')) ?? path.resolve(activeProjectRoot, '..', '..')
+  : path.dirname(projectsDirectory()), 'GlistEngine');
+const engineCheckouts = createCheckouts({
+  git: gitRunner(() => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory()))),
+  site: 'https://github.com',
+  isProtected: (folder, remote, branch) => git.protects(folder, remote, branch),
+  language: () => language,
+});
+const engineCheckout = async (refresh?: unknown): Promise<GlistEngineCheckout> => {
+  const folder = engineFolder();
+  const found = existsSync(path.join(folder, 'engine'));
+  const state = found ? await engineCheckouts.inspect(folder, engineSource, { fetch: refresh === true }) : { repository: false };
+  return { ...state, folder, location: shortPath(folder), found };
+};
+const updateEngine = (choice?: unknown, resolve?: unknown): Promise<GlistCheckoutResult> => engineCheckouts.update(
+  engineFolder(), 'GlistEngine', engineSource, choice === 'keep' || choice === 'replace' ? choice : undefined, { resolve: resolve === true },
+);
 
 const setLanguage = (nextLanguage: AppLanguage): AppLanguage => {
   language = nextLanguage === 'tr' ? 'tr' : 'en';
@@ -1519,6 +1543,8 @@ export const studio: Handlers = {
   listAgents,
   glistStatus,
   aboutInfo,
+  engineCheckout,
+  updateEngine,
   installAgent: installAgentFromSettings,
   debuggerStatus,
   installDebugger: installDebuggerFromSettings,
