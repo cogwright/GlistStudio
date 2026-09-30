@@ -322,6 +322,7 @@ html[data-window-controls="right"] .topbar { padding-right: 138px; }
 .tree-row:hover { background: var(--ui-hover); }
 .tree-row.selected { color: var(--ui-fg-strong); background: var(--ui-selected); }
 .tree-arrow { display: flex; width: 14px; height: 20px; align-items: center; justify-content: center; color: var(--ui-fg-muted); transform: translateX(-2px); }
+.tree-row[data-directory="true"] .tree-arrow { cursor: pointer; }
 .tree-arrow.expanded svg.icon, .debug-section[open] summary svg.icon { transform: rotate(90deg); }
 /* File glyphs come from the Seti font, drawn at the size VS Code uses. */
 .file-icon { display: grid; width: 16px; height: 16px; flex: 0 0 auto; place-items: center; overflow: hidden; color: var(--file-plain); font: normal normal normal 18px/1 seti; speak: never; }
@@ -394,10 +395,9 @@ html[data-window-controls="right"] .topbar { padding-right: 138px; }
 
 .editor-column { display: grid; min-width: 0; min-height: 0; grid-template-rows: 35px minmax(0,1fr) 3px var(--panel-height); background: var(--ui-bg); }
 .editor-tabs { display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--ui-border); background: var(--ui-chrome); }
-.editor-tab { position: relative; display: flex; min-width: 120px; max-width: 210px; height: 35px; align-items: center; gap: 7px; padding: 0 8px 0 12px; border: 0; border-right: 1px solid var(--ui-border); color: var(--ui-fg-muted); background: var(--ui-chrome); cursor: grab; }
+.editor-tab { position: relative; display: flex; min-width: 120px; max-width: 210px; height: 35px; align-items: center; gap: 7px; padding: 0 8px 0 12px; border: 0; border-right: 1px solid var(--ui-border); color: var(--ui-fg-muted); background: var(--ui-chrome); cursor: pointer; }
 .editor-tab.active { border-top: 1px solid var(--ui-accent); color: var(--ui-fg-strong); background: var(--ui-bg); }
-.editor-tab:active { cursor: grabbing; }
-.editor-tab.dragging { opacity: .42; }
+.editor-tab.dragging { opacity: .42; cursor: grabbing; }
 .editor-tab.drop-before::before, .editor-tab.drop-after::after { position: absolute; top: 3px; bottom: 3px; z-index: 2; width: 2px; border-radius: 1px; background: var(--ui-accent); content: ''; pointer-events: none; }
 .editor-tab.drop-before::before { left: 0; }
 .editor-tab.drop-after::after { right: -1px; }

@@ -1467,15 +1467,24 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
       arrow.classList.toggle('expanded', !children.hidden);
       if (!options.icon) kind.replaceChildren(icon(children.hidden ? 'folder' : 'folder-opened'));
     };
-    if (!children.hidden) { showExpanded(); void loadChildren(); }
-    row.addEventListener('click', async () => {
-      select();
+    const toggleExpanded = async (): Promise<void> => {
       children.hidden = !children.hidden;
       if (children.hidden) expandedDirectories.delete(entry.path);
       else expandedDirectories.add(entry.path);
       showExpanded();
       if (!children.hidden) await loadChildren();
+    };
+    if (!children.hidden) { showExpanded(); void loadChildren(); }
+    row.addEventListener('click', select);
+    row.addEventListener('dblclick', () => { void toggleExpanded(); });
+    arrow.addEventListener('click', (event) => {
+      event.stopPropagation();
+      select();
+      void toggleExpanded();
     });
+    // A double click on the arrow is two explicit arrow clicks, not a third
+    // toggle from the row's double-click handler.
+    arrow.addEventListener('dblclick', (event) => { event.stopPropagation(); });
   } else {
     row.addEventListener('click', select);
     row.addEventListener('dblclick', () => {
