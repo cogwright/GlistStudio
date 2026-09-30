@@ -436,7 +436,8 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .editor-host { display: none; width: 100%; height: 100%; }
 .editor-host.visible { display: block; }
 
-.welcome { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ui-fg-muted); background: var(--ui-bg); }
+/* Centered, and when the editor is shorter than it, from the top and scrolled rather than over the tabs. */
+.welcome { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: safe center; overflow: auto; color: var(--ui-fg-muted); background: var(--ui-bg); }
 .welcome[hidden] { display: none; }
 .welcome-logo { width: 82px; height: 82px; object-fit: contain; }
 .welcome h1 { margin: 12px 0 4px; color: var(--ui-fg-strong); font-size: 21px; font-weight: 400; }
