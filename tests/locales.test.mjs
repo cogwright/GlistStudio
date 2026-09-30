@@ -48,5 +48,5 @@ for (const file of files) {
     compare(language, section, words[section], english);
   }
 }
-assert.ok(files.length >= 2, 'English and Turkish at least');
+assert.ok(files.length >= 3, 'English, Turkish and French at least');
 console.log(`locales: ${files.length} languages, ${Object.keys(en.interface).length} interface words each`);

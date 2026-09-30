@@ -2,10 +2,11 @@
 // interface language. Monaco looks them up while it loads, from a table its
 // language packages set, so this is imported before Monaco itself, and a
 // change of language reaches them the next time the studio starts.
+import { words as fr } from './editor-words-fr';
 import { words as tr } from './editor-words-tr';
 import { savedLanguage, type Language } from './localization';
 
-const tables: Partial<Record<Language, unknown>> = { tr };
+const tables: Partial<Record<Language, unknown>> = { tr, fr };
 
 // Microsoft's words that read oddly, as the rest of the studio says them.
 const better: Record<string, string> = {
