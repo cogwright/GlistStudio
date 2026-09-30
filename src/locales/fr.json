@@ -659,7 +659,8 @@
     "agentInstallFailed": "L'installation s'est arrêtée",
     "installerMissing": "Le programme d'installation de Glist Engine n'a pas pu être téléchargé",
     "pathFolderTitle": "Ajouter un dossier au PATH",
-    "askpassPrompt": "Le programme d'installation de Glist Engine a besoin de votre mot de passe pour installer les outils qu'il utilise."
+    "askpassPrompt": "Le programme d'installation de Glist Engine a besoin de votre mot de passe pour installer les outils qu'il utilise.",
+    "invalidRegex": "Cette expression régulière n'est pas valide."
   },
   "git": {
     "noProject": "Ouvrez d'abord un projet.",

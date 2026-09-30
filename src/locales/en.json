@@ -659,7 +659,8 @@
     "agentInstallFailed": "The installation stopped",
     "installerMissing": "Glist Engine's installer could not be downloaded",
     "pathFolderTitle": "Add a folder to PATH",
-    "askpassPrompt": "Glist Engine's installer needs your password to install the tools it uses."
+    "askpassPrompt": "Glist Engine's installer needs your password to install the tools it uses.",
+    "invalidRegex": "This regular expression is not valid."
   },
   "git": {
     "noProject": "Open a project first.",

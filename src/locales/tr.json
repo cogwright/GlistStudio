@@ -659,7 +659,8 @@
     "agentInstallFailed": "Kurulum durdu",
     "installerMissing": "Glist Engine’in kurulum programı indirilemedi",
     "pathFolderTitle": "PATH’e klasör ekle",
-    "askpassPrompt": "Glist Engine’in kurulum programı, kullandığı araçları kurmak için parolanızı istiyor."
+    "askpassPrompt": "Glist Engine’in kurulum programı, kullandığı araçları kurmak için parolanızı istiyor.",
+    "invalidRegex": "Bu düzenli ifade geçerli değil."
   },
   "git": {
     "noProject": "Önce bir proje açın.",

@@ -11,11 +11,13 @@ import { debuggerRelease, installDebugger, installedDebugger, removeDebugger } f
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
+import { filesIn, searchFolders, type SearchFolder } from './file-search';
 import { createGitService } from './git-service';
 import { createCheckouts, gitRunner } from './checkout-update';
 import { isLanguage, languages, type Language, type Words } from './languages';
 import { createPluginService } from './plugins';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
+import { queryPattern } from './text-search';
 
 // What the backend needs from whoever hosts it: the Electron main process or
 // the browser preview server.
@@ -988,6 +990,35 @@ const listDependencies = async (): Promise<GlistDependency[]> => {
   ];
 };
 
+// Where Find in Files and Search Everywhere look: the project, and with
+// dependencies, the engine and the plugins it names.
+const searchFoldersFor = async (dependencies: boolean): Promise<SearchFolder[]> => {
+  const projectRoot = requireProjectRoot();
+  const folders: SearchFolder[] = [{ path: projectRoot, name: path.basename(projectRoot), kind: 'project' }];
+  if (!dependencies) return folders;
+  for (const dependency of await listDependencies()) {
+    if (dependency.exists) folders.push({ path: dependency.path, name: dependency.name, kind: dependency.kind });
+  }
+  return folders;
+};
+
+// Typing starts a new search before the last one ends; the last one stops.
+let searchTicket = 0;
+const searchText = async (query: unknown): Promise<GlistSearchResult> => {
+  searchTicket += 1;
+  const ticket = searchTicket;
+  const asked = (query ?? {}) as GlistSearchQuery;
+  const text = typeof asked.text === 'string' ? asked.text : '';
+  const options = { text, matchCase: asked.matchCase === true, wholeWords: asked.wholeWords === true, regex: asked.regex === true };
+  try { queryPattern(options); } catch { throw new Error(msg('invalidRegex')); }
+  const folders = await searchFoldersFor(asked.scope === 'all');
+  const outcome = await searchFolders(folders, options, 2000, () => ticket !== searchTicket);
+  return { ...outcome, folders: folders.map(({ path: folder, name, kind }) => ({ path: folder, name, kind })) };
+};
+
+const listFiles = async (dependencies: unknown): Promise<GlistFoundFile[]> =>
+  filesIn(await searchFoldersFor(dependencies === true), 20000);
+
 // Folders of the engine and plugins, to browse; like their files, never written.
 const listWorkspaceDirectory = async (directoryPath: string): Promise<FileEntry[]> => {
   const workspaceRoot = findAncestorWith(requireProjectRoot(), path.join('GlistEngine', 'engine'));
@@ -1429,6 +1460,8 @@ export const studio: Handlers = {
   readWorkspaceFile,
   listDependencies,
   listWorkspaceDirectory,
+  searchText,
+  listFiles,
   getProjectsDirectory: projectsDirectory,
   listProjects,
   openProjectPath: (root: unknown) => {
