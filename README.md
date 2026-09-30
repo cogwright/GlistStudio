@@ -20,7 +20,7 @@ Glist Studio is a lightweight desktop IDE for Glist Engine projects, built with 
 - C++ class generation with matching header and source files
 - New projects from the bundled GlistApp, GlistConsoleApp and GlistGUIApp templates
 - Installing Glist Engine itself, with its own installer, when it is missing
-- English and Turkish, themes including imported VS Code themes, font choices, and a scale setting up to 300% for projectors
+- English, Turkish and French, themes including imported VS Code themes, font choices, and a scale setting up to 300% for projectors
 
 ## Installing
 
@@ -76,7 +76,7 @@ npx tsc --noEmit
 - `src/studio.ts`: the backend (files, builds, processes), independent of Electron; `src/git-service.ts` runs git for it
 - `src/api.ts`: the calls the interface can make, carried over IPC by `src/preload.ts` in Electron and over a WebSocket by `src/web/` and `scripts/web.ts` in the browser
 - `src/renderer.ts`, `src/index.html` and `src/index.css`: the interface; the other files in `src/` are its parts, named after what they do
-- `src/localization.ts`: English and Turkish text
+- `src/locales/`: every word the studio shows, one JSON file per language (`en.json`, `tr.json`, `fr.json`); a language is added by translating `en.json` and naming it in `src/languages.ts`, and `tests/locales.test.mjs` checks it has every word with the same placeholders
 - `glistapp-template/`: the new-project templates
 
 Node.js access is disabled in the interface; files and processes are reached only through the API.

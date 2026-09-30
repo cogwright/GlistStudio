@@ -1,28 +1,28 @@
 // Monaco's own words, such as its right-click menu and find box, in the
 // interface language. Monaco looks them up while it loads, from a table its
-// Turkish package sets, so this is imported before Monaco itself, and a
+// language packages set, so this is imported before Monaco itself, and a
 // change of language reaches them the next time the studio starts.
-// eslint-disable-next-line import/no-unresolved
-import 'monaco-editor/nls/lang/tr';
+import { words as fr } from './editor-words-fr';
+import { words as tr } from './editor-words-tr';
+import { savedLanguage, type Language } from './localization';
 
-const saved = ((): string | null => {
-  try { return window.localStorage.getItem('glist-studio-language'); } catch { return null; }
-})();
+const tables: Partial<Record<Language, unknown>> = { tr, fr };
 
-// Microsoft's Turkish words that read oddly, as the rest of the studio says them.
+// Microsoft's words that read oddly, as the rest of the studio says them.
 const better: Record<string, string> = {
   'Tüm Oluşumları Değiştirir': 'Tüm Geçtiği Yerleri Değiştir',
 };
 
+// The language Monaco's words are in until the studio starts again.
+export const editorLanguage = savedLanguage();
+
 const globals = globalThis as { _VSCODE_NLS_MESSAGES?: unknown; _VSCODE_NLS_LANGUAGE?: unknown };
-if (saved === 'tr' && Array.isArray(globals._VSCODE_NLS_MESSAGES)) {
-  globals._VSCODE_NLS_MESSAGES = globals._VSCODE_NLS_MESSAGES.map((message: unknown) =>
-    (typeof message === 'string' ? better[message] ?? message : message));
-} else if (saved !== 'tr') {
+const table = tables[editorLanguage];
+if (Array.isArray(table)) {
+  globals._VSCODE_NLS_MESSAGES = table.map((message: unknown) => (typeof message === 'string' ? better[message] ?? message : message));
+  globals._VSCODE_NLS_LANGUAGE = editorLanguage;
+} else {
   // English is Monaco's own; without the table it falls back to it.
   delete globals._VSCODE_NLS_MESSAGES;
   delete globals._VSCODE_NLS_LANGUAGE;
 }
-
-// The language Monaco's words are in until the studio starts again.
-export const editorLanguage = saved === 'tr' ? 'tr' : 'en';

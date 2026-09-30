@@ -453,7 +453,7 @@ interface GlistGitConsoleEntry {
   kind: 'command' | 'output' | 'error';
   text: string;
 }
-type GlistLanguage = 'en' | 'tr';
+type GlistLanguage = import('./languages').Language;
 // The colors the window frame takes from the theme.
 interface GlistWindowColors {
   kind: 'dark' | 'light';
