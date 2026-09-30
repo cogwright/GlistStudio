@@ -50,18 +50,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # maker is a maker's name in forge.config.ts, so the one configured there,
+        # icons and all, makes it; a package name would make a plain one.
         include:
           - name: macOS universal
             os: macos-latest
             platform: darwin
             arch: universal
-            maker: '@electron-forge/maker-dmg'
+            maker: dmg
             label: macos-universal
           - name: Windows x64
             os: windows-latest
             platform: win32
             arch: x64
-            maker: '@electron-forge/maker-squirrel'
+            maker: squirrel
             label: windows-x64
           # Built on x64: the app has no native modules, and the Squirrel
           # installer runs under emulation on Windows on ARM.
@@ -69,19 +71,19 @@ jobs:
             os: windows-latest
             platform: win32
             arch: arm64
-            maker: '@electron-forge/maker-squirrel'
+            maker: squirrel
             label: windows-arm64
           - name: Linux x86_64
             os: ubuntu-latest
             platform: linux
             arch: x64
-            maker: '@reforged/maker-appimage'
+            maker: AppImage
             label: linux-x86_64
           - name: Linux aarch64
             os: ubuntu-latest
             platform: linux
             arch: arm64
-            maker: '@reforged/maker-appimage'
+            maker: AppImage
             label: linux-aarch64
     steps:
       - uses: actions/checkout@v4
