@@ -267,8 +267,12 @@ setUpdateListener((update) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(eventChannels.onUpdateState, update);
 });
 
-app.whenReady().then(() => { registerIpcHandlers(); createWindow(); });
+// macOS sends activate when the app is opened or its Dock icon clicked, also while
+// it is starting, before Electron is ready, as on a first launch after installing.
+// Only once the first window is made does activate bring one back.
+let started = false;
+app.whenReady().then(() => { registerIpcHandlers(); createWindow(); started = true; });
 // On macOS the app stays open without windows, unless it is restarting to update.
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' || restartingToUpdate()) app.quit(); });
 app.on('will-quit', installOnQuit);
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+app.on('activate', () => { if (started && BrowserWindow.getAllWindows().length === 0) createWindow(); });
