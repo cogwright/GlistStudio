@@ -707,6 +707,14 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   }
   tab.append(kind, label, dirty, close);
   tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path, group); });
+  // A middle click closes the tab, as in a browser. Pressing the middle button
+  // would otherwise start the page scrolling on Windows and Linux.
+  tab.addEventListener('mousedown', (event) => { if (event.button === 1) event.preventDefault(); });
+  tab.addEventListener('auxclick', (event) => {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    closeFile(file.path, group);
+  });
   tab.addEventListener('contextmenu', (event) => showMenu(event, tabMenu(file.path, group)));
   tab.addEventListener('dragstart', (event) => {
     draggedTab = { key: file.path, group };
