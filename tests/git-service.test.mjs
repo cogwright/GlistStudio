@@ -338,6 +338,114 @@ try {
   openRoot = path.join(root, 'plain');
   mkdirSync(openRoot);
   assert.equal((await git.gitStatus()).repository, null);
+
+  // Patches: commits and changes out of one repository and into another.
+  {
+    const sh = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+    const from = path.join(projects, 'From');
+    const into = path.join(projects, 'Into');
+    const put = (folder, file, text) => writeFileSync(path.join(folder, file), text);
+    const at = (folder, file) => readFileSync(path.join(folder, file), 'utf8');
+    mkdirSync(from);
+    sh(from, 'init', '-q', '-b', 'main');
+    put(from, 'a.txt', 'one\ntwo\n');
+    sh(from, 'add', '-A');
+    sh(from, 'commit', '-qm', 'One');
+    sh(projects, 'clone', '-q', from, into);
+    put(from, 'a.txt', 'one\ntwo\nthree\n');
+    sh(from, 'commit', '-qam', 'Three');
+    put(from, 'b.txt', 'b\n');
+    sh(from, 'add', '-A');
+    sh(from, 'commit', '-qm', 'Add b');
+    const three = sh(from, 'rev-parse', 'HEAD~1');
+    const addB = sh(from, 'rev-parse', 'HEAD');
+    openRoot = from;
+    // Commits as git format-patch writes them, oldest first whatever the order chosen.
+    const commits = await git.gitPatch({ commits: [addB, three] });
+    assert.equal(commits.commits, 2);
+    assert.equal(commits.name, 'From-2-commits.patch');
+    assert.match(commits.patch, /^From [0-9a-f]{40} /);
+    assert.ok(commits.patch.indexOf('Subject: [PATCH] Three') < commits.patch.indexOf('Subject: [PATCH] Add b'));
+    assert.equal((await git.gitPatch({ commits: [three] })).name, 'Three.patch');
+    // Changes not committed yet, a new file too.
+    put(from, 'a.txt', 'one\ntwo\nthree\nfour\n');
+    put(from, 'c.txt', 'c\n');
+    const changed = await git.gitPatch({ paths: [path.join(from, 'a.txt'), path.join(from, 'c.txt')] });
+    assert.deepEqual([changed.name, changed.commits], ['From-changes.patch', 0]);
+    assert.match(changed.patch, /^\+four$/m);
+    assert.match(changed.patch, /new file mode[\s\S]*\+c$/m);
+    assert.doesNotMatch(changed.patch, /b\.txt/);
+
+    // Into the other: the commits made again, with their messages, then the changes into the files.
+    openRoot = into;
+    assert.equal((await run({ kind: 'apply-patch', patch: commits.patch })).message, 'Patch applied as commits.');
+    assert.deepEqual(sh(into, 'log', '--format=%s', '-3').split('\n'), ['Add b', 'Three', 'One']);
+    assert.equal((await run({ kind: 'apply-patch', patch: changed.patch })).message, 'Patch applied.');
+    assert.deepEqual([at(into, 'a.txt'), at(into, 'c.txt')], ['one\ntwo\nthree\nfour\n', 'c\n']);
+    const notOne = await git.gitRun({ kind: 'apply-patch', patch: 'hello' });
+    assert.deepEqual([notOne.success, notOne.message], [false, 'This is not a patch.']);
+    // A patch with changed files the index does not have still goes into them.
+    sh(into, 'checkout', '-q', '--', '.');
+    sh(into, 'clean', '-qfd');
+    put(into, 'b.txt', 'b\nmine\n');
+    assert.equal((await run({ kind: 'apply-patch', patch: changed.patch })).message, 'Patch applied.');
+    assert.equal(at(into, 'b.txt'), 'b\nmine\n');
+    sh(into, 'checkout', '-q', '--', '.');
+    sh(into, 'clean', '-qfd');
+
+    // One that clashes: git am stops with both sides marked, as a patch being
+    // applied, and Keep Mine is the branch's side, as in a cherry-pick.
+    openRoot = from;
+    sh(from, 'checkout', '-q', '--', '.');
+    sh(from, 'clean', '-qfd');
+    put(from, 'a.txt', 'one\ntwo from there\nthree\n');
+    sh(from, 'commit', '-qam', 'Two from there');
+    const clash = await git.gitPatch({ commits: [sh(from, 'rev-parse', 'HEAD')] });
+    openRoot = into;
+    put(into, 'a.txt', 'one\ntwo from here\nthree\n');
+    sh(into, 'commit', '-qam', 'Two from here');
+    const stopped = await git.gitRun({ kind: 'apply-patch', patch: clash.patch });
+    assert.deepEqual([stopped.success, stopped.conflicts], [false, true], stopped.message);
+    let state = (await git.gitStatus()).repository;
+    assert.deepEqual([state.operation, state.operationSubject], ['am', 'Two from there']);
+    assert.match(at(into, 'a.txt'), /<<<<<<<[\s\S]*two from here[\s\S]*=======[\s\S]*two from there[\s\S]*>>>>>>>/);
+    const committing = await git.gitRun({ kind: 'commit', message: 'x', paths: [path.join(into, 'a.txt')], amend: false });
+    assert.equal(committing.message, 'A patch is being applied: resolve the conflicts, then choose Continue.');
+    await run({ kind: 'resolve', path: path.join(into, 'a.txt'), side: 'mine' });
+    assert.equal(at(into, 'a.txt'), 'one\ntwo from here\nthree\n');
+    await run({ kind: 'unresolve', path: path.join(into, 'a.txt') });
+    await run({ kind: 'resolve', path: path.join(into, 'a.txt'), side: 'theirs' });
+    assert.equal(at(into, 'a.txt'), 'one\ntwo from there\nthree\n');
+    // Continue makes the commit, as git am --continue does.
+    await run({ kind: 'continue' });
+    state = (await git.gitStatus()).repository;
+    assert.equal(state.operation, null);
+    assert.equal(sh(into, 'log', '-1', '--format=%s'), 'Two from there');
+    // Keeping one's own side leaves the patch nothing to commit: Continue skips it.
+    put(from, 'a.txt', 'one\ntwo once more\nthree\n');
+    sh(from, 'commit', '-qam', 'Two once more');
+    openRoot = from;
+    const once = await git.gitPatch({ commits: [sh(from, 'rev-parse', 'HEAD')] });
+    openRoot = into;
+    put(into, 'a.txt', 'one\ntwo mine\nthree\n');
+    sh(into, 'commit', '-qam', 'Two mine');
+    assert.equal((await git.gitRun({ kind: 'apply-patch', patch: once.patch })).conflicts, true);
+    await run({ kind: 'resolve', path: path.join(into, 'a.txt'), side: 'mine' });
+    await run({ kind: 'continue' });
+    assert.deepEqual([(await git.gitStatus()).repository.operation, sh(into, 'log', '-1', '--format=%s')], [null, 'Two mine']);
+    // Abort takes a stopped one back.
+    put(from, 'a.txt', 'one\ntwo again\nthree\n');
+    sh(from, 'commit', '-qam', 'Two again');
+    openRoot = from;
+    const again = await git.gitPatch({ commits: [sh(from, 'rev-parse', 'HEAD')] });
+    openRoot = into;
+    put(into, 'a.txt', 'one\ntwo here again\nthree\n');
+    sh(into, 'commit', '-qam', 'Two here again');
+    assert.equal((await git.gitRun({ kind: 'apply-patch', patch: again.patch })).conflicts, true);
+    await run({ kind: 'abort' });
+    assert.deepEqual([(await git.gitStatus()).repository.operation, at(into, 'a.txt')], [null, 'one\ntwo here again\nthree\n']);
+    openRoot = project;
+  }
 } finally {
   service.stop();
   rmSync(root, { recursive: true, force: true });

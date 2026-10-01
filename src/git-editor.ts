@@ -373,11 +373,11 @@ export class GitEditor {
   private lenses: monaco.languages.CodeLensProvider = { provideCodeLenses: () => ({ lenses: [], dispose: () => undefined }) };
 
   // Which part of a conflict is the person's own: above the ======= line in a
-  // merge, cherry-pick or revert, and below it in a rebase or a stash brought back,
+  // merge, cherry-pick, revert or patch applied, and below it in a rebase or a stash brought back,
   // by what the file's own repository is doing: the project's, the engine's or a plugin's.
   private mineIsUpper(filePath: string): boolean {
     const operation = this.client.repositoryOf(filePath)?.operation;
-    return operation === 'merge' || operation === 'cherry-pick' || operation === 'revert';
+    return operation === 'merge' || operation === 'cherry-pick' || operation === 'revert' || operation === 'am';
   }
 
   private registerConflictLenses(): void {

@@ -3,6 +3,7 @@ import { fileIconElement } from './file-icons';
 import { stateLetter, stateText, type GitClient } from './git-client';
 import { icon } from './icons';
 import { t, type TranslationKey } from './localization';
+import { copyPatch, savePatch } from './patches';
 import { notify } from './notifications';
 import { baseName } from './paths';
 
@@ -56,8 +57,12 @@ export const branchName = (repository: GlistGitRepository): string => repository
   ?? t('detached').replace('{hash}', repository.head?.slice(0, 7) ?? '');
 
 const operationText: Record<GlistGitOperation, TranslationKey> = {
-  merge: 'merging', rebase: 'rebasing', 'cherry-pick': 'cherryPicking', revert: 'reverting',
+  merge: 'merging', rebase: 'rebasing', 'cherry-pick': 'cherryPicking', revert: 'reverting', am: 'applyingPatch',
 };
+
+// A rebase or a patch being applied goes commit by commit, with Continue, Skip
+// and Abort; the others end with a commit of their own.
+const stepwise = (operation: GlistGitOperation | null | undefined): boolean => operation === 'rebase' || operation === 'am';
 
 export class CommitView {
   // Changed files left out of the next commit, and unversioned ones put in it.
@@ -228,10 +233,10 @@ export class CommitView {
       void this.amendChanged();
       return;
     }
-    const merging = Boolean(repository?.operation && repository.operation !== 'rebase');
+    const merging = Boolean(repository?.operation && !stepwise(repository.operation));
     const shared = this.sharedIncluded();
     const hasFiles = this.included().length > 0 || shared.length > 0 || merging || this.controls.amend.checked;
-    const blocked = repository?.operation === 'rebase' || Boolean(repository?.changes.some((change) => change.state === 'conflict'));
+    const blocked = stepwise(repository?.operation) || Boolean(repository?.changes.some((change) => change.state === 'conflict'));
     const ready = Boolean(repository || shared.length > 0) && hasFiles && !blocked && this.controls.message.value.trim().length > 0;
     this.controls.commit.disabled = !ready;
     this.controls.commitAndPush.disabled = !ready;
@@ -310,7 +315,7 @@ export class CommitView {
       }, true));
     }
     if (operation !== 'merge') buttons.append(button('continue', step('continue'), true));
-    if (operation === 'rebase') buttons.append(button('skip', step('skip')));
+    if (stepwise(operation)) buttons.append(button('skip', step('skip')));
     buttons.append(button('abort', step('abort')));
     item.append(title, hint, buttons);
     return item;
@@ -459,7 +464,20 @@ export class CommitView {
           ...(root === undefined ? [{ label: t('delete'), danger: true, run: () => { void this.deleteUnversioned(change); } }] : []),
         ]
         : [{ label: `${t('rollback')}...`, danger: true, run: () => { void this.rollback([change], root); } }]),
+      'separator',
+      { label: t('copyAsPatch'), run: () => { void this.patchOf(change, root, false); } },
+      { label: t('saveAsPatch'), run: () => { void this.patchOf(change, root, true); } },
     ]);
+  }
+
+  // A checked file brings every checked one of its repository into the patch;
+  // one not checked comes on its own.
+  private async patchOf(change: GlistGitChange, root: string | undefined, save: boolean): Promise<void> {
+    const checked = !this.isIncluded(change) ? [change]
+      : root === undefined ? this.included()
+        : this.sharedIncluded().find(([repository]) => repository.folder === root)?.[1] ?? [change];
+    const made = await this.client.patch({ root, paths: checked.flatMap((entry) => (entry.from ? [entry.path, entry.from] : [entry.path])) });
+    if (made) { if (save) savePatch(made); else await copyPatch(made); }
   }
 
   // A whole file in one click is easy to do by mistake, so it can be taken back.
@@ -566,7 +584,7 @@ export class CommitView {
     const pathsOf = (changes: GlistGitChange[]): string[] => changes.flatMap((change) => (change.from ? [change.path, change.from] : [change.path]));
     const paths = pathsOf(this.included());
     const amend = this.controls.amend.checked;
-    const merging = Boolean(repository?.operation && repository.operation !== 'rebase');
+    const merging = Boolean(repository?.operation && !stepwise(repository.operation));
     const shared = this.sharedIncluded();
     const project = Boolean(repository) && (paths.length > 0 || amend || merging);
     if (!project && shared.length === 0) return;

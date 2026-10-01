@@ -313,7 +313,16 @@ interface GlistGitChange {
   conflict?: string;
 }
 // A merge, rebase, cherry-pick or revert that stopped to have conflicts resolved.
-type GlistGitOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert';
+// am is a patch being applied as commits (Apply Patch).
+type GlistGitOperation = 'merge' | 'rebase' | 'cherry-pick' | 'revert' | 'am';
+
+// Commits or changes as a patch to share, and a file name for it.
+interface GlistGitPatch {
+  patch: string;
+  name: string;
+  // How many commits it holds; 0 for changes not committed yet.
+  commits: number;
+}
 interface GlistGitRepository {
   // The project's own repository, or the engine's or a plugin's the project is built with.
   kind: 'project' | 'engine' | 'plugin';
@@ -467,6 +476,7 @@ type GlistGitAction =
   | { kind: 'rollback'; paths: string[] }
   | { kind: 'ignore'; paths: string[] }
   | { kind: 'resolve'; path: string; side: 'mine' | 'theirs' }
+  | { kind: 'apply-patch'; patch: string }
   // Puts a resolved conflict back, markers and all.
   | { kind: 'unresolve'; path: string }
   | { kind: 'mark-resolved'; paths: string[] }
@@ -608,6 +618,8 @@ interface Window {
     gitLog(query: GlistGitLogQuery): Promise<GlistGitCommit[]>;
     // root: an engine's or plugin's folder, or the project's repository when absent.
     gitCommitDetails(revision: string, root?: string): Promise<GlistGitCommitDetails>;
+    // Commits, or changed files, of a repository as a patch.
+    gitPatch(request: { root?: string; commits?: string[]; paths?: string[] }): Promise<GlistGitPatch>;
     gitBranches(root?: string): Promise<GlistGitBranch[]>;
     gitTags(root?: string): Promise<GlistGitTag[]>;
     gitRemotes(root?: string): Promise<GlistGitRemote[]>;

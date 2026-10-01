@@ -165,6 +165,16 @@ export class GitClient {
     return this.refresh();
   }
 
+  // Commits, or changed files, of a repository as a patch; null once it has said why not.
+  async patch(request: { root?: string; commits?: string[]; paths?: string[] }): Promise<GlistGitPatch | null> {
+    try {
+      return await window.glistAPI.gitPatch(request);
+    } catch (error) {
+      notify({ text: t('gitFailed'), detail: error instanceof Error ? error.message : String(error), kind: 'error' });
+      return null;
+    }
+  }
+
   async run(action: GlistGitAction, options: RunOptions = {}): Promise<GlistGitResult> {
     const shared = options.root === undefined ? null : this.repositoryAt(options.root);
     if (shared && sharedChanges.has(action.kind) && !window.confirm(t('confirmShared').replace('{name}', shared.name))) {
