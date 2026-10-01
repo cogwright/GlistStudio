@@ -76,9 +76,14 @@ export class PluginsView {
     });
   }
 
+  // Adding or removing one changes CMakeLists.txt, which may be open: open
+  // files are saved first, so nothing typed is lost, and read again after, so
+  // the change shows.
   private async use(plugin: GlistPlugin, on: boolean): Promise<void> {
     await this.run(plugin.name, async () => {
+      if (!(await this.hooks.updates.save())) return;
       const result = await window.glistAPI.usePlugin(plugin.name, on).catch((error: Error): GlistPluginResult => ({ success: false, message: error.message }));
+      await this.hooks.updates.reload();
       if (!result.success) notify({ text: t('pluginUseFailed').replace('{name}', plugin.name), detail: result.message, kind: 'error' });
     });
   }
