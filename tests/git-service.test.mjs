@@ -213,11 +213,26 @@ try {
   assert.equal((await git.gitStatus()).repository.stashes, 1);
   const [stash] = await git.gitStashes();
   assert.equal(stash.message, 'On main: Try something');
-  assert.deepEqual((await git.gitCommitDetails(stash.name)).files.map((file) => path.relative(project, file.path)), ['src/main.cpp']);
+  // The changed file, and the new files stashed with it.
+  assert.deepEqual((await git.gitCommitDetails(stash.name)).files.map((file) => [path.relative(project, file.path), file.state]),
+    [['src/main.cpp', 'modified'], ['notes.txt', 'untracked'], [path.join('src', 'Other.h'), 'untracked']]);
   await run({ kind: 'unstash', name: stash.name, pop: true });
   assert.equal(read('src/main.cpp'), 'stashed\n');
   assert.equal(read('notes.txt'), 'mine\n');
   await run({ kind: 'rollback', paths: [inProject('src/main.cpp')] });
+  // A new file stashed with it: shown in the stash's files, from the third parent git keeps it in.
+  write('src/main.cpp', 'stashed again\n');
+  write('fresh.txt', 'fresh\n');
+  await run({ kind: 'stash', message: 'With a new file', untracked: true });
+  const [withNew] = await git.gitStashes();
+  const stashed = (await git.gitCommitDetails(withNew.name)).files;
+  const fresh = stashed.find((file) => file.path === inProject('fresh.txt'));
+  assert.deepEqual([stashed[0].state, fresh?.state], ['modified', 'untracked']);
+  assert.match(fresh.at, /^[0-9a-f]{40}$/);
+  assert.equal((await git.gitFileAt(fresh.at, inProject('fresh.txt'))).text, 'fresh\n');
+  await run({ kind: 'unstash', name: withNew.name, pop: true });
+  assert.equal(read('fresh.txt'), 'fresh\n');
+  await run({ kind: 'rollback', paths: [inProject('src/main.cpp'), inProject('fresh.txt')] });
 
   // A remote: pushing sets the upstream, and a clone gets what was pushed.
   const remote = path.join(root, 'remote.git');

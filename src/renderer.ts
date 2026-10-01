@@ -1475,7 +1475,10 @@ const commitPane = new CommitView({
 
 const gitPanel = new GitPanel(gitPanelElement, git, {
   projectRoot: () => activeProject?.root ?? null,
-  openCommitDiff: (file, base, commit) => { void openGitDiff({ file: file.path, from: file.from, base: file.state === 'added' ? null : base, target: commit }); },
+  openCommitDiff: (file, base, commit) => {
+    const added = file.state === 'added' || file.state === 'untracked';
+    void openGitDiff({ file: file.path, from: file.from, base: added ? null : base, target: file.at ?? commit });
+  },
   push: () => { void pushChanges(); },
   update: () => { void updateProject(); },
   newBranch: (start, label, root) => { void newBranch(start, label, root); },

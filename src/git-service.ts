@@ -452,6 +452,14 @@ exit 1
     return explain(merged);
   };
 
+  // A stash made with its new files keeps them in a third parent of its own,
+  // which a diff against the first parent does not show.
+  const stashedNewFiles = async (repo: Repository, value: unknown, parents: string[]): Promise<GlistGitCommitFile[]> => {
+    if (!/^stash@\{\d+\}$/.test(String(value)) || parents.length < 3) return [];
+    const listed = await run(['ls-tree', '-r', '-z', '--name-only', parents[2]], { cwd: repo.folder });
+    return text(listed).split('\0').filter(Boolean).map((file) => ({ path: fromGit(repo, file), state: 'untracked' as const, at: parents[2] }));
+  };
+
   const commitDetails = async (value: unknown, root?: unknown): Promise<GlistGitCommitDetails> => {
     const repo = await repository(root);
     const rev = revision(value);
@@ -477,11 +485,14 @@ exit 1
       subject,
       message: message.trim(),
       base,
-      files: parseNameStatus(text(files)).map((file) => ({
-        path: fromGit(repo, file.path),
-        ...(file.from ? { from: fromGit(repo, file.from) } : {}),
-        state: file.state,
-      })),
+      files: [
+        ...parseNameStatus(text(files)).map((file) => ({
+          path: fromGit(repo, file.path),
+          ...(file.from ? { from: fromGit(repo, file.from) } : {}),
+          state: file.state,
+        })),
+        ...await stashedNewFiles(repo, value, parentList),
+      ],
     };
   };
 
