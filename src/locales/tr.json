@@ -707,7 +707,7 @@
     "invalidName": "Geçerli bir dosya veya klasör adı girin.",
     "outsideProject": "Proje dışındaki dosyalara erişilemez.",
     "folderRequired": "Öğe oluşturmak için bir klasör seçin.",
-    "rootDelete": "Proje kök klasörü silinemez.",
+    "rootDelete": "Projenin, GlistEngine'in ya da bir eklentinin klasörü yeniden adlandırılamaz, taşınamaz veya silinemez.",
     "alreadyExists": "Bu adda bir öğe zaten var.",
     "invalidClass": "Geçerli bir C++ sınıf adı girin (harf, rakam ve alt çizgi içerebilir).",
     "classSource": "CMakeLists.txt içinde bu sınıf için kaynak/başlık listeleri bulunamadı.",

@@ -707,7 +707,7 @@
     "invalidName": "Enter a valid file or folder name.",
     "outsideProject": "Files outside the project cannot be accessed.",
     "folderRequired": "Select a folder to create an item.",
-    "rootDelete": "The project root cannot be deleted.",
+    "rootDelete": "The folder of the project, of GlistEngine or of a plugin cannot be renamed, moved or deleted.",
     "alreadyExists": "An item with this name already exists.",
     "invalidClass": "Enter a valid C++ class name (letters, numbers and underscores).",
     "classSource": "CMakeLists.txt does not contain source/header lists for this class.",

@@ -95,8 +95,10 @@ try {
   assert.equal(readFileSync(at('myglistapps/App/assets/logo.png'), 'utf8'), 'old');
   assert.equal(readFileSync(at('myglistapps/App/assets/logo - Copy.png'), 'utf8'), 'png');
   assert.equal(readFileSync(at('myglistapps/App/assets/sprites/enemies/bat.png'), 'utf8'), 'bat');
-  // Only into the project, and a folder not into itself.
-  await assert.rejects(studio.importPaths([at('Desktop/logo.png')], at('GlistEngine/engine/core')));
+  // Into the project, the engine and the plugins it names, and a folder not into itself.
+  assert.deepEqual(await studio.importPaths([at('Desktop/logo.png')], at('GlistEngine/engine/core')), [at('GlistEngine/engine/core/logo.png')]);
+  await assert.rejects(studio.importPaths([at('Desktop/logo.png')], at('glistplugins/gipOther/src')));
+  await assert.rejects(studio.importPaths([at('Desktop/logo.png')], at('zbin/include')));
   await assert.rejects(studio.importPaths([at('myglistapps/App/assets')], at('myglistapps/App/assets/sprites')));
   // From a browser, by content: the dropped folder renamed as a whole when its name is taken.
   const sent = await studio.importFiles(at('myglistapps/App/assets'), [
@@ -108,6 +110,36 @@ try {
   assert.equal(readFileSync(at('myglistapps/App/assets/sprites - Copy/enemies/bat.png'), 'utf8'), 'bat 2');
   assert.deepEqual([...readFileSync(at('myglistapps/App/assets/music.ogg'))], [0, 1, 2, 255]);
   await assert.rejects(studio.importFiles(at('myglistapps/App/assets'), [{ path: '../escape.txt', data: '' }]));
+
+  // Files and folders of the engine and the plugins are made, renamed, moved and
+  // deleted as the project's are; only the project's CMakeLists.txt is kept in step.
+  const cmake = 'set(PLUGINS gipDemo)\nset(GlistApp_SOURCES\n\t${APP_DIR}/src/main.cpp\n\t${APP_DIR}/src/leaving.cpp\n)\nset(GlistApp_HEADERS\n)\n';
+  write('myglistapps/App/CMakeLists.txt', cmake);
+  write('myglistapps/App/src/leaving.cpp', '');
+  const cmakeNow = () => readFileSync(at('myglistapps/App/CMakeLists.txt'), 'utf8');
+  assert.ok((await studio.listDirectory(at('glistplugins/gipDemo'))).some((entry) => entry.name === 'src'));
+  await assert.rejects(studio.listDirectory(at('glistplugins/gipOther')));
+  assert.equal(await studio.createFile(at('GlistEngine/engine/core'), 'gNew.cpp'), at('GlistEngine/engine/core/gNew.cpp'));
+  assert.equal(await studio.createDirectory(at('glistplugins/gipDemo'), 'assets'), at('glistplugins/gipDemo/assets'));
+  const made = await studio.createCppClass(at('glistplugins/gipDemo/src'), 'gipHelper');
+  assert.match(readFileSync(made.header, 'utf8'), /#ifndef SRC_GIPHELPER_H_/);
+  assert.equal(await studio.renameEntry(at('GlistEngine/engine/core/gNew.cpp'), 'gNewer.cpp'), at('GlistEngine/engine/core/gNewer.cpp'));
+  assert.equal(await studio.moveEntry(at('glistplugins/gipDemo/src/gipHelper.cpp'), at('glistplugins/gipDemo/assets')), at('glistplugins/gipDemo/assets/gipHelper.cpp'));
+  assert.equal(cmakeNow(), cmake);
+  // Across the project's edge, a file leaves its CMakeLists.txt or joins it.
+  await studio.moveEntry(at('myglistapps/App/src/leaving.cpp'), at('GlistEngine/engine/core'));
+  assert.ok(!cmakeNow().includes('leaving.cpp'));
+  await studio.moveEntry(at('GlistEngine/engine/core/gNewer.cpp'), at('myglistapps/App/src'));
+  assert.ok(cmakeNow().includes('${APP_DIR}/src/gNewer.cpp'));
+  // Their own folders stay where they are, and so does what is not named.
+  for (const folder of ['GlistEngine', 'glistplugins/gipDemo', 'myglistapps/App']) {
+    await assert.rejects(studio.deleteEntry(at(folder)), /cannot be renamed, moved or deleted/);
+    await assert.rejects(studio.renameEntry(at(folder), 'Other'), /cannot be renamed, moved or deleted/);
+  }
+  await assert.rejects(studio.moveEntry(at('glistplugins/gipDemo'), at('GlistEngine')), /cannot be renamed, moved or deleted/);
+  await assert.rejects(studio.createFile(at('glistplugins/gipOther/src'), 'x.h'));
+  await assert.rejects(studio.moveEntry(at('glistplugins/gipOther/src/gipOther.h'), at('glistplugins/gipDemo/src')));
+  await assert.rejects(studio.deleteEntry(at('zbin/include/tool.h')));
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

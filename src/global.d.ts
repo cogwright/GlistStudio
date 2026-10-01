@@ -563,7 +563,6 @@ interface Window {
     searchText(query: GlistSearchQuery): Promise<GlistSearchResult>;
     // The project's files, and the engine's and plugins' with dependencies.
     listFiles(dependencies: boolean): Promise<GlistFoundFile[]>;
-    listWorkspaceDirectory(directoryPath: string): Promise<GlistFileEntry[]>;
     getProjectsDirectory(): Promise<string>;
     listProjects(): Promise<GlistProjectSummary[]>;
     openProjectPath(root: string): Promise<GlistProjectInfo>;

@@ -28,7 +28,6 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   readWorkspaceFile: 'project:read-workspace-file',
   codeStyle: 'project:code-style',
   listDependencies: 'project:dependencies',
-  listWorkspaceDirectory: 'project:list-workspace-directory',
   searchText: 'project:search-text',
   listFiles: 'project:list-files',
   getProjectsDirectory: 'project:projects-directory',

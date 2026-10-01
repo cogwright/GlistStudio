@@ -573,7 +573,7 @@ const updateButtons = (): void => {
   refreshButton.disabled = !hasProject;
   newFileButton.disabled = !hasProject;
   newFolderButton.disabled = !hasProject;
-  deleteEntryButton.disabled = !selectedEntry;
+  deleteEntryButton.disabled = !selectedEntry || isRootFolder(selectedEntry.path);
 };
 
 // Shows each side's tab in front: a file in the side's editor, where it was
@@ -863,6 +863,9 @@ const learnDependencies = (): Promise<void> => {
 const dependencyFolderOf = (filePath: string): string | undefined => dependencyFolders.find((folder) => isWithin(filePath, folder));
 
 const isEditablePath = (filePath: string): boolean => isProjectPath(filePath) || Boolean(dependencyFolderOf(filePath));
+
+// The project's own folder and the engine's and plugins' are not renamed, moved or deleted.
+const isRootFolder = (folder: string): boolean => folder === activeProject?.root || dependencyFolders.includes(folder);
 
 // The first change to the engine or a plugin in a session says that it is shared.
 const warnedShared = new Set<string>();
@@ -1784,7 +1787,8 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
   if (!activeProject) return;
   const item = (key: TranslationKey, run: () => void, danger = false): MenuEntry => ({ label: t(key), run, danger });
   const gitItems: MenuEntry[] = [];
-  if (git.repository && entry) {
+  // The engine and plugins are repositories of their own, which these do not reach.
+  if (git.repository && entry && isProjectPath(entry.path)) {
     const change = git.changeOf(entry.path);
     if (!entry.isDirectory && change?.state !== 'untracked') {
       gitItems.push(item('showDiff', () => { void openWorkingDiff(entry.path); }));
@@ -1804,17 +1808,14 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
     'separator',
     ...(entry ? [item('copy', copySelectedEntry)] : []),
     ...(copiedEntryPath ? [item('paste', pasteCopiedEntry)] : []),
-    ...(entry ? [item('rename', renameSelectedEntry), item('delete', deleteSelectedEntry, true)] : []),
+    ...(entry && !isRootFolder(entry.path) ? [item('rename', renameSelectedEntry), item('delete', deleteSelectedEntry, true)] : []),
     'separator',
     { label: t('showIn'), children: [item('systemExplorer', showInExplorer), item('commandPrompt', openCommandPrompt)] },
     ...(gitItems.length > 0 ? [{ label: t('menuGit'), children: gitItems }] : []),
   ]);
 };
 
-// Rows of the engine and plugins are read-only: they list through the
-// workspace, offer no file operations, and open files read-only.
 interface TreeRowOptions {
-  readOnly?: boolean;
   // Instead of the folder icon, for the engine and plugins.
   icon?: IconName;
 }
@@ -1825,8 +1826,8 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
   row.type = 'button';
   row.className = 'tree-row';
   row.style.paddingLeft = `${10 + depth * 14}px`;
-  // The project's own files and folders move by dragging them onto another folder.
-  row.draggable = !options.readOnly && isProjectPath(entry.path);
+  // Files and folders move by dragging them onto another folder.
+  row.draggable = !isRootFolder(entry.path);
   const arrow = document.createElement('span');
   arrow.className = 'tree-arrow';
   if (entry.isDirectory) arrow.append(icon('chevron-right'));
@@ -1842,13 +1843,8 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
   row.dataset.path = entry.path;
   if (entry.isDirectory) row.dataset.directory = 'true';
   decorateTreeRow(row);
-  const select = (): void => {
-    if (!options.readOnly) { selectTreeEntry(entry, row); return; }
-    // Selecting one would aim New File and Delete at the engine.
-    clearTreeSelection();
-    row.classList.add('selected');
-  };
-  if (!options.readOnly) row.addEventListener('contextmenu', (event) => showContextMenu(event, entry, row));
+  const select = (): void => selectTreeEntry(entry, row);
+  row.addEventListener('contextmenu', (event) => showContextMenu(event, entry, row));
 
   if (entry.isDirectory) {
     const children = document.createElement('div');
@@ -1858,8 +1854,8 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
       if (!loaded) {
         loaded = true;
         try {
-          const entries = await (options.readOnly ? window.glistAPI.listWorkspaceDirectory(entry.path) : window.glistAPI.listDirectory(entry.path));
-          children.append(...entries.map((child) => createTreeRow(child, depth + 1, { readOnly: options.readOnly })));
+          const entries = await window.glistAPI.listDirectory(entry.path);
+          children.append(...entries.map((child) => createTreeRow(child, depth + 1)));
         } catch (error) {
           children.textContent = error instanceof Error ? error.message : String(error);
         }
@@ -1943,7 +1939,7 @@ const dependencySection = async (projectRoot: string): Promise<HTMLElement | nul
   children.append(...dependencies.map((dependency) => {
     const dependencyIcon: IconName = dependency.kind === 'engine' ? 'package' : 'extensions';
     if (dependency.exists) {
-      return createTreeRow({ name: dependency.name, path: dependency.path, isDirectory: true }, 0, { readOnly: true, icon: dependencyIcon });
+      return createTreeRow({ name: dependency.name, path: dependency.path, isDirectory: true }, 0, { icon: dependencyIcon });
     }
     // Named in CMakeLists.txt but not downloaded: the build will stop on it.
     const missing = document.createElement('div');
@@ -2178,7 +2174,7 @@ const renameSelectedEntry = async (): Promise<void> => {
   }
 };
 
-// A file or folder dragged onto another folder of the project, moved there.
+// A file or folder dragged onto another folder, moved there.
 const moveEntry = async (entryPath: string, folder: string): Promise<void> => {
   try {
     const nextPath = await relocateEntry(entryPath, () => window.glistAPI.moveEntry(entryPath, folder));
@@ -2950,13 +2946,13 @@ fileTree.addEventListener('contextmenu', (event) => {
 });
 
 // Files and folders dragged in from the system's file manager are copied into
-// the project folder they are dropped on: the folder under the pointer, a file's
-// own folder, or the project's when dropped below the list. The engine's and
-// plugins' folders take none. Electron says where the files are, so they are
-// copied from there; a browser gives only their contents, which are sent instead.
+// the folder they are dropped on: the folder under the pointer, a file's own
+// folder, or the project's when dropped below the list. Electron says where the
+// files are, so they are copied from there; a browser gives only their contents,
+// which are sent instead.
 const externalDrag = (event: DragEvent): boolean => !draggedTab && !draggedEntry && Boolean(event.dataTransfer?.types.includes('Files'));
-// A file or folder of the project being dragged within the explorer, which moves
-// it: not into itself, nor into the folder it is already in.
+// A file or folder being dragged within the explorer, which moves it: not into
+// itself, nor into the folder it is already in.
 let draggedEntry: string | null = null;
 const moveTarget = (event: DragEvent): string | null => {
   const folder = draggedEntry ? dropFolderAt(event) : null;
@@ -2968,7 +2964,7 @@ const dropFolderAt = (event: DragEvent): string | null => {
   const row = event.target instanceof Element ? event.target.closest<HTMLElement>('.tree-row') : null;
   if (!row) return activeProject.root;
   const entryPath = row.dataset.path;
-  if (!entryPath || !isProjectPath(entryPath)) return null;
+  if (!entryPath || !isEditablePath(entryPath)) return null;
   return row.dataset.directory ? entryPath : entryPath.replace(/[\\/][^\\/]+$/, '');
 };
 const markDropFolder = (folder: string | null): void => {
