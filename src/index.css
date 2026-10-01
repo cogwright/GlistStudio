@@ -411,6 +411,21 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .vertical-resizer:hover, .horizontal-resizer:hover { background: var(--ui-accent); }
 
 .editor-column { display: grid; min-width: 0; min-height: 0; grid-template-rows: auto 35px minmax(0,1fr) 3px var(--panel-height); background: var(--ui-bg); }
+/* The editor's popups: hovers with their documentation or the debugger's values,
+   parameter hints and completion details, with room around their text. Ahead of
+   Monaco's own rules, which leave it at the border. */
+body .monaco-hover .hover-contents:not(.html-hover-contents) { padding: 6px 12px; }
+body .monaco-hover hr { margin: 4px -12px; }
+body .monaco-hover h3 { margin: 0 0 2px; }
+body .monaco-hover ul { margin: 4px 0; padding-left: 18px; }
+body .monaco-hover .rendered-markdown code { padding: 1px 5px; border-radius: 3px; }
+body .monaco-editor .parameter-hints-widget .signature { padding: 6px 12px; }
+body .monaco-editor .parameter-hints-widget .docs { padding: 6px 12px 8px; }
+body .monaco-editor .suggest-details > .monaco-scrollable-element > .body > .header > .type { padding: 8px 0 8px 12px; }
+body .monaco-editor .suggest-details > .monaco-scrollable-element > .body > .docs,
+body .monaco-editor .suggest-details > .monaco-scrollable-element > .body > .docs.markdown-docs > div,
+body .monaco-editor .suggest-details > .monaco-scrollable-element > .body > .docs.markdown-docs > span:not(:empty) { padding: 6px 12px; }
+
 /* Above the tabs until the project's first build: the editor cannot know the engine's files yet.
    Hidden, it leaves its row empty at no height; the rows below are placed by number, so they stay put. */
 .build-notice { grid-row: 1; display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 12px; border-bottom: 1px solid color-mix(in srgb, var(--ui-warning) 45%, transparent); color: var(--ui-fg-strong); background: color-mix(in srgb, var(--ui-warning) 18%, var(--ui-chrome)); font-size: 12px; }
