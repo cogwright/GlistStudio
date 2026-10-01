@@ -4,7 +4,7 @@ import { stateLetter, stateText, type GitClient } from './git-client';
 import { formDialog } from './git-dialogs';
 import { graphRows, type GraphRow } from './git-graph';
 import { icon, type IconName } from './icons';
-import { t, type TranslationKey } from './localization';
+import { t, translate, type TranslationKey } from './localization';
 import { baseName } from './paths';
 import { fullTime, relativeTime, shortDate } from './time';
 
@@ -869,7 +869,11 @@ export class GitPanel {
       tab.setAttribute('aria-selected', String(key === view));
     });
     const content = { log: this.log, branches: this.branches, remotes: this.remotes, stashes: this.stashes, console: this.console }[view];
-    if (this.body.firstElementChild !== content.element) this.body.replaceChildren(content.element);
+    if (this.body.firstElementChild !== content.element) {
+      // Off the page when the language last changed, it may still have the words before.
+      translate(content.element);
+      this.body.replaceChildren(content.element);
+    }
     if (!load || !this.stale.has(view)) return;
     this.stale.delete(view);
     if (view !== 'console') void (content as { load(): Promise<void> }).load();
