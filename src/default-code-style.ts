@@ -69,7 +69,8 @@ SpaceBeforeAssignmentOperators: true
 SpaceBeforeCpp11BracedList: false
 SpaceBeforeCtorInitializerColon: true
 SpaceBeforeInheritanceColon: true
-# No space between a keyword and its parenthesis, as the engine's code is written: if(, for(, while(.
+# No space before ( after a keyword, as the engine's code is written: if(a), for(...), while(...).
+# Only the ( : the space before { comes from the brace rules and stays, so if(a) {, never if(a){.
 SpaceBeforeParens: Never
 SpaceBeforeRangeBasedForLoopColon: true
 SpaceInEmptyParentheses: false
