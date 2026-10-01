@@ -47,6 +47,13 @@ jobs:
     name: ${{ matrix.name }}
     needs: version
     runs-on: ${{ matrix.os }}
+    # A newer push to the same branch stops this build, so merging several pull
+    # requests at once builds and publishes only the last; the older runs end as
+    # cancelled. Only builds are stopped, never a prerelease being published,
+    # and a version tag's build always finishes.
+    concurrency:
+      group: build-${{ github.ref }}-${{ matrix.label }}
+      cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
     strategy:
       fail-fast: false
       matrix:
@@ -162,7 +169,7 @@ jobs:
       - name: Publish the prerelease
         run: |
           message=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.message)
-          printf '%s\n\nBuilt from %s on main, to try changes before they are released. Glist Studio does not update itself to prereleases.\n' \
+          printf '%s\n\nBuilt from %s on main, to try changes before they are released. Glist Studio updates itself to prereleases only with Get previews too on, in Settings.\n' \
             "$message" "$GITHUB_SHA" > notes.md
           gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --prerelease --latest=false --title "Glist Studio $VERSION" --notes-file notes.md
