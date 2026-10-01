@@ -143,6 +143,8 @@ class LogView {
   // A branch or tag to show once the list of them is filled.
   private pendingRef: string | null = null;
   private generation = 0;
+  // The current branch's commits no remote has yet, which can be dropped.
+  private unpublished = new Set<string>();
   private searchTimer = 0;
 
   constructor(private readonly client: GitClient, private readonly hooks: GitPanelHooks, private readonly place: Place) {
@@ -216,6 +218,10 @@ class LogView {
 
   async load(): Promise<void> {
     this.generation += 1;
+    const generation = this.generation;
+    void window.glistAPI.gitUnpublished(this.place.root).catch((): string[] => []).then((hashes) => {
+      if (generation === this.generation) this.unpublished = new Set(hashes);
+    });
     this.commits = [];
     this.complete = false;
     // A page still coming for the load before is dropped when it arrives.
@@ -389,6 +395,13 @@ class LogView {
       { label: t('cherryPick'), run: () => run({ kind: 'cherry-pick', commit: commit.hash }), disabled: !branch },
       { label: t('revertCommit'), run: () => run({ kind: 'revert', commit: commit.hash }), disabled: !branch },
       { label: t('resetHere'), run: () => { void this.reset(commit); }, disabled: !branch, danger: true },
+      ...(this.unpublished.has(commit.hash) && commit.parents.length === 1 ? [{
+        label: t('dropCommit'),
+        danger: true,
+        run: () => {
+          if (window.confirm(t('confirmDropCommit').replace('{subject}', commit.subject))) run({ kind: 'drop-commit', commit: commit.hash }, t('commitDropped'));
+        },
+      }] : []),
     ];
   }
 

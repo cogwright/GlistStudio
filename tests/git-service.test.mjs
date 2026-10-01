@@ -334,6 +334,60 @@ try {
   // The console shows the commands that change the repository.
   assert.ok(consoleLines.some((entry) => entry.kind === 'command' && entry.text.startsWith('git commit -m First')));
 
+  // Dropping a commit not pushed yet.
+  {
+    const sh = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+    const repo = path.join(projects, 'Drops');
+    const remote = path.join(root, 'drops-remote.git');
+    const put = (file, text) => writeFileSync(path.join(repo, file), text);
+    const at = (file) => readFileSync(path.join(repo, file), 'utf8');
+    mkdirSync(repo);
+    sh(repo, 'init', '-q', '-b', 'main');
+    put('a.txt', 'a\n');
+    put('b.txt', 'b\n');
+    sh(repo, 'add', '-A');
+    sh(repo, 'commit', '-qm', 'Start');
+    execFileSync('git', ['init', '-q', '--bare', remote]);
+    sh(repo, 'remote', 'add', 'origin', remote);
+    sh(repo, 'push', '-q', '-u', 'origin', 'main');
+    openRoot = repo;
+
+    // Unpublished: the branch's commits no remote has.
+    put('c.txt', 'c\n');
+    sh(repo, 'add', '-A');
+    sh(repo, 'commit', '-qm', 'Add c');
+    put('d.txt', 'd\n');
+    sh(repo, 'add', '-A');
+    sh(repo, 'commit', '-qm', 'Add d');
+    const [addD, addC] = (await git.gitUnpublished()).map((hash) => sh(repo, 'log', '-1', '--format=%s', hash));
+    assert.deepEqual([addD, addC], ['Add d', 'Add c']);
+    // Dropping one in the middle keeps the ones after it, and changes not committed yet.
+    put('a.txt', 'a typed\n');
+    await run({ kind: 'drop-commit', commit: sh(repo, 'rev-parse', 'HEAD~1') });
+    assert.deepEqual(sh(repo, 'log', '--format=%s').split('\n'), ['Add d', 'Start']);
+    assert.deepEqual([existsSync(path.join(repo, 'c.txt')), at('d.txt'), at('a.txt')], [false, 'd\n', 'a typed\n']);
+    // A pushed one stays, and so does one from another branch.
+    const pushed = await git.gitRun({ kind: 'drop-commit', commit: sh(repo, 'rev-parse', 'origin/main') });
+    assert.deepEqual([pushed.success, pushed.message], [false, 'This commit is already pushed, so it is not dropped: others may have it.']);
+    sh(repo, 'stash', '-q');
+    sh(repo, 'checkout', '-qb', 'side');
+    put('e.txt', 'e\n');
+    sh(repo, 'add', '-A');
+    sh(repo, 'commit', '-qm', 'Side');
+    const side = sh(repo, 'rev-parse', 'HEAD');
+    sh(repo, 'checkout', '-q', 'main');
+    assert.equal((await git.gitRun({ kind: 'drop-commit', commit: side })).message, 'Only a commit of the current branch can be dropped.');
+    // A merge after it would be flattened by the rebase, so it is refused.
+    const beforeMerge = sh(repo, 'rev-parse', 'HEAD');
+    sh(repo, 'merge', '-q', '--no-ff', '-m', 'Merge side', 'side');
+    assert.equal((await git.gitRun({ kind: 'drop-commit', commit: beforeMerge })).message, 'A merge commit, or one with a merge after it, cannot be dropped here.');
+    // The newest one, alone.
+    sh(repo, 'reset', '-q', '--hard', 'HEAD~1');
+    await run({ kind: 'drop-commit', commit: sh(repo, 'rev-parse', 'HEAD') });
+    assert.deepEqual(sh(repo, 'log', '--format=%s').split('\n'), ['Start']);
+    openRoot = project;
+  }
+
   // Another project is not a repository.
   openRoot = path.join(root, 'plain');
   mkdirSync(openRoot);

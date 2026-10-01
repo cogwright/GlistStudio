@@ -493,6 +493,7 @@ type GlistGitAction =
   | { kind: 'remove-remote'; name: string }
   | { kind: 'set-remote-url'; name: string; url: string }
   | { kind: 'stash'; message?: string; untracked: boolean }
+  | { kind: 'drop-commit'; commit: string }
   | { kind: 'unstash'; name: string; pop: boolean }
   | { kind: 'drop-stash'; name: string }
   | { kind: 'identity'; name: string; email: string };
@@ -606,6 +607,8 @@ interface Window {
     gitStatus(): Promise<GlistGitStatus>;
     gitWatch(on: boolean): Promise<void>;
     gitLog(query: GlistGitLogQuery): Promise<GlistGitCommit[]>;
+    // The current branch's commits no remote has yet, newest first.
+    gitUnpublished(root?: string): Promise<string[]>;
     // root: an engine's or plugin's folder, or the project's repository when absent.
     gitCommitDetails(revision: string, root?: string): Promise<GlistGitCommitDetails>;
     gitBranches(root?: string): Promise<GlistGitBranch[]>;
