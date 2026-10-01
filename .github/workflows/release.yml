@@ -219,7 +219,7 @@ jobs:
           printf '%s\n\nBuilt from %s on main, to try changes before they are released. Glist Studio updates itself to prereleases only with Get previews too on, in Settings.\n' \
             "$message" "$GITHUB_SHA" > notes.md
           gh release create "v$VERSION" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --prerelease --latest=false --title "Glist Studio $VERSION" --notes-file notes.md
+            --prerelease --latest=false --title "Glist Studio v$VERSION" --notes-file notes.md
       - name: Remove old prereleases
         run: |
           gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isPrerelease,createdAt \
