@@ -2,6 +2,8 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { expressionAt } from './debug-expression';
+import { ValuePopup, type PopupValue } from './debug-value-popup';
+import { shownValue } from './debug-values';
 import { icon } from './icons';
 import { t, type TranslationKey } from './localization';
 import { baseName, pathUri, uriPath } from './paths';
@@ -44,6 +46,14 @@ const pauseReasons: Partial<Record<string, TranslationKey>> = {
   'instruction breakpoint': 'pausedBreakpoint', step: 'pausedStep', pause: 'pausedPause', exception: 'pausedException',
   entry: 'pausedEntry', goto: 'pausedStep',
 };
+// What hovering evaluates while paused, and what it gave.
+interface HoverValue {
+  expression: string;
+  start: number;
+  end: number;
+  result: DebugProtocol.EvaluateResponse['body'];
+}
+
 const pauseReason = (body: DebugProtocol.StoppedEvent['body']): string => {
   const key = pauseReasons[body.reason];
   return key ? t(key) : body.description ?? body.reason;
@@ -65,8 +75,10 @@ export class Debugger {
   private readonly verified = new Map<number, { uri: string; line: number }>();
   // Stops seen, so a reply to Continue or a step can tell whether one came before it.
   private stops = 0;
-  // The last hover's value, which both hovers ask for: this one shows it, clangd's stands aside.
-  private hovered: { key: string; value: Promise<monaco.languages.Hover | null> } | null = null;
+  // The last value pointed at, which the value popup shows and clangd's hover stands aside for.
+  private hovered: { key: string; value: Promise<HoverValue | null> } | null = null;
+  // A value popup for each editor, closed when the program goes on.
+  private readonly popups = new Set<ValuePopup>();
   private readonly unverified = new Set<string>();
   private readonly decorations = new Map<string, string[]>();
   private current: { model: monaco.editor.ITextModel; ids: string[] } | null = null;
@@ -81,9 +93,6 @@ export class Debugger {
       this.finish();
     });
     monaco.editor.onDidCreateModel((model) => this.decorate(model));
-    monaco.languages.registerHoverProvider('cpp', {
-      provideHover: async (model, position) => this.hover(model, position),
-    });
     this.render();
   }
 
@@ -104,6 +113,7 @@ export class Debugger {
       hint.set(line ? [{ range: new monaco.Range(line, 1, line, 1), options: { glyphMarginClassName: 'debug-breakpoint-hint' } }] : []);
     });
     editor.onMouseLeave(() => hint.clear());
+    this.popups.add(new ValuePopup(editor, (model, position) => this.popupFor(model, position)));
   }
 
   get active(): boolean {
@@ -215,6 +225,7 @@ export class Debugger {
 
   private setState(state: DebugState): void {
     this.state = state;
+    if (state !== 'paused') this.popups.forEach((popup) => popup.hide());
     this.render();
     this.host.changed();
   }
@@ -403,37 +414,33 @@ export class Debugger {
     await this.renderVariables();
   }
 
-  // While paused, the value under the pointer instead of its declaration: a
-  // variable, or a member reached through . or ->, with its members, or a
-  // list's items. Null where the debugger has no value, and clangd's hover shows.
-  hover(model: monaco.editor.ITextModel, position: monaco.Position): Promise<monaco.languages.Hover | null> {
+  // What the pointer is on while paused: a variable, or a member reached through
+  // . or ->, evaluated once for the value popup, which shows it, and for clangd's
+  // hover, which stands aside. Null where the debugger has no value.
+  valueAt(model: monaco.editor.ITextModel, position: monaco.Position): Promise<HoverValue | null> {
     const frame = this.frame;
     const found = this.state === 'paused' && frame ? expressionAt(model.getLineContent(position.lineNumber), position.column) : null;
     if (!frame || !found) return Promise.resolve(null);
     const key = [this.stops, frame.id, model.uri.toString(), model.getVersionId(), position.lineNumber, found.start, found.expression].join(':');
-    if (this.hovered?.key !== key) this.hovered = { key, value: this.valueOf(found, position.lineNumber, frame.id) };
+    if (this.hovered?.key !== key) this.hovered = { key, value: this.evaluate(found, frame.id) };
     return this.hovered.value;
   }
 
-  private async valueOf(found: NonNullable<ReturnType<typeof expressionAt>>, line: number, frameId: number): Promise<monaco.languages.Hover | null> {
+  private async evaluate(found: NonNullable<ReturnType<typeof expressionAt>>, frameId: number): Promise<HoverValue | null> {
     const result = await this.request<DebugProtocol.EvaluateResponse['body']>('evaluate', {
       expression: found.expression, frameId, context: 'hover',
     }).catch((): null => null);
-    if (!result) return null;
-    const members = result.variablesReference
-      ? (await this.request<DebugProtocol.VariablesResponse['body']>('variables', { variablesReference: result.variablesReference }).catch((): null => null))?.variables ?? []
-      : [];
-    const shown = members.slice(0, 40);
-    // An object's own value is only its address or its members again; its members say more.
-    const plain = members.length > 0 && /(^|\s)@\s*0x[0-9a-f]+$|^\{.*\}$/i.test(result.result.trim());
-    const lines = [
-      `${result.type ? `${result.type} ` : ''}${found.expression}${plain ? '' : ` = ${result.result}`}`,
-      ...shown.map((member) => `  ${member.name} = ${member.value}`),
-      ...(members.length > shown.length ? ['  ...'] : []),
-    ];
+    return result ? { ...found, result } : null;
+  }
+
+  // The value popup's tree, as the Variables view's, its first level open.
+  private async popupFor(model: monaco.editor.ITextModel, position: monaco.Position): Promise<PopupValue | null> {
+    const value = await this.valueAt(model, position);
+    if (!value || this.state !== 'paused') return null;
+    const { result } = value;
     return {
-      range: new monaco.Range(line, found.start, line, found.end),
-      contents: [{ value: `\`\`\`cpp\n${lines.join('\n')}\n\`\`\`` }],
+      range: { startLineNumber: position.lineNumber, startColumn: value.start, endLineNumber: position.lineNumber, endColumn: value.end },
+      content: this.variableNode(value.expression, result.result, result.type ?? '', result.variablesReference, 0, true),
     };
   }
 
@@ -521,7 +528,8 @@ export class Debugger {
     label.textContent = name;
     const shown = document.createElement('span');
     shown.className = 'debug-value';
-    shown.textContent = value;
+    shown.textContent = shownValue(value, type, reference > 0);
+    shown.title = value;
     row.append(arrow, label, shown);
     const children = document.createElement('div');
     children.hidden = true;

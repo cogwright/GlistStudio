@@ -403,6 +403,11 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .debug-breakpoint.unverified::before { border: 1.5px solid #9a9a9a; background: transparent; }
 .debug-breakpoint-hint::before { background: color-mix(in srgb, #e51400 45%, transparent); }
 .debug-current-line { background: color-mix(in srgb, #ffcc00 22%, transparent); }
+/* The value popup: a variable's tree beside it while paused, as the Variables view's. */
+.debug-value-popup { min-width: 180px; max-width: 520px; max-height: 320px; overflow: auto; padding: 4px 0; border: 1px solid var(--ui-border-strong); border-radius: 6px; background: var(--ui-raised); box-shadow: 0 8px 24px var(--ui-shadow); font-family: var(--font-code); font-size: 12px; }
+.debug-value-popup:empty { display: none; }
+.debug-value-popup .debug-variable { padding-right: 12px; }
+.debug-value-popup .debug-value { color: var(--ui-fg); }
 .debug-current-arrow::before { display: block; width: 12px; height: 12px; margin: 5px 0 0 4px; background: #ffcc00; clip-path: polygon(0 20%, 55% 20%, 55% 0, 100% 50%, 55% 100%, 55% 80%, 0 80%); content: ''; }
 
 .vertical-resizer, .horizontal-resizer { position: relative; z-index: 20; background: transparent; }
