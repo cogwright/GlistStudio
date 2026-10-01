@@ -965,8 +965,8 @@ const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boo
 };
 
 // The text is taken once, so anything typed while it is written stays unsaved.
-const saveFile = async (file: OpenFile): Promise<void> => {
-  await formatForSaving(file);
+const saveFile = async (file: OpenFile, format = true): Promise<void> => {
+  if (format) await formatForSaving(file);
   const version = file.model.getAlternativeVersionId();
   await window.glistAPI.writeFile(file.path, file.model.getValue());
   file.savedVersion = version;
@@ -2244,10 +2244,10 @@ const saveActiveFile = async (): Promise<void> => {
 };
 
 // Build and Run compile what is on screen, so every changed tab is saved first.
-const saveProjectFiles = async (): Promise<boolean> => {
+const saveProjectFiles = async (format = true): Promise<boolean> => {
   try {
     for (const file of fileTabs()) {
-      if (!file.readOnly && isDirty(file)) await saveFile(file);
+      if (!file.readOnly && isDirty(file)) await saveFile(file, format);
     }
     return true;
   } catch (error) {
@@ -2255,6 +2255,12 @@ const saveProjectFiles = async (): Promise<boolean> => {
     return false;
   }
 };
+
+// As in JetBrains' IDEs: leaving the window saves every changed file, as it
+// is, without formatting it under the cursor; coming back reads again the files
+// changed on disk meanwhile, other than those with changes not saved yet.
+window.addEventListener('blur', () => { if (activeProject) void saveProjectFiles(false); });
+window.addEventListener('focus', () => { if (activeProject) void reloadOpenFiles(); });
 
 // Keeps a second click from reaching the backend while the first is on its way.
 const whileStarting = async (task: () => Promise<void>): Promise<void> => {
