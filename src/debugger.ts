@@ -51,6 +51,8 @@ export class Debugger {
   // Keyed by file URI, so one file has one entry however its path is spelled.
   private readonly breakpoints = new Map<string, FileBreakpoints>();
   private readonly verified = new Map<number, { uri: string; line: number }>();
+  // Stops seen, so a reply to Continue or a step can tell whether one came before it.
+  private stops = 0;
   private readonly unverified = new Set<string>();
   private readonly decorations = new Map<string, string[]>();
   private current: { model: monaco.editor.ITextModel; ids: string[] } | null = null;
@@ -176,10 +178,25 @@ export class Debugger {
   stepInto(): void { this.control('stepIn'); }
   stepOut(): void { this.control('stepOut'); }
 
+  // Adapters need not send 'continued' when asked to go on, and GDB does not, so
+  // the reply says the program runs, unless it has stopped again already. One
+  // that answers it is not stopped was running all along.
   private control(command: 'continue' | 'pause' | 'next' | 'stepIn' | 'stepOut'): void {
     const allowed = command === 'pause' ? this.state === 'running' : this.state === 'paused';
     if (!allowed) return;
-    void this.request(command, { threadId: this.threadId }).catch((error: Error) => this.host.log(`\n${error.message}\n`, 'error'));
+    const stops = this.stops;
+    const goesOn = (): void => { if (command !== 'pause' && this.state === 'paused' && this.stops === stops) this.resumed(); };
+    void this.request(command, { threadId: this.threadId }).then(goesOn, (error: Error) => {
+      if (/not ?stopped/i.test(error.message)) goesOn();
+      else this.host.log(error.message, 'error');
+    });
+  }
+
+  private resumed(): void {
+    this.frames = [];
+    this.frame = null;
+    this.clearCurrentLine();
+    this.setState('running');
   }
 
   private setState(state: DebugState): void {
@@ -245,16 +262,14 @@ export class Debugger {
       case 'stopped': {
         const body = (event as DebugProtocol.StoppedEvent).body;
         this.threadId = body.threadId ?? this.threadId;
+        this.stops += 1;
         this.setState('paused');
         this.host.views.status.textContent = `${t('debugPaused')}: ${body.description ?? body.reason}`;
         await this.loadStack();
         break;
       }
       case 'continued':
-        this.frames = [];
-        this.frame = null;
-        this.clearCurrentLine();
-        this.setState('running');
+        if (this.state === 'paused') this.resumed();
         break;
       case 'output': {
         const { category, output } = (event as DebugProtocol.OutputEvent).body;
