@@ -57,6 +57,8 @@ interface OpenFile {
   // The model's alternative version id when it matched the file on disk.
   savedVersion: number;
   readOnly: boolean;
+  // The .clang-format a C or C++ file follows, once known.
+  style?: GlistCodeStyle | null;
 }
 
 // A file compared between two versions, in a tab of its own: the last commit
@@ -604,7 +606,7 @@ const showGroups = (): void => {
       view.editor.setModel(tab.model);
       view.editor.restoreViewState(view.viewStates.get(tab.path) ?? null);
     }
-    view.editor.updateOptions({ readOnly: tab.readOnly });
+    view.editor.updateOptions({ readOnly: tab.readOnly, rulers: rulersFor(tab) });
     view.host.classList.add('visible');
     // Measured now, not on the next frame, so a line can be revealed right away.
     view.editor.layout();
@@ -893,7 +895,23 @@ const addDocument = (filePath: string, model: monaco.editor.ITextModel, readOnly
     }
   });
   clangd.track(model);
+  void applyCodeStyle(file);
   return file;
+};
+
+// Where a file's .clang-format says lines end.
+const rulersFor = (file: OpenFile | undefined): number[] => (file?.style?.columnLimit ? [file.style.columnLimit] : []);
+
+// The editor indents a C or C++ file as its .clang-format says, with tabs or
+// spaces and as far, rather than as it guesses from the text.
+const applyCodeStyle = async (file: OpenFile): Promise<void> => {
+  if (file.model.getLanguageId() !== 'cpp') return;
+  file.style = await window.glistAPI.codeStyle(file.path).catch((): null => null);
+  const { style } = file;
+  if (style && !file.model.isDisposed()) file.model.updateOptions({ insertSpaces: !style.useTab, tabSize: style.tabWidth, indentSize: style.indentWidth });
+  groupViews.forEach((view) => {
+    if (view.editor.getModel() === file.model) view.editor.updateOptions({ rulers: rulersFor(file) });
+  });
 };
 
 // Opens a tab on a model that matches the file on disk, on the side being
@@ -912,6 +930,8 @@ const saveFile = async (file: OpenFile): Promise<void> => {
   clangd.saved(file.model);
   refreshDirtyMark(file);
   if (baseName(file.path) === 'CMakeLists.txt' && isProjectPath(file.path)) void learnDependencies().then(refreshDependencies);
+  // A changed .clang-format: the open files indent as it now says.
+  if (/^[._]clang-format$/.test(file.name)) fileTabs().forEach((tab) => { void applyCodeStyle(tab); });
   void git.refresh();
 };
 
