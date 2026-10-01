@@ -55,7 +55,7 @@ export const createPluginService = (context: PluginContext) => {
   const api = context.api ?? 'https://api.github.com';
   const site = context.site ?? 'https://github.com';
   let listed: { at: number; repositories: Repository[] } | null = null;
-  const git = gitRunner(context.environment, context.report);
+  const git = gitRunner(context.environment, context.report, context.language);
   const checkouts = createCheckouts({
     git,
     site,

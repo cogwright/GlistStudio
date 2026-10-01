@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createCheckouts, gitRunner, isSourceAddress } from '../src/checkout-update.ts';
+import { toolLanguage } from '../src/tool-language.ts';
 
 // Updating a copy of the engine from GlistEngine, against bare repositories
 // standing in for GitHub: the source, and a student's fork of it. Run with jiti.
@@ -219,5 +220,15 @@ try {
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
+
+// What git, GCC and make are given to answer in the editor's language: with no locale, one the
+// system has (Linux's C.UTF-8 gives git and GCC their Turkish where en_US.UTF-8
+// may be missing; macOS's gettext takes C.UTF-8 for plain C), in UTF-8.
+assert.deepEqual(toolLanguage('tr', {}, 'darwin'), { LANGUAGE: 'tr', LC_MESSAGES: 'en_US.UTF-8', LC_CTYPE: 'en_US.UTF-8' });
+assert.deepEqual(toolLanguage('tr', {}, 'linux'), { LANGUAGE: 'tr', LC_MESSAGES: 'C.UTF-8', LC_CTYPE: 'C.UTF-8' });
+assert.deepEqual(toolLanguage('fr', { LANG: 'C.UTF-8' }, 'darwin'), { LANGUAGE: 'fr', LC_MESSAGES: 'en_US.UTF-8' });
+assert.deepEqual(toolLanguage('tr', { LANG: 'tr_TR.UTF-8' }, 'linux'), { LANGUAGE: 'tr' }, 'a system locale is kept');
+assert.deepEqual(toolLanguage('en', { LANG: 'de_DE.ISO8859-1' }, 'linux'), { LANGUAGE: 'en', LC_CTYPE: 'C.UTF-8' }, 'written in UTF-8');
+assert.deepEqual(toolLanguage('tr', {}, 'win32'), { LANGUAGE: 'tr', LC_MESSAGES: 'en_US.UTF-8', LC_CTYPE: 'en_US.UTF-8' });
 
 console.log('Checkout update tests passed.');

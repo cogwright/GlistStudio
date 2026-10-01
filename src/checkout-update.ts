@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { githubRepository } from './git-protection';
 import { languages, type Language, type Words } from './languages';
+import { toolLanguage } from './tool-language';
 
 // Updating a copy of the engine or of a plugin from where it is published:
 // GlistEngine/GlistEngine, GlistPlugins/<name>, or a plugin listed from
@@ -19,13 +20,16 @@ export interface GitResult { code: number; stdout: string; stderr: string }
 // they ran in. The many questions a background check asks are not.
 export type Git = (args: string[], cwd: string, logged?: boolean) => Promise<GitResult>;
 
-export const gitRunner = (environment: () => NodeJS.ProcessEnv, report?: (entry: GlistGitConsoleEntry) => void): Git =>
+// Without a language, git answers in English, as the tests expect.
+export const gitRunner = (environment: () => NodeJS.ProcessEnv, report?: (entry: GlistGitConsoleEntry) => void, language?: () => string): Git =>
   (args, cwd, logged = false) => new Promise((resolve) => {
     const show = logged && report ? report : (): void => undefined;
     show({ kind: 'command', text: ['git', '-C', path.basename(cwd), ...args].map((arg) => (/^[\w@%+=:,./{}^~-]+$/.test(arg) ? arg : `"${arg}"`)).join(' ') });
     const child = spawn('git', args, {
       cwd, windowsHide: true,
-      env: { ...environment(), GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_EDITOR: 'true', LC_ALL: 'C' },
+      env: ((base) => ({
+        ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_EDITOR: 'true', ...(language ? toolLanguage(language(), base) : { LC_ALL: 'C' }),
+      }))(environment()),
     });
     let stdout = '';
     let stderr = '';

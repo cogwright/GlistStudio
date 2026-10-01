@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { createGitService } from '../src/git-service.ts';
+import { createGitService, credentialListener } from '../src/git-service.ts';
 import { createHostProtection, githubRepository, matchesBranch, protectionFrom } from '../src/git-protection.ts';
 import { githubCommitPage, readRepositoryHead } from '../src/repository-head.ts';
 
@@ -591,3 +591,148 @@ try {
 }
 
 console.log('Git service tests passed.');
+
+// Why a command failed, told without reading git's sentences, which change with
+// its language and version: the credential helpers, push's porcelain lines and
+// the repository's state.
+{
+  const base = mkdtempSync(path.join(tmpdir(), 'glist-git-why-'));
+  const plainEnv = () => {
+    const env = { ...process.env, HOME: base, XDG_CONFIG_HOME: base, GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' };
+    ['GIT_ASKPASS', 'SSH_ASKPASS', 'LANGUAGE', 'LC_ALL', 'LC_MESSAGES'].forEach((key) => delete env[key]);
+    return env;
+  };
+  try {
+    // The listener writes down what git asks of the helpers, by the protocol, and never a password.
+    const log = path.join(base, 'asked');
+    const credential = (action, input) => spawnSync('git', ['-c', 'credential.helper=', '-c', `credential.helper=${credentialListener}`, 'credential', action],
+      { input, env: { ...plainEnv(), GLIST_STUDIO_CREDENTIALS: log }, encoding: 'utf8' });
+    credential('fill', 'protocol=https\nhost=example.com\n\n');
+    credential('approve', 'protocol=https\nhost=example.com\nusername=student\npassword=hunter2\n\n');
+    credential('reject', 'protocol=https\nhost=example.com\nusername=student\npassword=hunter2\n\n');
+    assert.equal(readFileSync(log, 'utf8'), 'get example.com\nstore example.com\nerase example.com\n');
+
+    // A remote that refuses every login, also standing in for github.com as a proxy.
+    const hosts = [];
+    const refusing = http.createServer((request, response) => {
+      hosts.push(request.headers.host);
+      response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="test"' });
+      response.end();
+    });
+    await new Promise((resolve) => { refusing.listen(0, '127.0.0.1', resolve); });
+    const port = refusing.address().port;
+    const refused = path.join(base, 'Refused');
+    mkdirSync(refused);
+    const inRefused = (...args) => execFileSync('git', args, { cwd: refused, env: plainEnv() });
+    inRefused('init', '-q', '-b', 'main');
+    inRefused('config', 'user.name', 'Ada');
+    inRefused('config', 'user.email', 'ada@example.com');
+    // A helper of the student's own gives a password, so nothing asks on screen.
+    inRefused('config', 'credential.helper', '!f() { echo username=student; echo password=hunter2; }; f');
+    writeFileSync(path.join(refused, 'a.txt'), 'a\n');
+    inRefused('add', 'a.txt');
+    inRefused('commit', '-qm', 'A');
+    inRefused('remote', 'add', 'origin', `http://127.0.0.1:${port}/repo.git`);
+    const why = createGitService({
+      projectRoot: () => refused, dependencies: async () => [], environment: plainEnv, send: () => undefined,
+      trash: async () => undefined, home: () => path.join(base, 'GlistStudio'), projectsDirectory: () => base, language: () => 'en',
+    }).handlers;
+    let refusal = await why.gitRun({ kind: 'push' });
+    assert.equal(refusal.success, false);
+    assert.equal(refusal.message, 'The remote did not accept the login.');
+    inRefused('remote', 'set-url', 'origin', 'http://github.com/owner/repo.git');
+    inRefused('config', 'http.proxy', `http://127.0.0.1:${port}`);
+    refusal = await why.gitRun({ kind: 'push' });
+    assert.ok(hosts.includes('github.com'), 'went through the stand-in');
+    assert.match(refusal.message, /personal access token/, 'a refused github.com login: a token, not the password');
+    refusing.close();
+
+    // The same failures with git answering in Turkish: the same flags, git's own words left as they are.
+    const candidates = ['/opt/homebrew/bin/git', '/usr/local/bin/git', '/usr/bin/git'];
+    const turkishGit = candidates.find((candidate) => existsSync(candidate) && /deposu/.test(spawnSync(candidate, ['-C', base, 'rev-parse'],
+      { env: { ...plainEnv(), LANGUAGE: 'tr', LANG: 'en_US.UTF-8' }, encoding: 'utf8' }).stderr));
+    if (!turkishGit) {
+      console.log('No git with Turkish here: the Turkish checks are skipped.');
+    } else {
+      const trEnv = () => ({ ...plainEnv(), PATH: `${path.dirname(turkishGit)}${path.delimiter}${process.env.PATH}` });
+      const tg = (cwd, ...args) => execFileSync(turkishGit, args, { cwd, env: trEnv(), encoding: 'utf8', stdio: 'pipe' }).trim();
+      const remote = path.join(base, 'remote.git');
+      const app = path.join(base, 'TurkishApp');
+      const other = path.join(base, 'other');
+      tg(base, 'init', '-q', '--bare', '-b', 'main', remote);
+      tg(base, 'clone', '-q', remote, app);
+      tg(base, 'clone', '-q', remote, other);
+      for (const folder of [app, other]) { tg(folder, 'config', 'user.name', 'Ada'); tg(folder, 'config', 'user.email', 'ada@example.com'); }
+      writeFileSync(path.join(app, 'main.cpp'), 'int a;\n');
+      tg(app, 'add', 'main.cpp');
+      tg(app, 'commit', '-qm', 'Start');
+      tg(app, 'push', '-q', 'origin', 'main');
+      tg(other, 'pull', '-q', 'origin', 'main');
+      writeFileSync(path.join(other, 'other.cpp'), 'int b;\n');
+      tg(other, 'add', 'other.cpp');
+      tg(other, 'commit', '-qm', 'Other');
+      tg(other, 'push', '-q', 'origin', 'main');
+      const consoleText = [];
+      const tr = createGitService({
+        projectRoot: () => app, dependencies: async () => [], environment: trEnv,
+        send: (channel, entry) => { if (channel === 'git:console' && entry.text) consoleText.push(entry.text); },
+        trash: async () => undefined, home: () => path.join(base, 'GlistStudio'), projectsDirectory: () => base, language: () => 'tr',
+      }).handlers;
+      const failed = async (action, flag) => {
+        const result = await tr.gitRun(action);
+        assert.equal(result.success, false, `${action.kind} should fail`);
+        if (flag) assert.equal(result[flag], true, `${action.kind}: ${flag} (${result.message})`);
+        return result;
+      };
+      // A push the remote has moved past.
+      writeFileSync(path.join(app, 'main.cpp'), 'int a = 1;\n');
+      tg(app, 'commit', '-qam', 'Mine');
+      await failed({ kind: 'push' }, 'rejected');
+      assert.ok(consoleText.join('').includes('ipucu'), 'git spoke Turkish in the console');
+      // Conflicts from a merge.
+      tg(app, 'fetch', '-q');
+      tg(app, 'checkout', '-qb', 'clash', 'origin/main');
+      writeFileSync(path.join(app, 'main.cpp'), 'int a = 2;\n');
+      tg(app, 'commit', '-qam', 'Clash');
+      tg(app, 'checkout', '-q', 'main');
+      await failed({ kind: 'merge', ref: 'clash' }, 'conflicts');
+      tg(app, 'merge', '--abort');
+      // A checkout over changed files; not with a lock left by another git, nor to a name that is no commit.
+      writeFileSync(path.join(app, 'main.cpp'), 'int a = 3;\n');
+      await failed({ kind: 'checkout', ref: 'clash' }, 'localChanges');
+      const lock = path.join(app, '.git', 'index.lock');
+      writeFileSync(lock, '');
+      assert.notEqual((await failed({ kind: 'checkout', ref: 'clash' })).localChanges, true, 'a lock is not local changes');
+      rmSync(lock);
+      const unknown = await tr.gitRun({ kind: 'checkout', ref: 'nowhere' });
+      assert.equal(unknown.localChanges, undefined, 'a name that is no commit is not local changes');
+      assert.match(unknown.message, /[çğıöşüÇĞİÖŞÜ]/, `git's own Turkish words: ${unknown.message}`);
+      tg(app, 'checkout', '-q', '--', 'main.cpp');
+      // A branch with commits nowhere else.
+      await failed({ kind: 'delete-branch', name: 'clash', remote: false }, 'notMerged');
+      // A pull on a branch that follows nothing.
+      tg(app, 'checkout', '-qb', 'lonely');
+      const lonely = await failed({ kind: 'pull', rebase: false });
+      const trWords = JSON.parse(readFileSync(new URL('../src/locales/tr.json', import.meta.url), 'utf8')).git;
+      assert.equal(lonely.message, trWords.noUpstream);
+      // A commit without a name or email.
+      tg(app, 'config', '--unset', 'user.name');
+      tg(app, 'config', 'user.useConfigOnly', 'true');
+      writeFileSync(path.join(app, 'new.cpp'), 'int c;\n');
+      const nameless = await failed({ kind: 'commit', message: 'New', paths: [path.join(app, 'new.cpp')], amend: false });
+      assert.equal(nameless.message, trWords.identity);
+      // A branch whose remote branch was deleted is gone, though git words that in Turkish too.
+      tg(app, 'config', 'user.name', 'Ada');
+      tg(app, 'checkout', '-q', 'main');
+      tg(app, 'push', '-q', 'origin', 'clash');
+      tg(app, 'branch', '-q', '--set-upstream-to=origin/clash', 'clash');
+      tg(app, 'push', '-q', 'origin', '--delete', 'clash');
+      tg(app, 'fetch', '-q', '--prune');
+      const branches = await tr.gitBranches();
+      assert.equal(branches.find((entry) => entry.name === 'clash')?.gone, true, 'gone, read in English');
+    }
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+

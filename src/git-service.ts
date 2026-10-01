@@ -1,13 +1,15 @@
 import { spawn } from 'node:child_process';
 import { existsSync, promises as fs, statSync, watch, type FSWatcher } from 'node:fs';
-import { homedir } from 'node:os';
+import { randomUUID } from 'node:crypto';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   branchFormat, logFormat, parseBlame, parseBranches, parseLog, parseNameStatus, parseRemotes, parseStashes, parseStatus,
-  parseTags, stashFormat, tagFormat, type GitFileChange,
+  parseTags, stashFormat, tagFormat, type GitFileChange, type GitStatus,
 } from './git';
 import { createHostProtection, defaultProtection, matchesBranch, protectionFrom } from './git-protection';
 import { languages, type Language, type Words } from './languages';
+import { toolLanguage } from './tool-language';
 
 // Git for the Commit view and the Git panel, by running the git program in the
 // open project's repository. Anything that changes the repository runs one at
@@ -59,7 +61,27 @@ interface RunResult {
   code: number;
   stdout: Buffer;
   stderr: string;
+  // What was run, for telling why it did not work.
+  args: string[];
+  // For a command that reached a remote: what git asked its credential helpers.
+  credentials?: Credentials;
 }
+
+// What git told its credential helpers during a command, by the documented
+// protocol (gitcredentials): get when it needs a login, store when the login
+// worked, erase when the remote refused it.
+interface Credentials {
+  asked: boolean;
+  accepted: boolean;
+  rejected: boolean;
+  host: string;
+}
+
+// A helper added after any the user has, for the commands Glist Studio runs:
+// it answers nothing, so logging in goes on as before, and writes down only
+// what git asked and for which host, never a name or password.
+export const credentialListener = '!f() { h=; while IFS= read -r l; do case "$l" in host=*) h="${l#host=}";; esac; done; '
+  + 'printf "%s %s\\n" "$1" "$h" >> "$GLIST_STUDIO_CREDENTIALS"; }; f';
 
 const text = (result: RunResult): string => result.stdout.toString('utf8');
 
@@ -151,6 +173,8 @@ exit 1
       GIT_OPTIONAL_LOCKS: '0',
       ...options.env,
     };
+    // In the editor's language, unless the command says otherwise, as branches() does.
+    if (!options.env?.LC_ALL) Object.assign(env, toolLanguage(context.language(), env));
     const helper = options.remote ? await askpassPath() : null;
     if (helper) Object.assign(env, { GIT_ASKPASS: helper, SSH_ASKPASS: helper, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: env.DISPLAY || ':0' });
     return env;
@@ -163,8 +187,12 @@ exit 1
   const run = async (args: string[], options: RunOptions): Promise<RunResult> => {
     const env = await environment(options);
     if (options.logged) report({ kind: 'command', text: shown(args) });
-    return new Promise((resolve) => {
-      const child = spawn('git', args, { cwd: options.cwd, env, windowsHide: true });
+    // A remote's login is watched through the credential helpers (see credentialListener).
+    const log = options.remote ? path.join(tmpdir(), `glist-studio-credentials-${randomUUID()}`) : null;
+    if (log) env.GLIST_STUDIO_CREDENTIALS = log;
+    const spawned = log ? ['-c', `credential.helper=${credentialListener}`, ...args] : args;
+    const result = await new Promise<RunResult>((resolve) => {
+      const child = spawn('git', spawned, { cwd: options.cwd, env, windowsHide: true });
       const stdout: Buffer[] = [];
       let stderr = '';
       child.stdout.on('data', (chunk: Buffer) => {
@@ -175,14 +203,25 @@ exit 1
         stderr += chunk.toString('utf8');
         if (options.logged) report({ kind: 'output', text: chunk.toString('utf8') });
       });
-      child.once('error', (error) => resolve({ code: 127, stdout: Buffer.alloc(0), stderr: error.message }));
+      child.once('error', (error) => resolve({ code: 127, stdout: Buffer.alloc(0), stderr: error.message, args }));
       child.once('close', (code) => {
         if (options.logged && code !== 0) report({ kind: 'error', text: '', code: code ?? 1 });
-        resolve({ code: code ?? 1, stdout: Buffer.concat(stdout), stderr });
+        resolve({ code: code ?? 1, stdout: Buffer.concat(stdout), stderr, args });
       });
       child.stdin.on('error', () => undefined);
       child.stdin.end(options.input ?? '');
     });
+    if (log) {
+      const asked = (await fs.readFile(log, 'utf8').catch(() => '')).split('\n').filter(Boolean).map((line) => line.split(' '));
+      await fs.rm(log, { force: true });
+      result.credentials = {
+        asked: asked.some(([action]) => action === 'get'),
+        accepted: asked.some(([action]) => action === 'store'),
+        rejected: asked.some(([action]) => action === 'erase'),
+        host: asked.find(([, host]) => host)?.[1] ?? '',
+      };
+    }
+    return result;
   };
 
   let version: string | null = null;
@@ -198,8 +237,11 @@ exit 1
   const openRepository = async (root: string = projectRoot()): Promise<Repository | null> => {
     const result = await run(['rev-parse', '--show-toplevel', '--absolute-git-dir', '--git-common-dir'], { cwd: root });
     if (result.code !== 0) {
-      if (/not a git repository/i.test(result.stderr)) return null;
-      throw new Error(result.stderr.trim() || say('notRepository'));
+      // With no .git in the folder or above it, there is no repository; with one, git says what is wrong.
+      for (let folder = path.resolve(root); ; folder = path.dirname(folder)) {
+        if (existsSync(path.join(folder, '.git'))) throw new Error(result.stderr.trim() || say('notRepository'));
+        if (path.dirname(folder) === folder) return null;
+      }
     }
     const [top, gitDir, commonDir] = text(result).trim().split('\n');
     return {
@@ -440,16 +482,17 @@ exit 1
     if (!/^(diff --git |--- |From [0-9a-f]{40} )/m.test(patchText)) fail('notPatch');
     if (/^From [0-9a-f]{40} /.test(patchText)) {
       const applied = await run(['am', '--3way'], { cwd: repo.folder, input: patchText, logged: true });
-      return applied.code === 0 ? done(say('patchCommitted')) : explain(applied);
+      return applied.code === 0 ? done(say('patchCommitted')) : explain(applied, repo);
     }
     const merged = await run(['apply', '--3way'], { cwd: repo.folder, input: patchText, logged: true });
     if (merged.code === 0) return done(say('patchApplied'));
-    // Files changed since the last commit cannot take a three-way apply; straight into them then.
-    if (/does not match index/.test(merged.stderr)) {
+    // Files changed since the last commit cannot take a three-way apply, which then
+    // changes nothing; straight into them then. git apply takes all of a patch or none.
+    if (!(await readStatus(repo)).changes.some((entry) => entry.state === 'conflict')) {
       const direct = await run(['apply'], { cwd: repo.folder, input: patchText, logged: true });
-      return direct.code === 0 ? done(say('patchApplied')) : explain(direct);
+      return direct.code === 0 ? done(say('patchApplied')) : explain(direct, repo);
     }
-    return explain(merged);
+    return explain(merged, repo);
   };
 
   // A stash made with its new files keeps them in a third parent of its own,
@@ -612,28 +655,62 @@ exit 1
     return { remote, branch: parsed.branch, remotes: remoteNames, commits, protected: await isProtected(repo.folder, remote, target, true) };
   };
 
-  // What git printed, in the words people need: its own last lines unless a
-  // known reason fits better.
-  const explain = (result: RunResult): GlistGitResult => {
-    const output = `${result.stderr}\n${text(result)}`;
-    const own = result.stderr.trim().split('\n').filter((line) => !/^(hint|remote):/.test(line)).slice(-3).join('\n');
-    if (/Password authentication is not supported/i.test(output)) return { success: false, message: say('githubToken') };
-    if (/Please tell me who you are|Author identity unknown|empty ident name/i.test(output)) return { success: false, message: say('identity') };
-    if (/\[rejected\]|non-fast-forward|fetch first|Updates were rejected/i.test(output)) return { success: false, message: say('rejected'), rejected: true };
-    if (/would be overwritten by|Please commit your changes or stash them|Please commit or stash them|untracked working tree files would be/i.test(output)) {
-      return { success: false, message: say('localChanges'), localChanges: true };
+  // The subcommand run, past options such as -c name=value.
+  const subcommand = (args: string[]): string => {
+    for (let index = 0; index < args.length; index += 1) {
+      if (args[index] === '-c' || args[index] === '-C') index += 1;
+      else if (!args[index].startsWith('-')) return args[index];
     }
-    if (/CONFLICT|Merge conflict|could not apply|after resolving the conflicts|fix conflicts/i.test(output)) {
-      return { success: false, message: say('conflicts'), conflicts: true };
+    return '';
+  };
+  // Commands that make commits, which need a name and an email.
+  const committing = new Set(['commit', 'merge', 'rebase', 'cherry-pick', 'revert', 'am', 'pull', 'stash']);
+  const github = (host: string): boolean => /(^|\.)github\.com$/i.test(host);
+
+  // Why a command did not work, in the words people need, told from what git
+  // keeps the same in every language and version: what it asked the credential
+  // helpers, push's porcelain lines, and the repository's state afterwards.
+  // git's own sentences are never read; when none of these tells, they are
+  // shown as git wrote them, in the language it wrote them in.
+  const explain = async (result: RunResult, repo?: Repository | null): Promise<GlistGitResult> => {
+    const command = subcommand(result.args);
+    const fails = (key: MessageKey, flags: Partial<GlistGitResult> = {}): GlistGitResult => ({ success: false, message: say(key), ...flags });
+    const { credentials } = result;
+    if (credentials?.rejected) return fails(github(credentials.host) ? 'githubToken' : 'auth');
+    if (credentials?.asked && !credentials.accepted) return fails('loginNeeded');
+    if (command === 'push' && /^!\t[^\t]*\t\[rejected\]/m.test(text(result))) return fails('rejected', { rejected: true });
+    if (repo) {
+      const cwd = repo.folder;
+      const parsed: GitStatus | null = await readStatus(repo).catch((): null => null);
+      const stopped = (await operation(repo).catch((): { operation: null } => ({ operation: null }))).operation;
+      if (parsed?.changes.some((entry) => entry.state === 'conflict') || (stopped && committing.has(command))) {
+        return fails('conflicts', { conflicts: true });
+      }
+      // Kept in a branch only when it is in neither HEAD nor what the branch follows.
+      if (command === 'branch' && result.args.includes('-d')) {
+        const branch = result.args[result.args.length - 1];
+        const inHead = (await run(['merge-base', '--is-ancestor', branch, 'HEAD'], { cwd })).code;
+        const upstream = (await run(['rev-parse', '--verify', '--quiet', `${branch}@{upstream}`], { cwd })).code === 0
+          ? (await run(['merge-base', '--is-ancestor', branch, `${branch}@{upstream}`], { cwd })).code : 1;
+        if (inHead === 1 && upstream === 1) return fails('notMerged', { notMerged: true });
+      }
+      // git var fails exactly when git cannot make up a name and an email.
+      if (committing.has(command)) {
+        const known = await Promise.all(['GIT_AUTHOR_IDENT', 'GIT_COMMITTER_IDENT'].map((name) => run(['var', name], { cwd })));
+        if (known.some((answer) => answer.code !== 0)) return fails('identity');
+      }
+      if (command === 'pull' && (await run(['rev-parse', '--verify', '--quiet', '@{upstream}'], { cwd })).code !== 0) return fails('noUpstream');
+      // A branch checkout that changed files stop: offered with them stashed. Not
+      // for files checked out from a commit (after --), a lock left by another git,
+      // or a name that is no commit.
+      if (command === 'checkout' && !result.args.includes('--') && parsed && parsed.changes.length > 0
+        && !existsSync(path.join(repo.gitDir, 'index.lock'))
+        && (await run(['rev-parse', '--verify', '--quiet', `${result.args[result.args.length - 1]}^{commit}`], { cwd })).code === 0) {
+        return fails('localChanges', { localChanges: true });
+      }
     }
-    if (/is not fully merged/i.test(output)) return { success: false, message: say('notMerged'), notMerged: true };
-    if (/Authentication failed|could not read (Username|Password)|Invalid username or password|Permission denied \(publickey|terminal prompts disabled/i.test(output)) {
-      return { success: false, message: say('auth') };
-    }
-    if (/no tracking information|has no upstream branch/i.test(output)) return { success: false, message: say('noUpstream') };
-    if (/Could not resolve host|unable to access|Connection timed out|Connection refused|Could not read from remote/i.test(output)) {
-      return { success: false, message: `${say('network')}\n${own}`.trim() };
-    }
+    // What the remote itself says is in no language of git's; the rest is git's own, last lines first to go.
+    const own = result.stderr.split('\n').map((line) => line.trimEnd()).filter((line) => line && !line.startsWith('remote:')).slice(-8).join('\n');
     return { success: false, message: own || `${say('exitCode')} ${result.code}` };
   };
 
@@ -645,7 +722,7 @@ exit 1
   const steps = async (repo: Repository, commands: string[][], options: Partial<RunOptions> = {}): Promise<GlistGitResult> => {
     for (const args of commands) {
       const result = await run(args, { cwd: repo.folder, logged: true, ...options });
-      if (result.code !== 0) return explain(result);
+      if (result.code !== 0) return explain(result, repo);
     }
     return done();
   };
@@ -673,10 +750,10 @@ exit 1
       if (chosen.size > 0) {
         const add = withPaths(['add', '-A'], [...chosen]);
         const added = await run(add.args, { cwd: repo.folder, input: add.input, logged: true });
-        if (added.code !== 0) return explain(added);
+        if (added.code !== 0) return explain(added, repo);
       }
       const result = await run(['commit', '-m', message], { cwd: repo.folder, logged: true });
-      return result.code === 0 ? done(say('committed')) : explain(result);
+      return result.code === 0 ? done(say('committed')) : explain(result, repo);
     }
     if (chosen.size === 0 && !action.amend) fail('nothingSelected');
     if (action.amend && protection.on && parsed.head && await headPushed(repo)) fail('amendPushed');
@@ -686,12 +763,12 @@ exit 1
     if (untracked.length > 0) {
       const add = withPaths(['add'], untracked);
       const added = await run(add.args, { cwd: repo.folder, input: add.input, logged: true });
-      if (added.code !== 0) return explain(added);
+      if (added.code !== 0) return explain(added, repo);
     }
     const committing = withPaths(['commit', '-m', message, ...(action.amend ? ['--amend'] : []), '--only'], [...chosen]);
     const result = await run(chosen.size > 0 ? committing.args : ['commit', '-m', message, '--amend', '--only'],
       { cwd: repo.folder, input: committing.input, logged: true });
-    return result.code === 0 ? done(say('committed')) : explain(result);
+    return result.code === 0 ? done(say('committed')) : explain(result, repo);
   };
 
   // Tracked files go back to the last commit. Files the last commit does not
@@ -710,12 +787,12 @@ exit 1
     if (restore.length > 0 && parsed.head) {
       const checkout = withPaths(['checkout', 'HEAD'], restore);
       const result = await run(checkout.args, { cwd: repo.folder, input: checkout.input, logged: true });
-      if (result.code !== 0) return explain(result);
+      if (result.code !== 0) return explain(result, repo);
     }
     if (remove.length > 0) {
       const unstage = withPaths(['rm', '--cached', '-q', '-f', '-r'], remove);
       const result = await run(unstage.args, { cwd: repo.folder, input: unstage.input, logged: true });
-      if (result.code !== 0) return explain(result);
+      if (result.code !== 0) return explain(result, repo);
       for (const entry of remove) {
         const file = path.join(repo.top, entry);
         if (existsSync(file)) await context.trash(file);
@@ -771,12 +848,12 @@ exit 1
       // The files resolved in the editor count as resolved.
       const added = await steps(repo, [['add', '-u', '--', '.']]);
       if (!added.success) return added;
-      const continued = await run([current, '--continue'], { cwd: repo.folder, logged: true });
       // A patch whose changes were all left out, keeping one's own side, has nothing left to commit: it is skipped.
-      if (continued.code !== 0 && current === 'am' && /No changes - did you forget to use 'git add'/.test(continued.stdout.toString() + continued.stderr)) {
+      if (current === 'am' && (await run(['diff', '--cached', '--quiet', 'HEAD'], { cwd: repo.folder })).code === 0) {
         return steps(repo, [['am', '--skip']]);
       }
-      return continued.code === 0 ? done() : explain(continued);
+      const continued = await run([current, '--continue'], { cwd: repo.folder, logged: true });
+      return continued.code === 0 ? done() : explain(continued, repo);
     }
     if (step === 'skip' && current !== 'merge') return steps(repo, [[current, '--skip']]);
     return steps(repo, [[current, '--abort']]);
@@ -835,7 +912,8 @@ exit 1
     if (action.force && await isProtected(repo.folder, remote, target, true)) {
       return { success: false, message: say('forceProtected').replace('{branch}', target ?? '') };
     }
-    const args = ['push', '--progress', ...(action.force ? ['--force-with-lease'] : []), ...(action.tags ? ['--tags'] : [])];
+    // --porcelain: a refused branch is a line that starts with !, the same in every language.
+    const args = ['push', '--porcelain', '--progress', ...(action.force ? ['--force-with-lease'] : []), ...(action.tags ? ['--tags'] : [])];
     // A branch without an upstream gets one of the same name, and follows it from then on.
     args.push(...(parsed.upstream && !action.remote ? [] : ['--set-upstream', remote, parsed.branch]));
     const result = await steps(repo, [args], { remote: true });
@@ -877,7 +955,7 @@ exit 1
         const paths = (Array.isArray(action.paths) ? action.paths : []).map((entry) => toGit(repo, entry));
         const add = withPaths(['add', '-A'], paths);
         const result = await run(add.args, { cwd: repo.folder, input: add.input, logged: true });
-        return result.code === 0 ? done() : explain(result);
+        return result.code === 0 ? done() : explain(result, repo);
       }
       case 'abort': case 'continue': case 'skip': return abortOrContinue(repo, action.kind);
       case 'checkout': return checkout(repo, action);
