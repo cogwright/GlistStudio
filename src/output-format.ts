@@ -5,6 +5,11 @@
 // the window's or the backend's words.
 export const outputBanner = (title: string): string => `\n── ${title} ${'─'.repeat(Math.max(4, 45 - title.length))}\n`;
 
+// What a running program writes to its error stream, in red, as a terminal
+// IDE shows it: Glist Engine's error logs and crashes go there. Its own colors,
+// where it has any, still apply within.
+export const errorOutput = (text: string): string => `\x1b[31m${text}\x1b[39m`;
+
 const ansiNames = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
 
 export interface OutputStyle {

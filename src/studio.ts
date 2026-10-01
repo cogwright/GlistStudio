@@ -17,7 +17,7 @@ import { filesIn, searchFolders, type SearchFolder } from './file-search';
 import { createGitService } from './git-service';
 import { createCheckouts, gitRunner } from './checkout-update';
 import { isLanguage, languages, type Language, type Words } from './languages';
-import { outputBanner } from './output-format';
+import { errorOutput, outputBanner } from './output-format';
 import { createPluginService } from './plugins';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 import { queryPattern } from './text-search';
@@ -954,7 +954,7 @@ const runProject = async (): Promise<ProcessResult> => {
     runProcess = child;
     sendToRenderer('run:status', { running: true });
     child.stdout.on('data', (chunk: Buffer) => sendToRenderer('run:output', chunk.toString()));
-    child.stderr.on('data', (chunk: Buffer) => sendToRenderer('run:output', chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => sendToRenderer('run:output', errorOutput(chunk.toString())));
     child.once('error', (error) => sendToRenderer('run:output', `${msg('launchFailed')}: ${error.message}\n`));
     child.once('close', (exitCode) => {
       if (runProcess !== child) return;

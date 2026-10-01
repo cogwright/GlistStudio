@@ -7,6 +7,7 @@ import { ValuePopup, type PopupValue } from './debug-value-popup';
 import { shownValue } from './debug-values';
 import { icon } from './icons';
 import { t, type TranslationKey } from './localization';
+import { errorOutput } from './output-format';
 import { baseName, isWithin, pathUri, uriPath } from './paths';
 
 export type DebugState = 'idle' | 'starting' | 'running' | 'paused';
@@ -338,7 +339,7 @@ export class Debugger {
       case 'output': {
         const { category, output } = (event as DebugProtocol.OutputEvent).body;
         if (category === 'stdout' || category === 'stderr' || category === 'important') {
-          this.host.log(output, 'normal');
+          this.host.log(category === 'stderr' ? errorOutput(output) : output, 'normal');
           this.printed = (this.printed + output).slice(-4000);
         }
         break;
