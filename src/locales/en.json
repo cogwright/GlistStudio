@@ -678,7 +678,9 @@
     "codeStyleProject": "The project's .clang-format",
     "codeStyleNone": "None",
     "codeStyleHint": "Glist Engine's style is how the engine itself is written: tabs 4 wide, braces on the same line, and if( without a space. It is Glist Studio's own and is never put into a project. The project's .clang-format is the nearest one in a file's folder or a folder above it, with Glist Engine's style where there is none. The editor indents in the style chosen, and marks where lines should end when it has a limit.",
-    "reformatOff": "Code formatting is off: Settings > Code Formatting chooses a style."
+    "reformatOff": "Code formatting is off: Settings > Code Formatting chooses a style.",
+    "movedInto": "{name} moved into {folder}",
+    "moveFailed": "Could not move item"
   },
   "platforms": {
     "darwin": {
@@ -760,7 +762,8 @@
     "outputConfigure": "CONFIGURE",
     "outputBuildAndRun": "BUILD & RUN",
     "agentDownloading": "Downloading {name}",
-    "agentInstallingPackage": "Installing {name}"
+    "agentInstallingPackage": "Installing {name}",
+    "moveIntoSelf": "A folder cannot be moved into itself or one of its subfolders."
   },
   "git": {
     "noProject": "Open a project first.",

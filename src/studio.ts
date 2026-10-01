@@ -226,10 +226,9 @@ const sameFile = async (left: string, right: string): Promise<boolean> => {
   return leftStats.dev === rightStats.dev && leftStats.ino === rightStats.ino;
 };
 
-const renameProjectEntry = async (entryPath: string, newName: string): Promise<string> => {
-  const oldPath = await assertExistingPathInProject(entryPath);
-  if (oldPath === path.resolve(requireProjectRoot())) throw new Error(msg('rootDelete'));
-  const nextPath = assertPathInProject(path.join(path.dirname(oldPath), validateEntryName(newName)));
+// An entry of the project put at another path of it, renamed or moved: the
+// files CMakeLists.txt names follow, and if they cannot, it goes back.
+const relocateProjectEntry = async (oldPath: string, nextPath: string): Promise<string> => {
   if (oldPath === nextPath) return oldPath;
   // On file systems that ignore case, renaming foo.h to Foo.h finds itself.
   if (existsSync(nextPath) && !(await sameFile(oldPath, nextPath))) throw new Error(msg('alreadyExists'));
@@ -241,6 +240,21 @@ const renameProjectEntry = async (entryPath: string, newName: string): Promise<s
     catch (error) { await fs.rename(nextPath, oldPath); throw error; }
   }
   return nextPath;
+};
+
+const renameProjectEntry = async (entryPath: string, newName: string): Promise<string> => {
+  const oldPath = await assertExistingPathInProject(entryPath);
+  if (oldPath === path.resolve(requireProjectRoot())) throw new Error(msg('rootDelete'));
+  return relocateProjectEntry(oldPath, assertPathInProject(path.join(path.dirname(oldPath), validateEntryName(newName))));
+};
+
+// Dragged onto another folder of the project in the explorer: moved there, keeping its name.
+const moveProjectEntry = async (entryPath: string, destinationDirectory: string): Promise<string> => {
+  const oldPath = await assertExistingPathInProject(entryPath);
+  if (oldPath === path.resolve(requireProjectRoot())) throw new Error(msg('rootDelete'));
+  const destination = await projectFolder(destinationDirectory);
+  if ((await fs.stat(oldPath)).isDirectory()) assertNotIntoSelf(oldPath, destination, 'moveIntoSelf');
+  return relocateProjectEntry(oldPath, assertPathInProject(path.join(destination, path.basename(oldPath))));
 };
 
 const createCppClass = async (directoryPath: string, className: string): Promise<{ header: string; source: string }> => {
@@ -279,10 +293,10 @@ const freeTarget = (destination: string, originalName: string, isDirectory: bool
 };
 
 // A folder is not copied into itself or a folder inside it.
-const assertNotIntoSelf = (source: string, destination: string): void => {
+const assertNotIntoSelf = (source: string, destination: string, refusal: 'copyIntoSelf' | 'moveIntoSelf' = 'copyIntoSelf'): void => {
   const relative = path.relative(source, destination);
   if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
-    throw new Error(msg('copyIntoSelf'));
+    throw new Error(msg(refusal));
   }
 };
 
@@ -1530,6 +1544,7 @@ export const studio: Handlers = {
   createDirectory: createProjectDirectory,
   deleteEntry: deleteProjectEntry,
   renameEntry: renameProjectEntry,
+  moveEntry: moveProjectEntry,
   createCppClass,
   copyEntry: copyProjectEntry,
   importPaths,

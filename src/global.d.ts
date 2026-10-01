@@ -544,6 +544,8 @@ interface Window {
     createDirectory(directoryPath: string, name: string): Promise<string>;
     deleteEntry(entryPath: string): Promise<boolean>;
     renameEntry(entryPath: string, newName: string): Promise<string>;
+    // Into another folder of the project, keeping its name.
+    moveEntry(entryPath: string, destinationDirectory: string): Promise<string>;
     createCppClass(directoryPath: string, className: string): Promise<{ header: string; source: string }>;
     copyEntry(entryPath: string, destinationDirectory: string): Promise<string>;
     // Files and folders dropped from the system's file manager, by path; what is copied, where.
