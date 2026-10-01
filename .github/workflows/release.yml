@@ -107,8 +107,55 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
         run: npm version --no-git-tag-version --allow-same-version "$VERSION"
+      # Glist's Developer ID certificate, in a keychain of its own for this run,
+      # and the App Store Connect key Apple's notary service takes, for
+      # forge.config.ts to sign and notarize the Mac app with. Only this step
+      # and Make on macOS see them. Without the secrets, as in a fork, the app
+      # is signed ad hoc as before.
+      - name: Load the signing certificate
+        if: matrix.platform == 'darwin'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: |
+          if [ -z "$MACOS_CERTIFICATE" ] || [ -z "$APPLE_API_KEY" ]; then
+            echo "No signing secrets: the app is signed ad hoc."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          password=$(openssl rand -base64 24)
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$MACOS_CERTIFICATE" | tr -d '[:space:]' | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$keychain"
+          printf '%s\n' "$APPLE_API_KEY" > "$RUNNER_TEMP/notary-key.p8"
+          echo "MACOS_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "APPLE_API_KEY_FILE=$RUNNER_TEMP/notary-key.p8" >> "$GITHUB_ENV"
       - name: Make
+        env:
+          APPLE_API_KEY_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_ISSUER || '' }}
         run: npx electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} --targets=${{ matrix.maker }}
+      # A signing or notarization that did not take fails the build here, before anything is published.
+      - name: Check the signature
+        if: matrix.platform == 'darwin' && env.MACOS_KEYCHAIN != ''
+        run: |
+          app=$(find out -maxdepth 2 -name '*.app' -type d | head -1)
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=2 "$app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Runtime Version)'
+          spctl --assess --type execute --verbose=2 "$app"
+          xcrun stapler validate "$app"
+      - name: Remove the signing keychain
+        if: always() && matrix.platform == 'darwin' && env.MACOS_KEYCHAIN != ''
+        run: |
+          security delete-keychain "$MACOS_KEYCHAIN" || true
+          rm -f "$APPLE_API_KEY_FILE"
       - name: Name the installer
         shell: bash
         run: |
