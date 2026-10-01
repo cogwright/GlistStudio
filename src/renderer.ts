@@ -14,6 +14,7 @@ import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './a
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
+import { changedLines, editsWithin } from './format-lines';
 import { formatOutput, newOutputStyle, outputBanner } from './output-format';
 import { fileIconElement } from './file-icons';
 import { icon, placeIcons, type IconName } from './icons';
@@ -933,21 +934,29 @@ const formatOnSave = (): boolean => {
   try { return window.localStorage.getItem('glist-studio-format-on-save') !== 'off'; } catch { return true; }
 };
 
-// Before a C or C++ file is saved, it is formatted by its .clang-format, as one
-// step Undo takes back. Without a .clang-format, or with clangd not answering
-// in time, it is saved as it is.
+// Before a C or C++ file is saved, the lines changed since it was last saved
+// are formatted by its .clang-format, as one step Undo takes back: indents
+// with tabs or spaces as it says, spacing, braces. Lines nobody touched stay
+// as they are, and #include lines are left out, so they are never reordered.
+// Without a .clang-format, or with clangd not answering in time, it is saved as it is.
 const formatForSaving = async (file: OpenFile): Promise<void> => {
   if (!formatOnSave() || file.readOnly || file.model.getLanguageId() !== 'cpp') return;
   const style = await window.glistAPI.codeStyle(file.path).catch((): null => null);
   if (!style || style.disabled) return;
   const version = file.model.getVersionId();
+  // What is on disk is what was last saved.
+  const saved = await window.glistAPI.readFile(file.path).catch(() => '');
+  if (file.model.getVersionId() !== version) return;
+  const ranges = changedLines(saved, file.model.getValue());
+  if (ranges.length === 0) return;
   const edits = await Promise.race([
-    clangd.formatEdits(file.model),
+    clangd.formatLineEdits(file.model, ranges),
     new Promise<null>((resolve) => { window.setTimeout(() => resolve(null), 3000); }),
   ]);
   // Typed into meanwhile, the edits would be for text that is gone.
   if (!edits || edits.length === 0 || file.model.getVersionId() !== version) return;
-  const operations = edits.map((edit) => ({ range: edit.range, text: edit.text }));
+  const operations = editsWithin(edits, ranges).map((edit) => ({ range: edit.range, text: edit.text }));
+  if (operations.length === 0) return;
   // Through an editor showing it, the one worked in first, so its cursor keeps its place.
   const view = currentEditor().getModel() === file.model
     ? currentEditor() : groupViews.find((candidate) => candidate.editor.getModel() === file.model)?.editor;
