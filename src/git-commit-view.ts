@@ -79,6 +79,9 @@ export class CommitView {
   private draft = '';
   // The merge whose message was put in the box, so it is put there once.
   private merging = '';
+  // A commit, or a merge's or rebase's step, under way: the buttons that run
+  // one stay off until it is done, so a second click cannot run it again.
+  private running = false;
   private rows: HTMLElement[] = [];
 
   constructor(
@@ -240,7 +243,7 @@ export class CommitView {
     const shared = this.sharedIncluded();
     const hasFiles = this.included().length > 0 || shared.length > 0 || merging || this.controls.amend.checked;
     const blocked = stepwise(repository?.operation) || Boolean(repository?.changes.some((change) => change.state === 'conflict'));
-    const ready = Boolean(repository || shared.length > 0) && hasFiles && !blocked && this.controls.message.value.trim().length > 0;
+    const ready = !this.running && Boolean(repository || shared.length > 0) && hasFiles && !blocked && this.controls.message.value.trim().length > 0;
     this.controls.commit.disabled = !ready;
     this.controls.commitAndPush.disabled = !ready;
     this.controls.rollback.disabled = ![...this.included(), ...shared.flatMap(([, changes]) => changes)].some((change) => change.state !== 'untracked');
@@ -302,20 +305,19 @@ export class CommitView {
     hint.textContent = t(operation === 'merge' ? 'resolveThenCommit' : 'resolveThenContinue');
     const buttons = document.createElement('div');
     buttons.className = 'commit-banner-actions';
-    const button = (key: TranslationKey, run: () => void, primary = false): HTMLButtonElement => {
+    const button = (key: TranslationKey, run: () => Promise<unknown>, primary = false): HTMLButtonElement => {
       const element = document.createElement('button');
       element.type = 'button';
       element.textContent = t(key);
       if (primary) element.className = 'primary';
-      element.addEventListener('click', run);
+      element.disabled = this.running;
+      element.addEventListener('click', () => { void this.once(run); });
       return element;
     };
-    const step = (action: 'abort' | 'continue' | 'skip') => () => { void this.client.run({ kind: action }, { root }); };
+    const step = (action: 'abort' | 'continue' | 'skip') => () => this.client.run({ kind: action }, { root });
     // The project's merge is committed with the message box; an engine's or plugin's with git's own message.
     if (operation === 'merge' && root !== undefined) {
-      buttons.append(button('commit', () => {
-        void this.client.run({ kind: 'commit', message: repository.operationSubject || 'Merge', paths: [], amend: false }, { root, busy: 'committing' });
-      }, true));
+      buttons.append(button('commit', () => this.client.run({ kind: 'commit', message: repository.operationSubject || 'Merge', paths: [], amend: false }, { root, busy: 'committing' }), true));
     }
     if (operation !== 'merge') buttons.append(button('continue', step('continue'), true));
     if (stepwise(operation)) buttons.append(button('skip', step('skip')));
@@ -620,9 +622,27 @@ export class CommitView {
     this.updateButtons();
   }
 
+  // Runs one at a time, with the buttons that start one off until it is done.
+  // Nothing when one is already running.
+  private async once<T>(task: () => Promise<T>): Promise<T | undefined> {
+    if (this.running) return undefined;
+    const switchOff = (off: boolean): void => {
+      this.running = off;
+      this.updateButtons();
+      this.controls.banner.querySelectorAll('button').forEach((button) => { button.disabled = off; });
+    };
+    switchOff(true);
+    try {
+      return await task();
+    } finally {
+      switchOff(false);
+    }
+  }
+
   // The project's chosen files, then the engine's and plugins', each in its own
   // repository with the same message. Amend is only ever for the project's.
   async commit(andPush: boolean): Promise<void> {
+    if (this.running) return;
     const repository = this.client.repository;
     const message = this.controls.message.value.trim();
     if (!message) { this.controls.message.focus(); return; }
@@ -633,16 +653,20 @@ export class CommitView {
     const shared = this.sharedIncluded();
     const project = Boolean(repository) && (paths.length > 0 || amend || merging);
     if (!project && shared.length === 0) return;
-    if (!(await this.hooks.ensureIdentity())) return;
-    if (project) {
-      const result = await this.client.run({ kind: 'commit', message, paths, amend }, { busy: 'committing' });
-      if (!result.success) return;
-    }
-    for (const [dependency, changes] of shared) {
-      const result = await this.client.run({ kind: 'commit', message, paths: pathsOf(changes), amend: false }, { root: dependency.folder, busy: 'committing' });
-      if (!result.success) return;
-      changes.forEach((change) => this.includedShared.delete(change.path));
-    }
+    const committed = await this.once(async () => {
+      if (!(await this.hooks.ensureIdentity())) return false;
+      if (project) {
+        const result = await this.client.run({ kind: 'commit', message, paths, amend }, { busy: 'committing' });
+        if (!result.success) return false;
+      }
+      for (const [dependency, changes] of shared) {
+        const result = await this.client.run({ kind: 'commit', message, paths: pathsOf(changes), amend: false }, { root: dependency.folder, busy: 'committing' });
+        if (!result.success) return false;
+        changes.forEach((change) => this.includedShared.delete(change.path));
+      }
+      return true;
+    });
+    if (!committed) return;
     notify({ text: t('committedMessage').replace('{subject}', message.split('\n')[0]), kind: 'success' });
     this.controls.message.value = '';
     this.controls.amend.checked = false;
