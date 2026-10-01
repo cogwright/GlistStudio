@@ -76,9 +76,14 @@ export class PluginsView {
     });
   }
 
+  // Adding or removing one changes CMakeLists.txt, which may be open: open
+  // files are saved first, so nothing typed is lost, and read again after, so
+  // the change shows.
   private async use(plugin: GlistPlugin, on: boolean): Promise<void> {
     await this.run(plugin.name, async () => {
+      if (!(await this.hooks.updates.save())) return;
       const result = await window.glistAPI.usePlugin(plugin.name, on).catch((error: Error): GlistPluginResult => ({ success: false, message: error.message }));
+      await this.hooks.updates.reload();
       if (!result.success) notify({ text: t('pluginUseFailed').replace('{name}', plugin.name), detail: result.message, kind: 'error' });
     });
   }
@@ -160,7 +165,12 @@ export class PluginsView {
         if (plugin.used) {
           // Added; pointing at it shows what a click does.
           const added = button('check', t('pluginAdded'), t('removeFromProject'), 'added', () => { void this.use(plugin, false); });
+          // Only on a change: pressing the button focuses it, and replacing what
+          // was pressed before the button is let go loses the click.
+          let showing = false;
           const swap = (hover: boolean): void => {
+            if (hover === showing) return;
+            showing = hover;
             added.replaceChildren(icon(hover ? 'close' : 'check'), Object.assign(document.createElement('span'), { textContent: hover ? t('pluginRemove') : t('pluginAdded') }));
           };
           added.addEventListener('pointerenter', () => swap(true));
