@@ -66,6 +66,17 @@
   background: var(--ui-bg);
 }
 
+/* The interface is not text to select, as in other IDEs: dragging across buttons,
+   tabs, lists or line numbers selects nothing. What is worth copying opts back in:
+   what is typed, the output and Git console, commit details, the About list, the
+   debugger's values, notices and error messages, and paths. */
+body { -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable="true"], .output, .log-details, .about-list dd, .debug-status, .debug-value,
+.notice-text, .notice-detail, .dialog-error, .engine-facts dd, .path-folder, .glist-install-location, .monaco-hover {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 html[data-kind="light"] {
   --ui-contrast: #000000;
   --ui-shadow: #0003;
