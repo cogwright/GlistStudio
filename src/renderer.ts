@@ -1825,6 +1825,8 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
   row.type = 'button';
   row.className = 'tree-row';
   row.style.paddingLeft = `${10 + depth * 14}px`;
+  // The project's own files and folders move by dragging them onto another folder.
+  row.draggable = !options.readOnly && isProjectPath(entry.path);
   const arrow = document.createElement('span');
   arrow.className = 'tree-arrow';
   if (entry.isDirectory) arrow.append(icon('chevron-right'));
@@ -2143,27 +2145,48 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
   renderTabs();
 };
 
+// Renames or moves an entry: changed files in it are saved first, and open
+// tabs, a copied path and open folders in it follow it to its new path.
+const relocateEntry = async (entryPath: string, change: () => Promise<string>): Promise<string> => {
+  await saveOpenCmake();
+  for (const file of fileTabs()) {
+    if (isWithin(file.path, entryPath) && isDirty(file)) await saveFile(file);
+  }
+  const nextPath = await change();
+  const moved = (inside: string): string => `${nextPath}${inside.slice(entryPath.length)}`;
+  relocateOpenFiles(entryPath, nextPath);
+  if (copiedEntryPath && isWithin(copiedEntryPath, entryPath)) copiedEntryPath = moved(copiedEntryPath);
+  [...expandedDirectories].filter((folder) => isWithin(folder, entryPath)).forEach((folder) => {
+    expandedDirectories.delete(folder);
+    expandedDirectories.add(moved(folder));
+  });
+  await reloadOpenCmake();
+  return nextPath;
+};
+
 const renameSelectedEntry = async (): Promise<void> => {
   if (!selectedEntry) return;
   const entry = selectedEntry;
   const newName = await requestName('rename', 'newName', entry.name);
   if (!newName || newName === entry.name) return;
   try {
-    await saveOpenCmake();
-    for (const file of fileTabs()) {
-      if (isWithin(file.path, entry.path) && isDirty(file)) await saveFile(file);
-    }
-    const nextPath = await window.glistAPI.renameEntry(entry.path, newName);
-    relocateOpenFiles(entry.path, nextPath);
-    if (copiedEntryPath && isWithin(copiedEntryPath, entry.path)) {
-      copiedEntryPath = `${nextPath}${copiedEntryPath.slice(entry.path.length)}`;
-    }
-    await reloadOpenCmake();
-    expandedDirectories.clear();
+    const nextPath = await relocateEntry(entry.path, () => window.glistAPI.renameEntry(entry.path, newName));
     await loadProjectTree();
     notify({ text: t('renamedTo').replace('{from}', entry.name).replace('{to}', baseName(nextPath)), detail: noticePath(nextPath), kind: 'success' });
   } catch (error) {
     noticeFailed('renameFailed', error);
+  }
+};
+
+// A file or folder dragged onto another folder of the project, moved there.
+const moveEntry = async (entryPath: string, folder: string): Promise<void> => {
+  try {
+    const nextPath = await relocateEntry(entryPath, () => window.glistAPI.moveEntry(entryPath, folder));
+    if (activeProject && folder !== activeProject.root) expandedDirectories.add(folder);
+    await loadProjectTree();
+    notify({ text: t('movedInto').replace('{name}', baseName(nextPath)).replace('{folder}', baseName(folder)), detail: noticePath(nextPath), kind: 'success' });
+  } catch (error) {
+    noticeFailed('moveFailed', error);
   }
 };
 
@@ -2931,7 +2954,15 @@ fileTree.addEventListener('contextmenu', (event) => {
 // own folder, or the project's when dropped below the list. The engine's and
 // plugins' folders take none. Electron says where the files are, so they are
 // copied from there; a browser gives only their contents, which are sent instead.
-const externalDrag = (event: DragEvent): boolean => !draggedTab && Boolean(event.dataTransfer?.types.includes('Files'));
+const externalDrag = (event: DragEvent): boolean => !draggedTab && !draggedEntry && Boolean(event.dataTransfer?.types.includes('Files'));
+// A file or folder of the project being dragged within the explorer, which moves
+// it: not into itself, nor into the folder it is already in.
+let draggedEntry: string | null = null;
+const moveTarget = (event: DragEvent): string | null => {
+  const folder = draggedEntry ? dropFolderAt(event) : null;
+  if (!draggedEntry || !folder || isWithin(folder, draggedEntry)) return null;
+  return folder === draggedEntry.replace(/[\\/][^\\/]+$/, '') ? null : folder;
+};
 const dropFolderAt = (event: DragEvent): string | null => {
   if (!activeProject) return null;
   const row = event.target instanceof Element ? event.target.closest<HTMLElement>('.tree-row') : null;
@@ -2994,7 +3025,26 @@ const importDropped = async (dropped: Array<{ entry: FileSystemEntry | null; fil
   }
 };
 
+fileTree.addEventListener('dragstart', (event) => {
+  const row = event.target instanceof Element ? event.target.closest<HTMLElement>('.tree-row[draggable="true"]') : null;
+  if (!row?.dataset.path || !event.dataTransfer) return;
+  draggedEntry = row.dataset.path;
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/plain', draggedEntry);
+});
+fileTree.addEventListener('dragend', () => {
+  draggedEntry = null;
+  markDropFolder(null);
+});
 fileTree.addEventListener('dragover', (event) => {
+  if (draggedEntry) {
+    const folder = moveTarget(event);
+    markDropFolder(folder);
+    if (!folder || !event.dataTransfer) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    return;
+  }
   if (!externalDrag(event)) return;
   const folder = dropFolderAt(event);
   markDropFolder(folder);
@@ -3006,6 +3056,15 @@ fileTree.addEventListener('dragleave', (event) => {
   if (!fileTree.contains(event.relatedTarget as Node | null)) markDropFolder(null);
 });
 fileTree.addEventListener('drop', (event) => {
+  if (draggedEntry) {
+    const [entry, folder] = [draggedEntry, moveTarget(event)];
+    draggedEntry = null;
+    markDropFolder(null);
+    if (!folder) return;
+    event.preventDefault();
+    void moveEntry(entry, folder);
+    return;
+  }
   if (!externalDrag(event) || !event.dataTransfer) return;
   event.preventDefault();
   const folder = dropFolderAt(event);

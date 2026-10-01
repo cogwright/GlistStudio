@@ -678,7 +678,9 @@
     "codeStyleProject": "Projenin .clang-format dosyası",
     "codeStyleNone": "Yok",
     "codeStyleHint": "Glist Engine stili, motorun kendi kodunun yazıldığı biçimdir: 4 genişliğinde sekmeler, aynı satırda süslü parantezler ve boşluksuz if(. Glist Studio'nun kendisinindir ve hiçbir zaman bir projeye eklenmez. Projenin .clang-format dosyası, dosyanın klasöründeki veya üst klasörlerindeki en yakın dosyadır; olmadığı yerde Glist Engine stili kullanılır. Düzenleyici seçilen stile göre girinti yapar ve bir sınır varsa satırların nerede bitmesi gerektiğini gösterir.",
-    "reformatOff": "Kod biçimlendirme kapalı: Ayarlar > Kod Biçimlendirme'den bir stil seçin."
+    "reformatOff": "Kod biçimlendirme kapalı: Ayarlar > Kod Biçimlendirme'den bir stil seçin.",
+    "movedInto": "{name}, {folder} klasörüne taşındı",
+    "moveFailed": "Öğe taşınamadı"
   },
   "platforms": {
     "darwin": {
@@ -760,7 +762,8 @@
     "outputConfigure": "YAPILANDIRMA",
     "outputBuildAndRun": "DERLE VE ÇALIŞTIR",
     "agentDownloading": "{name} indiriliyor",
-    "agentInstallingPackage": "{name} kuruluyor"
+    "agentInstallingPackage": "{name} kuruluyor",
+    "moveIntoSelf": "Bir klasör kendi içine veya alt klasörlerinden birine taşınamaz."
   },
   "git": {
     "noProject": "Önce bir proje açın.",

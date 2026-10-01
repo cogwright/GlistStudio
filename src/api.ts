@@ -17,6 +17,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   createDirectory: 'project:create-directory',
   deleteEntry: 'project:delete-entry',
   renameEntry: 'project:rename-entry',
+  moveEntry: 'project:move-entry',
   createCppClass: 'project:create-cpp-class',
   copyEntry: 'project:copy-entry',
   importPaths: 'project:import-paths',
