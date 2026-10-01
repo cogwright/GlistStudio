@@ -31,6 +31,7 @@
     "commandPrompt": "CMD",
     "copied": "Copied",
     "pasted": "Pasted",
+    "copiedInto": "Copied into {folder}",
     "copyFailed": "Could not copy item",
     "showFailed": "Could not open location",
     "rename": "Rename",

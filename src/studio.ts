@@ -243,28 +243,80 @@ const createCppClass = async (directoryPath: string, className: string): Promise
   return { header, source };
 };
 
-const copyProjectEntry = async (entryPath: string, destinationDirectory: string): Promise<string> => {
-  const source = await assertExistingPathInProject(entryPath);
-  const destination = await assertExistingPathInProject(destinationDirectory);
-  const sourceStats = await fs.stat(source);
-  const destinationStats = await fs.stat(destination);
-  if (!destinationStats.isDirectory()) throw new Error(msg('folderRequired'));
+// Where an item named so goes in a folder: under its own name, or "name - Copy",
+// "name - Copy 2" and so on when the name is taken.
+const freeTarget = (destination: string, originalName: string, isDirectory: boolean): string => {
+  const parsed = path.parse(originalName);
+  let target = path.join(destination, originalName);
+  for (let index = 1; existsSync(target); index += 1) {
+    const copy = ` - Copy${index > 1 ? ` ${index}` : ''}`;
+    target = path.join(destination, isDirectory ? `${originalName}${copy}` : `${parsed.name}${copy}${parsed.ext}`);
+  }
+  return target;
+};
+
+// A folder is not copied into itself or a folder inside it.
+const assertNotIntoSelf = (source: string, destination: string): void => {
   const relative = path.relative(source, destination);
-  if (sourceStats.isDirectory() && (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative)))) {
+  if (relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))) {
     throw new Error(msg('copyIntoSelf'));
   }
-  const parsed = path.parse(source);
-  const originalName = path.basename(source);
-  let copyName = originalName;
-  let target = path.join(destination, copyName);
-  for (let index = 1; existsSync(target); index += 1) {
-    copyName = sourceStats.isDirectory()
-      ? `${originalName} - Copy${index > 1 ? ` ${index}` : ''}`
-      : `${parsed.name} - Copy${index > 1 ? ` ${index}` : ''}${parsed.ext}`;
-    target = path.join(destination, copyName);
-  }
+};
+
+const projectFolder = async (directoryPath: unknown): Promise<string> => {
+  if (typeof directoryPath !== 'string') throw new Error(msg('folderRequired'));
+  const folder = await assertExistingPathInProject(directoryPath);
+  if (!(await fs.stat(folder)).isDirectory()) throw new Error(msg('folderRequired'));
+  return folder;
+};
+
+const copyProjectEntry = async (entryPath: string, destinationDirectory: string): Promise<string> => {
+  const source = await assertExistingPathInProject(entryPath);
+  const destination = await projectFolder(destinationDirectory);
+  const sourceStats = await fs.stat(source);
+  if (sourceStats.isDirectory()) assertNotIntoSelf(source, destination);
+  const target = freeTarget(destination, path.basename(source), sourceStats.isDirectory());
   await fs.cp(source, target, { recursive: sourceStats.isDirectory(), force: false, errorOnExist: true });
   return target;
+};
+
+// Files and folders dragged in from the system's file manager, copied into a
+// project folder. They come from anywhere on the computer: the user chose them.
+const importPaths = async (sources: unknown, destinationDirectory: unknown): Promise<string[]> => {
+  const destination = await projectFolder(destinationDirectory);
+  const copied: string[] = [];
+  for (const source of Array.isArray(sources) ? sources : []) {
+    if (typeof source !== 'string' || !path.isAbsolute(source)) continue;
+    const stats = await fs.stat(source);
+    if (stats.isDirectory()) assertNotIntoSelf(source, destination);
+    const target = freeTarget(destination, path.basename(source), stats.isDirectory());
+    await fs.cp(source, target, { recursive: stats.isDirectory(), force: false, errorOnExist: true });
+    copied.push(target);
+  }
+  return copied;
+};
+
+// The same from a browser, which gives no paths: each file's place in what was
+// dropped, such as sprites/hero.png, and its bytes in base64. A dropped folder
+// whose name is taken is renamed as a whole.
+const importFiles = async (destinationDirectory: unknown, files: unknown): Promise<string[]> => {
+  const destination = await projectFolder(destinationDirectory);
+  const tops = new Map<string, string>();
+  for (const file of Array.isArray(files) ? files : []) {
+    const { path: place, data } = (file ?? {}) as { path?: unknown; data?: unknown };
+    if (typeof place !== 'string' || typeof data !== 'string') continue;
+    const parts = place.split('/').filter(Boolean).map(validateEntryName);
+    if (parts.length === 0) continue;
+    let top = tops.get(parts[0]);
+    if (!top) {
+      top = freeTarget(destination, parts[0], parts.length > 1);
+      tops.set(parts[0], top);
+    }
+    const target = assertPathInProject(path.join(top, ...parts.slice(1)));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, Buffer.from(data, 'base64'), { flag: 'wx' });
+  }
+  return [...tops.values()];
 };
 
 const showInSystemExplorer = async (entryPath: string): Promise<void> => {
@@ -1455,6 +1507,8 @@ export const studio: Handlers = {
   renameEntry: renameProjectEntry,
   createCppClass,
   copyEntry: copyProjectEntry,
+  importPaths,
+  importFiles,
   showInExplorer: showInSystemExplorer,
   openCommandPrompt,
   readFile: readProjectFile,

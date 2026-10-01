@@ -511,6 +511,10 @@ interface GlistWindowColors {
 }
 
 interface Window {
+  // Electron only: where a file dropped from the system's file manager is. A browser does not say.
+  glistFiles?: {
+    pathForFile(file: File): string;
+  };
   glistAPI: {
     openProject(): Promise<GlistProjectInfo | null>;
     createProject(templateName: GlistTemplate, projectName: string): Promise<GlistProjectInfo>;
@@ -521,6 +525,10 @@ interface Window {
     renameEntry(entryPath: string, newName: string): Promise<string>;
     createCppClass(directoryPath: string, className: string): Promise<{ header: string; source: string }>;
     copyEntry(entryPath: string, destinationDirectory: string): Promise<string>;
+    // Files and folders dropped from the system's file manager, by path; what is copied, where.
+    importPaths(sources: string[], destinationDirectory: string): Promise<string[]>;
+    // The same by content, from a browser: each file's place in what was dropped and its bytes in base64.
+    importFiles(destinationDirectory: string, files: Array<{ path: string; data: string }>): Promise<string[]>;
     showInExplorer(entryPath: string): Promise<void>;
     openCommandPrompt(entryPath: string): Promise<void>;
     readFile(filePath: string): Promise<string>;

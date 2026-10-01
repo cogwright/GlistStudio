@@ -2832,6 +2832,99 @@ fileTree.addEventListener('contextmenu', (event) => {
   clearTreeSelection();
   showContextMenu(event);
 });
+
+// Files and folders dragged in from the system's file manager are copied into
+// the project folder they are dropped on: the folder under the pointer, a file's
+// own folder, or the project's when dropped below the list. The engine's and
+// plugins' folders take none. Electron says where the files are, so they are
+// copied from there; a browser gives only their contents, which are sent instead.
+const externalDrag = (event: DragEvent): boolean => !draggedTab && Boolean(event.dataTransfer?.types.includes('Files'));
+const dropFolderAt = (event: DragEvent): string | null => {
+  if (!activeProject) return null;
+  const row = event.target instanceof Element ? event.target.closest<HTMLElement>('.tree-row') : null;
+  if (!row) return activeProject.root;
+  const entryPath = row.dataset.path;
+  if (!entryPath || !isProjectPath(entryPath)) return null;
+  return row.dataset.directory ? entryPath : entryPath.replace(/[\\/][^\\/]+$/, '');
+};
+const markDropFolder = (folder: string | null): void => {
+  fileTree.classList.toggle('drop-root', folder !== null && folder === activeProject?.root);
+  fileTree.querySelectorAll('.tree-row.drop-target').forEach((row) => row.classList.remove('drop-target'));
+  if (folder && folder !== activeProject?.root) fileTree.querySelector(`.tree-row[data-path="${CSS.escape(folder)}"]`)?.classList.add('drop-target');
+};
+
+// A browser's drop as files to send: each with its place in what was dropped and its bytes in base64.
+const base64Of = async (file: File): Promise<string> => {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += 0x8000) binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  return btoa(binary);
+};
+const readDropped = async (dropped: Array<{ entry: FileSystemEntry | null; file: File | null }>): Promise<Array<{ path: string; data: string }>> => {
+  const found: Array<{ path: string; data: string }> = [];
+  const walk = async (entry: FileSystemEntry, place: string): Promise<void> => {
+    if (entry.isFile) {
+      const file = await new Promise<File>((resolve, reject) => { (entry as FileSystemFileEntry).file(resolve, reject); });
+      found.push({ path: place, data: await base64Of(file) });
+      return;
+    }
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    for (;;) {
+      const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => { reader.readEntries(resolve, reject); });
+      if (batch.length === 0) return;
+      for (const inner of batch) await walk(inner, `${place}/${inner.name}`);
+    }
+  };
+  for (const { entry, file } of dropped) {
+    if (entry) await walk(entry, entry.name);
+    else if (file) found.push({ path: file.name, data: await base64Of(file) });
+  }
+  return found;
+};
+
+const importDropped = async (dropped: Array<{ entry: FileSystemEntry | null; file: File | null }>, folder: string): Promise<void> => {
+  try {
+    const paths = dropped.map(({ file }) => (file && window.glistFiles ? window.glistFiles.pathForFile(file) : ''));
+    const copied = paths.length > 0 && paths.every(Boolean)
+      ? await window.glistAPI.importPaths(paths, folder)
+      : await window.glistAPI.importFiles(folder, await readDropped(dropped));
+    if (copied.length === 0) return;
+    if (activeProject && folder !== activeProject.root) expandedDirectories.add(folder);
+    await loadProjectTree();
+    notify({
+      text: t('copiedInto').replace('{folder}', baseName(folder)),
+      detail: copied.map((entry) => baseName(entry)).join(', '),
+      kind: 'success',
+    });
+  } catch (error) {
+    noticeFailed('copyFailed', error);
+  }
+};
+
+fileTree.addEventListener('dragover', (event) => {
+  if (!externalDrag(event)) return;
+  const folder = dropFolderAt(event);
+  markDropFolder(folder);
+  if (!folder || !event.dataTransfer) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+});
+fileTree.addEventListener('dragleave', (event) => {
+  if (!fileTree.contains(event.relatedTarget as Node | null)) markDropFolder(null);
+});
+fileTree.addEventListener('drop', (event) => {
+  if (!externalDrag(event) || !event.dataTransfer) return;
+  event.preventDefault();
+  const folder = dropFolderAt(event);
+  markDropFolder(null);
+  if (!folder) return;
+  // What was dropped is only there during the event, so it is taken now and read after.
+  const files = [...event.dataTransfer.files];
+  const dropped = [...event.dataTransfer.items].filter((item) => item.kind === 'file').map((item, index) => ({
+    entry: item.webkitGetAsEntry(), file: item.getAsFile() ?? files[index] ?? null,
+  }));
+  void importDropped(dropped, folder);
+});
 projectRootLabel.addEventListener('click', clearTreeSelection);
 projectRootLabel.addEventListener('contextmenu', (event) => {
   clearTreeSelection();
