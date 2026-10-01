@@ -160,7 +160,12 @@ export class PluginsView {
         if (plugin.used) {
           // Added; pointing at it shows what a click does.
           const added = button('check', t('pluginAdded'), t('removeFromProject'), 'added', () => { void this.use(plugin, false); });
+          // Only on a change: pressing the button focuses it, and replacing what
+          // was pressed before the button is let go loses the click.
+          let showing = false;
           const swap = (hover: boolean): void => {
+            if (hover === showing) return;
+            showing = hover;
             added.replaceChildren(icon(hover ? 'close' : 'check'), Object.assign(document.createElement('span'), { textContent: hover ? t('pluginRemove') : t('pluginAdded') }));
           };
           added.addEventListener('pointerenter', () => swap(true));
