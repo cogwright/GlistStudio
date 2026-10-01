@@ -144,8 +144,8 @@ class LogView {
   private complete = false;
   private loading = false;
   private path: string | null = null;
-  // A branch or tag to show once the list of them is filled.
-  private pendingRef: string | null = null;
+  // A branch or tag to show once the list of them is filled; at first, the current branch.
+  private pendingRef: string | null = 'HEAD';
   private generation = 0;
   // The current branch's commits no remote has yet, which can be dropped.
   private unpublished = new Set<string>();
@@ -191,8 +191,7 @@ class LogView {
   // Another repository: a file's history or a branch picked belong to the one before.
   repositoryChanged(): void {
     this.path = null;
-    this.pendingRef = null;
-    this.refSelect.value = '';
+    this.pendingRef = 'HEAD';
     this.selected = null;
   }
 
@@ -210,7 +209,7 @@ class LogView {
     if (!find()) {
       this.path = null;
       this.search.value = '';
-      this.refSelect.value = '';
+      this.refSelect.value = 'HEAD';
       await this.load();
     }
     if (!find()) {
@@ -246,12 +245,13 @@ class LogView {
       node.value = value;
       return node;
     };
-    this.refSelect.replaceChildren(option('', t('allBranches')), option('HEAD', 'HEAD'),
+    // The current branch's history unless another is picked, as other IDEs start.
+    this.refSelect.replaceChildren(option('HEAD', t('logCurrentBranch')), option('', t('allBranches')),
       ...branches.map((branch) => option(branch.name, branch.name)));
     const wanted = this.pendingRef ?? current;
     if (this.pendingRef && ![...this.refSelect.options].some((entry) => entry.value === wanted)) this.refSelect.append(option(wanted, wanted));
     this.pendingRef = null;
-    this.refSelect.value = [...this.refSelect.options].some((entry) => entry.value === wanted) ? wanted : '';
+    this.refSelect.value = [...this.refSelect.options].some((entry) => entry.value === wanted) ? wanted : 'HEAD';
   }
 
   private async more(): Promise<void> {

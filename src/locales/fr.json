@@ -452,6 +452,7 @@
     "gitStashes": "Remises",
     "gitConsole": "Console",
     "allBranches": "Toutes les branches",
+    "logCurrentBranch": "Branche actuelle",
     "searchCommits": "Rechercher des messages ou des hash",
     "historyOf": "Historique de {name}",
     "clearFilter": "Afficher tout l'historique",
