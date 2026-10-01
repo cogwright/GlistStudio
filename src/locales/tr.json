@@ -452,6 +452,7 @@
     "gitStashes": "Saklananlar",
     "gitConsole": "Konsol",
     "allBranches": "Tüm dallar",
+    "logCurrentBranch": "Geçerli dal",
     "searchCommits": "Mesajlarda veya hash'lerde ara",
     "historyOf": "{name} geçmişi",
     "clearFilter": "Tüm geçmişi göster",

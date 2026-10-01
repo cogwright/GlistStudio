@@ -452,6 +452,7 @@
     "gitStashes": "Stashes",
     "gitConsole": "Console",
     "allBranches": "All branches",
+    "logCurrentBranch": "Current branch",
     "searchCommits": "Search messages or hashes",
     "historyOf": "History of {name}",
     "clearFilter": "Show all history",
