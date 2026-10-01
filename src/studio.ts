@@ -21,6 +21,7 @@ import { outputBanner } from './output-format';
 import { createPluginService } from './plugins';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 import { queryPattern } from './text-search';
+import { toolLanguage } from './tool-language';
 
 // What the backend needs from whoever hosts it: the Electron main process or
 // the browser preview server.
@@ -591,8 +592,9 @@ const runBuildCommand = (
   const child = spawn(executable, args, {
     cwd: workingDirectory,
     // Colored progress from CMake's makefiles, and colored diagnostics from the
-    // compiler in build trees created from now on.
-    env: { ...processEnvironment(toolchain), CLICOLOR_FORCE: '1', CMAKE_COLOR_DIAGNOSTICS: 'ON' },
+    // compiler in build trees created from now on; GCC and make in the editor's
+    // language where they have it.
+    env: ((base) => ({ ...base, CLICOLOR_FORCE: '1', CMAKE_COLOR_DIAGNOSTICS: 'ON', ...toolLanguage(language, base) }))(processEnvironment(toolchain)),
     windowsHide: true,
     detached: ownProcessGroup,
   });

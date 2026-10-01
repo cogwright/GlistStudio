@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { githubRepository } from './git-protection';
 import { languages, type Language, type Words } from './languages';
+import { toolLanguage } from './tool-language';
 
 // Updating a copy of the engine or of a plugin from where it is published:
 // GlistEngine/GlistEngine, GlistPlugins/<name>, or a plugin listed from
@@ -19,26 +20,6 @@ export interface GitResult { code: number; stdout: string; stderr: string }
 // they ran in. The many questions a background check asks are not.
 export type Git = (args: string[], cwd: string, logged?: boolean) => Promise<GitResult>;
 
-// What makes git answer in the editor's language where it has the language, as
-// Homebrew's, Git for Windows and Linux distributions' do (Apple's is English
-// only). Glist Studio reads none of git's sentences, only formats git keeps the
-// same in every language and version, so they can be in any. A system without
-// a locale gets one: gettext ignores LANGUAGE under the C locale, and turns
-// letters its character set lacks into others (ü into "u), so it writes UTF-8.
-// One every system has: Linux often lacks en_US.UTF-8 but has C.UTF-8, which
-// macOS's gettext takes for plain C; Windows' only reads the name.
-const fallbackLocale = (platform: NodeJS.Platform): string => (platform === 'linux' ? 'C.UTF-8' : 'en_US.UTF-8');
-
-export const gitLanguage = (language: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv => {
-  const messages = env.LC_ALL || env.LC_MESSAGES || env.LANG || '';
-  const characters = env.LC_ALL || env.LC_CTYPE || env.LANG || '';
-  return {
-    LANGUAGE: language,
-    ...(!messages || /^(C|POSIX)([._@]|$)/i.test(messages) ? { LC_MESSAGES: fallbackLocale(platform) } : {}),
-    ...(env.LC_ALL || /utf-?8/i.test(characters) ? {} : { LC_CTYPE: fallbackLocale(platform) }),
-  };
-};
-
 // Without a language, git answers in English, as the tests expect.
 export const gitRunner = (environment: () => NodeJS.ProcessEnv, report?: (entry: GlistGitConsoleEntry) => void, language?: () => string): Git =>
   (args, cwd, logged = false) => new Promise((resolve) => {
@@ -47,7 +28,7 @@ export const gitRunner = (environment: () => NodeJS.ProcessEnv, report?: (entry:
     const child = spawn('git', args, {
       cwd, windowsHide: true,
       env: ((base) => ({
-        ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_EDITOR: 'true', ...(language ? gitLanguage(language(), base) : { LC_ALL: 'C' }),
+        ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_EDITOR: 'true', ...(language ? toolLanguage(language(), base) : { LC_ALL: 'C' }),
       }))(environment()),
     });
     let stdout = '';

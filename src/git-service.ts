@@ -7,9 +7,9 @@ import {
   branchFormat, logFormat, parseBlame, parseBranches, parseLog, parseNameStatus, parseRemotes, parseStashes, parseStatus,
   parseTags, stashFormat, tagFormat, type GitFileChange, type GitStatus,
 } from './git';
-import { gitLanguage } from './checkout-update';
 import { createHostProtection, defaultProtection, matchesBranch, protectionFrom } from './git-protection';
 import { languages, type Language, type Words } from './languages';
+import { toolLanguage } from './tool-language';
 
 // Git for the Commit view and the Git panel, by running the git program in the
 // open project's repository. Anything that changes the repository runs one at
@@ -174,7 +174,7 @@ exit 1
       ...options.env,
     };
     // In the editor's language, unless the command says otherwise, as branches() does.
-    if (!options.env?.LC_ALL) Object.assign(env, gitLanguage(context.language(), env));
+    if (!options.env?.LC_ALL) Object.assign(env, toolLanguage(context.language(), env));
     const helper = options.remote ? await askpassPath() : null;
     if (helper) Object.assign(env, { GIT_ASKPASS: helper, SSH_ASKPASS: helper, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: env.DISPLAY || ':0' });
     return env;
