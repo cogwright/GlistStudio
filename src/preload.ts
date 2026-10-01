@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { eventChannels, invokeChannels } from './api';
 
 const subscribe = <T>(channel: string, callback: (payload: T) => void): (() => void) => {
@@ -16,6 +16,8 @@ Object.entries(eventChannels).forEach(([method, channel]) => {
 });
 
 contextBridge.exposeInMainWorld('glistAPI', api);
+// A dropped file's path, which pages no longer get from the File itself.
+contextBridge.exposeInMainWorld('glistFiles', { pathForFile: (file: File) => webUtils.getPathForFile(file) });
 
 // The main process says where the window buttons are, so the title bar can make room.
 const windowControls = process.argv.find((arg) => arg.startsWith('--window-controls='))?.split('=')[1];

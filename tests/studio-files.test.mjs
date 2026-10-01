@@ -80,6 +80,32 @@ try {
   assert.deepEqual((await studio.pathEntries()).slice(-1).map((entry) => [entry.source, entry.exists]), [['custom', false]]);
   await studio.setCustomPath([]);
   assert.equal((await studio.pathEntries()).some((entry) => entry.source === 'custom'), false);
+
+  // Dropped from the system's file manager: copied from anywhere into a project
+  // folder, a taken name getting " - Copy", a folder with everything in it.
+  write('Desktop/logo.png', 'png');
+  write('Desktop/sprites/hero.png', 'hero');
+  write('Desktop/sprites/enemies/bat.png', 'bat');
+  mkdirSync(at('myglistapps/App/assets'), { recursive: true });
+  write('myglistapps/App/assets/logo.png', 'old');
+  const imported = await studio.importPaths([at('Desktop/logo.png'), at('Desktop/sprites')], at('myglistapps/App/assets'));
+  assert.deepEqual(imported, [at('myglistapps/App/assets/logo - Copy.png'), at('myglistapps/App/assets/sprites')]);
+  assert.equal(readFileSync(at('myglistapps/App/assets/logo.png'), 'utf8'), 'old');
+  assert.equal(readFileSync(at('myglistapps/App/assets/logo - Copy.png'), 'utf8'), 'png');
+  assert.equal(readFileSync(at('myglistapps/App/assets/sprites/enemies/bat.png'), 'utf8'), 'bat');
+  // Only into the project, and a folder not into itself.
+  await assert.rejects(studio.importPaths([at('Desktop/logo.png')], at('GlistEngine/engine/core')));
+  await assert.rejects(studio.importPaths([at('myglistapps/App/assets')], at('myglistapps/App/assets/sprites')));
+  // From a browser, by content: the dropped folder renamed as a whole when its name is taken.
+  const sent = await studio.importFiles(at('myglistapps/App/assets'), [
+    { path: 'sprites/hero.png', data: Buffer.from('hero 2').toString('base64') },
+    { path: 'sprites/enemies/bat.png', data: Buffer.from('bat 2').toString('base64') },
+    { path: 'music.ogg', data: Buffer.from([0, 1, 2, 255]).toString('base64') },
+  ]);
+  assert.deepEqual(sent, [at('myglistapps/App/assets/sprites - Copy'), at('myglistapps/App/assets/music.ogg')]);
+  assert.equal(readFileSync(at('myglistapps/App/assets/sprites - Copy/enemies/bat.png'), 'utf8'), 'bat 2');
+  assert.deepEqual([...readFileSync(at('myglistapps/App/assets/music.ogg'))], [0, 1, 2, 255]);
+  await assert.rejects(studio.importFiles(at('myglistapps/App/assets'), [{ path: '../escape.txt', data: '' }]));
 } finally {
   rmSync(root, { recursive: true, force: true });
 }

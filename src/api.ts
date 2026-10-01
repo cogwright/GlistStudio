@@ -19,6 +19,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   renameEntry: 'project:rename-entry',
   createCppClass: 'project:create-cpp-class',
   copyEntry: 'project:copy-entry',
+  importPaths: 'project:import-paths',
+  importFiles: 'project:import-files',
   showInExplorer: 'project:show-in-explorer',
   openCommandPrompt: 'project:open-command-prompt',
   readFile: 'project:read-file',

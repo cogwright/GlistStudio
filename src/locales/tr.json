@@ -31,6 +31,7 @@
     "commandPrompt": "Komut İstemi",
     "copied": "Kopyalandı",
     "pasted": "Yapıştırıldı",
+    "copiedInto": "{folder} klasörüne kopyalandı",
     "copyFailed": "Öğe kopyalanamadı",
     "showFailed": "Konum açılamadı",
     "rename": "Yeniden Adlandır",
