@@ -795,6 +795,7 @@ let dependenciesKnown: Promise<void> = Promise.resolve();
 const checkoutHooks: CheckoutUpdateHooks = {
   gitTools: () => git.enabled,
   showConflicts: () => { void git.refresh().then(() => showView('commit')); },
+  showConsole: () => showGitPanel('console'),
   save: () => saveProjectFiles(),
   reload: async () => { await reloadFromDisk(); void git.refresh(); },
 };

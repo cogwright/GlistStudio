@@ -14,20 +14,32 @@ import { languages, type Language, type Words } from './languages';
 // the changed files in a stash. Nothing here needs Electron.
 
 export interface GitResult { code: number; stdout: string; stderr: string }
-export type Git = (args: string[], cwd: string) => Promise<GitResult>;
+// Logged commands are the ones that change a copy, and the fetch an update
+// starts with: shown in the Git console, as the Git tools' are, with the folder
+// they ran in. The many questions a background check asks are not.
+export type Git = (args: string[], cwd: string, logged?: boolean) => Promise<GitResult>;
 
-export const gitRunner = (environment: () => NodeJS.ProcessEnv): Git => (args, cwd) => new Promise((resolve) => {
-  const child = spawn('git', args, {
-    cwd, windowsHide: true,
-    env: { ...environment(), GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_EDITOR: 'true', LC_ALL: 'C' },
+export const gitRunner = (environment: () => NodeJS.ProcessEnv, report?: (entry: GlistGitConsoleEntry) => void): Git =>
+  (args, cwd, logged = false) => new Promise((resolve) => {
+    const show = logged && report ? report : (): void => undefined;
+    show({ kind: 'command', text: ['git', '-C', path.basename(cwd), ...args].map((arg) => (/^[\w@%+=:,./{}^~-]+$/.test(arg) ? arg : `"${arg}"`)).join(' ') });
+    const child = spawn('git', args, {
+      cwd, windowsHide: true,
+      env: { ...environment(), GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_EDITOR: 'true', LC_ALL: 'C' },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); show({ kind: 'output', text: chunk.toString() }); });
+    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); show({ kind: 'output', text: chunk.toString() }); });
+    child.once('error', (error) => {
+      show({ kind: 'error', text: error.message });
+      resolve({ code: -1, stdout, stderr: error.message });
+    });
+    child.once('close', (code) => {
+      if (code !== 0) show({ kind: 'error', text: `exit code ${code ?? -1}` });
+      resolve({ code: code ?? -1, stdout, stderr });
+    });
   });
-  let stdout = '';
-  let stderr = '';
-  child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-  child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-  child.once('error', (error) => resolve({ code: -1, stdout, stderr: error.message }));
-  child.once('close', (code) => resolve({ code: code ?? -1, stdout, stderr }));
-});
 
 export interface CheckoutContext {
   git: Git;
@@ -39,8 +51,9 @@ export interface CheckoutContext {
 }
 
 const lines = (result: GitResult): string[] => result.stdout.split('\n').map((line) => line.trim()).filter(Boolean);
-const lastLine = (result: GitResult, fallback: string): string =>
-  (result.stderr.trim() || result.stdout.trim()).split('\n').pop()?.trim() || fallback;
+// What git said when it failed, whole: its last line alone is often only "Aborting".
+export const gitMessage = (result: GitResult, fallback: string): string =>
+  (result.stderr.trim() || result.stdout.trim()).split('\n').map((line) => line.trim()).filter(Boolean).slice(-12).join('\n') || fallback;
 const separator = '\x1f';
 
 // Whether a remote's address is the source's repository: owner/name on GitHub, or on the site.
@@ -102,7 +115,9 @@ export const createCheckouts = (context: CheckoutContext) => {
   };
 
   // Where a copy stands against its source; fetching first when asked.
-  const inspect = async (folder: string, source: string, options: { fetch?: boolean; defaultBranch?: string } = {}): Promise<GlistCheckout> => {
+  const inspect = async (
+    folder: string, source: string, options: { fetch?: boolean; defaultBranch?: string; logged?: boolean } = {},
+  ): Promise<GlistCheckout> => {
     if (!isCheckout(folder)) return { repository: false };
     const remote = await sourceRemote(folder, source);
     const branch = (await git(['symbolic-ref', '--quiet', '--short', 'HEAD'], folder)).stdout.trim() || null;
@@ -114,8 +129,8 @@ export const createCheckouts = (context: CheckoutContext) => {
     const main = await defaultBranch(folder, remote, options.defaultBranch, options.fetch === true);
     state.defaultBranch = main;
     if (options.fetch) {
-      const fetched = await git(['fetch', '--quiet', remote, main], folder);
-      if (fetched.code !== 0) state.fetchError = lastLine(fetched, 'git fetch failed');
+      const fetched = await git(['fetch', '--quiet', remote, main], folder, options.logged);
+      if (fetched.code !== 0) state.fetchError = gitMessage(fetched, 'git fetch failed');
     }
     const target = `refs/remotes/${remote}/${main}`;
     if ((await git(['rev-parse', '--verify', '--quiet', target], folder)).code !== 0 || !head) return state;
@@ -143,7 +158,9 @@ export const createCheckouts = (context: CheckoutContext) => {
   ): Promise<GlistCheckoutResult> => {
     const remote = isCheckout(folder) ? await sourceRemote(folder, source) : null;
     if (!remote) return failed(say('notFromSource', { name, source }));
-    const state = await inspect(folder, source, { fetch: true, defaultBranch: options.defaultBranch });
+    const state = await inspect(folder, source, { fetch: true, defaultBranch: options.defaultBranch, logged: true });
+    // What changes the copy shows in the Git console.
+    const change = (args: string[]): Promise<GitResult> => git(args, folder, true);
     const main = state.defaultBranch ?? 'main';
     if (state.fetchError) return failed(state.fetchError);
     if (!state.branch) return failed(say('detached', { name }));
@@ -160,36 +177,36 @@ export const createCheckouts = (context: CheckoutContext) => {
       const kept: GlistCheckoutResult['kept'] = {};
       if (changed > 0) {
         const message = `Glist Studio: kept before updating ${name}`;
-        const stashed = await git(['stash', 'push', '--include-untracked', '--message', message], folder);
-        if (stashed.code !== 0) return failed(lastLine(stashed, 'git stash failed'));
+        const stashed = await change(['stash', 'push', '--include-untracked', '--message', message]);
+        if (stashed.code !== 0) return failed(gitMessage(stashed, 'git stash failed'));
         kept.stash = message;
       }
       if (ahead > 0) {
         const stamp = new Date().toISOString().replace(/\.\d+Z$/, '').replace(/[-:]/g, '').replace('T', '-');
         const branch = `glist-studio/kept-${stamp}`;
-        const saved = await git(['branch', branch, 'HEAD'], folder);
-        if (saved.code !== 0) return failed(lastLine(saved, 'git branch failed'));
+        const saved = await change(['branch', branch, 'HEAD']);
+        if (saved.code !== 0) return failed(gitMessage(saved, 'git branch failed'));
         kept.branch = branch;
       }
-      const moved = await git(ahead > 0 ? ['reset', '--hard', '--quiet', target] : ['merge', '--ff-only', '--quiet', target], folder);
-      if (moved.code !== 0) return failed(lastLine(moved, 'git reset failed'));
+      const moved = await change(ahead > 0 ? ['reset', '--hard', '--quiet', target] : ['merge', '--ff-only', '--quiet', target]);
+      if (moved.code !== 0) return failed(gitMessage(moved, 'git reset failed'));
       return { success: true, message: name, how: 'replace', kept };
     }
     const how = ahead === 0 ? 'fast-forward' : keepBy;
     const args = how === 'fast-forward' ? ['merge', '--ff-only', '--autostash', target]
       : how === 'rebase' ? ['rebase', '--autostash', target]
         : ['merge', '--no-edit', '--autostash', target];
-    const result = await git(args, folder);
+    const result = await change(args);
     if (result.code !== 0) {
       const unmerged = lines(await git(['diff', '--name-only', '--diff-filter=U'], folder)).length > 0;
       const gitPath = async (name: string): Promise<string> => path.resolve(folder, (await git(['rev-parse', '--git-path', name], folder)).stdout.trim());
       const stopped = existsSync(await gitPath('rebase-merge')) || existsSync(await gitPath('rebase-apply')) || existsSync(await gitPath('MERGE_HEAD'));
       if (unmerged || stopped) {
         // Taken back, the copy is as it was, the changed files too.
-        if (!options.resolve) await git([how === 'rebase' ? 'rebase' : 'merge', '--abort'], folder);
+        if (!options.resolve) await change([how === 'rebase' ? 'rebase' : 'merge', '--abort']);
         return { success: false, message: say('conflicts', { name, source }), conflicts: true, how };
       }
-      return failed(lastLine(result, `git ${args[0]} failed`));
+      return failed(gitMessage(result, `git ${args[0]} failed`));
     }
     // Put back, the changed files clashed with the new version; git keeps them in a stash.
     const stashClash = /Applying autostash resulted in conflicts|Your changes are safe in the stash/i.test(`${result.stdout}\n${result.stderr}`);

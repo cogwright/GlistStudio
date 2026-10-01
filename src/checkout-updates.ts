@@ -19,6 +19,8 @@ export interface CheckoutUpdateHooks {
   gitTools(): boolean;
   // Conflicts were left in place: show where to resolve them.
   showConflicts(): void;
+  // The Git console, where the update's commands are, with what git said.
+  showConsole(): void;
   // Before: open files saved, so changes typed are among those kept. False stops the update.
   save(): Promise<boolean>;
   // After: open files and the explorer read again, since git changed them on disk.
@@ -71,6 +73,7 @@ const ask = async (target: CheckoutTarget, confirm: NonNullable<GlistCheckoutRes
 // Says how it went, with the way on after a conflict.
 const report = (target: CheckoutTarget, result: GlistCheckoutResult, hooks: CheckoutUpdateHooks, quiet: boolean): void => {
   const values = { name: target.name, source: target.source };
+  const showConsole = hooks.gitTools() ? [{ label: t('showConsole'), run: () => hooks.showConsole() }] : [];
   if (result.upToDate) {
     if (!quiet) notify({ text: fill('updateUpToDate', values), kind: 'success' });
     return;
@@ -86,13 +89,14 @@ const report = (target: CheckoutTarget, result: GlistCheckoutResult, hooks: Chec
           label: t('updateResolve'),
           run: () => { void change(target, hooks, 'keep', true).then(() => hooks.showConflicts()); },
         }] : []),
+        ...showConsole,
       ],
     });
     return;
   }
   if (!result.success) {
     // Saving failed and said so already.
-    if (result.message) notify({ text: fill('checkoutUpdateFailed', values), detail: result.message, kind: 'error' });
+    if (result.message) notify({ text: fill('checkoutUpdateFailed', values), detail: result.message, kind: 'error', actions: showConsole });
     return;
   }
   const done: Record<NonNullable<GlistCheckoutResult['how']>, TranslationKey> = {

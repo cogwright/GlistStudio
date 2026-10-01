@@ -156,6 +156,24 @@ try {
   assert.equal(git(copy, 'rev-parse', 'HEAD'), git(copy, 'rev-parse', 'upstream/main'));
   assert.match(git(copy, 'stash', 'list'), /autostash/);
 
+  // What changes the copy is shown in the Git console, with the folder, and what git said.
+  git(copy, 'reset', '-q', '--hard', 'upstream/main');
+  git(copy, 'stash', 'clear');
+  const shown = [];
+  const logged = createCheckouts({
+    git: gitRunner(() => process.env, (entry) => shown.push(entry)), site, isProtected: async () => true, language: () => 'en',
+  });
+  publish('gCore.h', 'core 9\n', 'Core nine');
+  await logged.inspect(copy, 'GlistEngine/GlistEngine', { fetch: true });
+  assert.equal(shown.length, 0, 'a check asks quietly');
+  result = await logged.update(copy, 'GlistEngine', 'GlistEngine/GlistEngine');
+  assert.equal(result.success, true, result.message);
+  assert.deepEqual(shown.filter((entry) => entry.kind === 'command').map((entry) => entry.text), [
+    'git -C GlistEngine fetch --quiet upstream main',
+    'git -C GlistEngine merge --ff-only --autostash refs/remotes/upstream/main',
+  ]);
+  assert.ok(shown.some((entry) => entry.kind === 'output' && /Fast-forward/.test(entry.text)));
+
   // Where it is not updated: another branch, a commit, no remote that is the source.
   git(copy, 'checkout', '-q', '-f', '-b', 'experiment');
   assert.match((await update()).message, /GlistEngine is on the branch experiment; updates are for main/);
