@@ -661,7 +661,15 @@
     "pausedEntry": "start of the program",
     "macMinimize": "Minimize",
     "macZoom": "Zoom",
-    "macFront": "Bring All to Front"
+    "macFront": "Bring All to Front",
+    "crashMemory": "Crashed: bad memory access",
+    "crashException": "Uncaught exception",
+    "crashAssert": "Assert failed",
+    "crashAbort": "Crashed: the program aborted",
+    "crashArithmetic": "Crashed: a calculation it cannot do, as dividing by zero",
+    "crashInstruction": "Crashed: an instruction it cannot run",
+    "crashSignal": "Crashed",
+    "crashHint": "The program stopped here because it crashed. Point at the names on this line to see their values, and see the call stack in Run and Debug."
   },
   "platforms": {
     "darwin": {

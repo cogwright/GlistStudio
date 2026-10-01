@@ -661,7 +661,15 @@
     "pausedEntry": "programın başı",
     "macMinimize": "Küçült",
     "macZoom": "Büyüt",
-    "macFront": "Tümünü Öne Getir"
+    "macFront": "Tümünü Öne Getir",
+    "crashMemory": "Çöktü: geçersiz bellek erişimi",
+    "crashException": "Yakalanmayan istisna (exception)",
+    "crashAssert": "Assert başarısız oldu",
+    "crashAbort": "Çöktü: program kendini durdurdu (abort)",
+    "crashArithmetic": "Çöktü: yapılamayan bir hesap, sıfıra bölme gibi",
+    "crashInstruction": "Çöktü: çalıştırılamayan bir komut",
+    "crashSignal": "Çöktü",
+    "crashHint": "Program çöktüğü için burada durdu. Değerlerini görmek için bu satırdaki adların üzerine gelin; çağrı yığını Çalıştır ve Hata Ayıkla'da."
   },
   "platforms": {
     "darwin": {
