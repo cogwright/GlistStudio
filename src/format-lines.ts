@@ -19,23 +19,28 @@ export interface LineEdit {
 // so formatting never moves an #include.
 const include = /^\s*#\s*(?:include|import)\b/;
 
-// The lines of the text as it is that differ from the saved one, in ranges,
-// #include lines left out. Lines only removed leave nothing to format.
-export const changedLines = (saved: string, current: string): LineRange[] => {
-  const lines = current.split('\n');
+// The lines from first to last of a text in ranges, #include lines left out:
+// what Reformat File formats, the whole file or the lines chosen.
+export const codeLines = (text: string, first = 1, last = Infinity): LineRange[] => {
+  const lines = text.split('\n');
+  const end = Math.min(last, lines.length);
   const ranges: LineRange[] = [];
-  for (const change of lineChanges(saved, current)) {
-    let start = 0;
-    for (let line = change.modifiedStart; line < change.modifiedStart + change.modifiedCount; line += 1) {
-      if (include.test(lines[line - 1] ?? '')) {
-        if (start) ranges.push({ start, end: line - 1 });
-        start = 0;
-      } else if (!start) start = line;
-    }
-    if (start) ranges.push({ start, end: change.modifiedStart + change.modifiedCount - 1 });
+  let start = 0;
+  for (let line = Math.max(1, first); line <= end; line += 1) {
+    if (include.test(lines[line - 1])) {
+      if (start) ranges.push({ start, end: line - 1 });
+      start = 0;
+    } else if (!start) start = line;
   }
+  if (start) ranges.push({ start, end });
   return ranges;
 };
+
+// The lines of the text as it is that differ from the saved one, in ranges,
+// #include lines left out. Lines only removed leave nothing to format.
+export const changedLines = (saved: string, current: string): LineRange[] => lineChanges(saved, current)
+  .filter((change) => change.modifiedCount > 0)
+  .flatMap((change) => codeLines(current, change.modifiedStart, change.modifiedStart + change.modifiedCount - 1));
 
 // The edits for the ranges that stay on their lines, each once: clang-format
 // may reach the line break before a range, but not lines nobody changed.

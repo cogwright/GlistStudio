@@ -1,0 +1,90 @@
+// Glist Studio's own .clang-format, Glist's code style: Glist Engine's
+// engine/.clang-format brought in line with Glist's written rules and the
+// engine's code (if( without a space, one blank line between functions, one
+// space after //, includes kept in order). It is kept in Glist Studio's
+// folder and never put into a project (studio.ts).
+
+export const glistCodeStyle = `# Glist's code style, as Glist Engine's code is written. Tabs for indentation,
+# braces on the same line after one space, spaces around operators.
+# Not for clang-format, so by hand: no blank lines between statements in a
+# function without a reason, a blank line before a // comment that is not
+# the first line of a body, and ++ and -- rather than += 1 and -= 1.
+BasedOnStyle: LLVM
+AccessModifierOffset: -4
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: None
+AlignOperands: Align
+AllowAllArgumentsOnNextLine: false
+AllowAllConstructorInitializersOnNextLine: false
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Always
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: true
+AlwaysBreakAfterReturnType: None
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: false
+  AfterClass: false
+  AfterControlStatement: Never
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterUnion: false
+  BeforeCatch: false
+  BeforeElse: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: true
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+BreakInheritanceList: BeforeColon
+ColumnLimit: 0
+CompactNamespaces: true
+ContinuationIndentWidth: 8
+IndentCaseLabels: false
+IndentPPDirectives: None
+IndentWidth: 4
+KeepEmptyLinesAtTheStartOfBlocks: false
+# At most one blank line anywhere, and no blank line opening a block.
+MaxEmptyLinesToKeep: 1
+NamespaceIndentation: None
+ObjCSpaceAfterProperty: false
+ObjCSpaceBeforeProtocolList: true
+PointerAlignment: Left
+# On so that comments get one space after //; with ColumnLimit: 0 no comment is rewrapped.
+ReflowComments: true
+# #include lines stay in the order they were written.
+SortIncludes: Never
+# Exactly one blank line between function definitions (with MaxEmptyLinesToKeep: 1).
+SeparateDefinitionBlocks: Always
+SpaceAfterCStyleCast: true
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+# No space before ( after a keyword, as the engine's code is written: if(a), for(...), while(...).
+# Only the ( : the space before { comes from the brace rules and stays, so if(a) {, never if(a){.
+SpaceBeforeParens: Never
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyParentheses: false
+# One space before a comment after code: x++; // why.
+SpacesBeforeTrailingComments: 1
+# Exactly one space after // before the comment text.
+SpacesInLineCommentPrefix:
+  Minimum: 1
+  Maximum: 1
+SpacesInAngles: false
+SpacesInCStyleCastParentheses: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+TabWidth: 4
+UseTab: Always
+`;

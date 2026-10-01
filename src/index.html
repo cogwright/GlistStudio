@@ -313,8 +313,15 @@
                 </div>
                 <fieldset class="settings-section format-settings">
                   <legend data-i18n="codeFormatting">Code Formatting</legend>
-                  <label class="checkbox-row"><input id="format-on-save" type="checkbox" /><span data-i18n="formatOnSave">Format the lines you changed in C++ files by their .clang-format when saving</span></label>
-                  <p class="dialog-hint" data-i18n="formatOnSaveHint">A .clang-format file in a file's folder or a folder above it sets how the code is laid out. The editor then indents as it says, with tabs or spaces, and marks where lines should end. Files without one are saved as they are.</p>
+                  <label for="code-style-mode" data-i18n="codeStyleMode">Code style</label>
+                  <select id="code-style-mode">
+                    <option value="glist" data-i18n="codeStyleGlist">Glist Engine's style</option>
+                    <option value="project" data-i18n="codeStyleProject">The project's .clang-format</option>
+                    <option value="none" data-i18n="codeStyleNone">None</option>
+                  </select>
+                  <p class="dialog-hint" data-i18n="codeStyleHint">Glist Engine's style is how the engine itself is written.</p>
+                  <label class="checkbox-row"><input id="format-on-save" type="checkbox" /><span data-i18n="formatOnSave">Format the lines you changed in C++ files when saving</span></label>
+                  <p class="dialog-hint" data-i18n="formatOnSaveHint">Saving formats only the lines changed since the last save.</p>
                 </fieldset>
                 <fieldset id="update-settings" class="settings-section update-settings" hidden>
                   <legend data-i18n="updateSettings">Updates</legend>

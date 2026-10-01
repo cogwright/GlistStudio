@@ -14,14 +14,14 @@ import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './a
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
-import { changedLines, editsWithin } from './format-lines';
+import { changedLines, codeLines, editsWithin, type LineRange } from './format-lines';
 import { formatOutput, newOutputStyle, outputBanner } from './output-format';
 import { fileIconElement } from './file-icons';
 import { icon, placeIcons, type IconName } from './icons';
 import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
-import { isMac, primaryKey, shortcutLabel } from './shortcuts';
+import { isLinux, isMac, primaryKey, reformatShortcut, shortcutLabel } from './shortcuts';
 import { setUpStarPrompt } from './star-prompt';
 import { setUpGlistInstaller } from './glist-installer';
 import { TargetPicker } from './targets';
@@ -918,13 +918,24 @@ const addDocument = (filePath: string, model: monaco.editor.ITextModel, readOnly
 // Where a file's .clang-format says lines end.
 const rulersFor = (file: OpenFile | undefined): number[] => (file?.style?.columnLimit ? [file.style.columnLimit] : []);
 
-// The editor indents a C or C++ file as its .clang-format says, with tabs or
-// spaces and as far, rather than as it guesses from the text.
+// Settings > Code Formatting: Glist Engine's style unless it says the project's .clang-format, or none.
+const codeStyleMode = (): GlistCodeStyleMode => {
+  try {
+    const mode = window.localStorage.getItem('glist-studio-code-style');
+    return mode === 'project' || mode === 'none' ? mode : 'glist';
+  } catch { return 'glist'; }
+};
+const styleOf = (file: OpenFile): Promise<GlistCodeStyle | null> => window.glistAPI.codeStyle(file.path, codeStyleMode()).catch((): null => null);
+
+// The editor indents a C or C++ file as its style says, with tabs or spaces
+// and as far; with none, as it guesses from the text.
 const applyCodeStyle = async (file: OpenFile): Promise<void> => {
   if (file.model.getLanguageId() !== 'cpp') return;
-  file.style = await window.glistAPI.codeStyle(file.path).catch((): null => null);
+  file.style = await styleOf(file);
   const { style } = file;
-  if (style && !file.model.isDisposed()) file.model.updateOptions({ insertSpaces: !style.useTab, tabSize: style.tabWidth, indentSize: style.indentWidth });
+  if (file.model.isDisposed()) return;
+  if (style) file.model.updateOptions({ insertSpaces: !style.useTab, tabSize: style.tabWidth, indentSize: style.indentWidth });
+  else file.model.detectIndentation(true, 4);
   groupViews.forEach((view) => {
     if (view.editor.getModel() === file.model) view.editor.updateOptions({ rulers: rulersFor(file) });
   });
@@ -938,25 +949,65 @@ const formatOnSave = (): boolean => {
 // are formatted by its .clang-format, as one step Undo takes back: indents
 // with tabs or spaces as it says, spacing, braces. Lines nobody touched stay
 // as they are, and #include lines are left out, so they are never reordered.
-// Without a .clang-format, or with clangd not answering in time, it is saved as it is.
+// Without a .clang-format above it, Glist Studio's own, Glist Engine's style,
+// is followed. With clangd not answering in time, it is saved as it is.
 const formatForSaving = async (file: OpenFile): Promise<void> => {
   if (!formatOnSave() || file.readOnly || file.model.getLanguageId() !== 'cpp') return;
-  const style = await window.glistAPI.codeStyle(file.path).catch((): null => null);
+  const style = await styleOf(file);
   if (!style || style.disabled) return;
   const version = file.model.getVersionId();
   // What is on disk is what was last saved.
   const saved = await window.glistAPI.readFile(file.path).catch(() => '');
   if (file.model.getVersionId() !== version) return;
-  const ranges = changedLines(saved, file.model.getValue());
-  if (ranges.length === 0) return;
+  await formatLines(file, changedLines(saved, file.model.getValue()), style);
+};
+
+// Reformat File: the file, or the lines chosen, laid out by its .clang-format
+// as one step Undo takes back, with #include lines where they are, as on save.
+const reformatFile = async (): Promise<void> => {
+  const file = activeFile();
+  const editor = currentEditor();
+  if (!file || file.readOnly || file.model.getLanguageId() !== 'cpp' || editor.getModel() !== file.model) return;
+  if (codeStyleMode() === 'none') {
+    notify({ text: t('reformatOff') });
+    return;
+  }
+  const style = await styleOf(file);
+  if (!style || style.disabled) {
+    notify({ text: t(style ? 'reformatDisabled' : 'reformatNoStyle'), detail: style?.file });
+    return;
+  }
+  // Lines chosen to the start of the next one end before it.
+  const chosen = editor.getSelection();
+  const lines = chosen && !chosen.isEmpty()
+    ? codeLines(file.model.getValue(), chosen.startLineNumber,
+      chosen.endColumn === 1 && chosen.endLineNumber > chosen.startLineNumber ? chosen.endLineNumber - 1 : chosen.endLineNumber)
+    : codeLines(file.model.getValue());
+  if (!(await formatLines(file, lines, style))) notify({ text: t('reformatUnavailable'), kind: 'error' });
+};
+
+const canReformat = (): boolean => {
+  const file = activeFile();
+  return Boolean(file && !file.readOnly && file.model.getLanguageId() === 'cpp');
+};
+const hasSelection = (): boolean => Boolean(currentEditor().getSelection() && !currentEditor().getSelection()?.isEmpty());
+
+// Formats lines of a file by its .clang-format through clangd, as one step Undo
+// takes back. False when clangd did not answer in time; typed into meanwhile,
+// the file is left as it is, as the edits are for text that is gone.
+const formatLines = async (file: OpenFile, ranges: LineRange[], style: GlistCodeStyle): Promise<boolean> => {
+  if (ranges.length === 0) return true;
+  const version = file.model.getVersionId();
+  // Glist Studio's own style is in its folder, which clangd is pointed to.
+  const styleFolder = style.builtIn ? style.file.replace(/[\\/][^\\/]*$/, '') : undefined;
   const edits = await Promise.race([
-    clangd.formatLineEdits(file.model, ranges),
+    clangd.formatLineEdits(file.model, ranges, styleFolder),
     new Promise<null>((resolve) => { window.setTimeout(() => resolve(null), 3000); }),
   ]);
-  // Typed into meanwhile, the edits would be for text that is gone.
-  if (!edits || edits.length === 0 || file.model.getVersionId() !== version) return;
+  if (!edits) return false;
+  if (edits.length === 0 || file.model.getVersionId() !== version) return true;
   const operations = editsWithin(edits, ranges).map((edit) => ({ range: edit.range, text: edit.text }));
-  if (operations.length === 0) return;
+  if (operations.length === 0) return true;
   // Through an editor showing it, the one worked in first, so its cursor keeps its place.
   const view = currentEditor().getModel() === file.model
     ? currentEditor() : groupViews.find((candidate) => candidate.editor.getModel() === file.model)?.editor;
@@ -967,6 +1018,7 @@ const formatForSaving = async (file: OpenFile): Promise<void> => {
   } else {
     file.model.pushEditOperations([], operations, () => null);
   }
+  return true;
 };
 
 // Opens a tab on a model that matches the file on disk, on the side being
@@ -1537,6 +1589,7 @@ const editorMenuHooks: EditorMenuHooks = {
   navigates: () => clangd.navigates,
   switchSourceHeader: () => { void switchSourceHeader(); },
   commandPalette: () => commandPalette.open(),
+  reformat: () => { void reformatFile(); },
   git: () => {
     const file = git.enabled && git.repository ? trackedFile() : undefined;
     return file ? [
@@ -1556,6 +1609,8 @@ const setUpEditor = (view: GroupView): void => {
   gitEditor.attach(target);
   target.onDidFocusEditorWidget(() => focusGroup(groupViews.indexOf(view)));
   target.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
+  target.addCommand(isLinux ? monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI : monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
+    () => { void reformatFile(); }, 'editorLangId == cpp');
   // As Monaco's own menu did: focus, and the cursor at the click unless it is in the selection.
   target.onContextMenu((event) => {
     target.focus();
@@ -2444,6 +2499,8 @@ const configureMenus = (): void => {
         item(t('find'), () => currentEditor().getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFile() }),
         item(t('findInFilesMenu'), () => findInFiles.open(), { shortcut: 'Ctrl+Shift+F', disabled: !activeProject }),
         item(t('searchEverywhere'), () => searchEverywhere.open(), { hint: t('doubleShift') }),
+        { kind: 'separator' },
+        item(t(hasSelection() ? 'reformatSelection' : 'reformatFile'), () => { void reformatFile(); }, { shortcut: reformatShortcut, disabled: !canReformat() }),
       ],
       view: [
         { kind: 'heading', label: t('layout') },
@@ -2988,6 +3045,9 @@ window.addEventListener('keydown', (event) => {
   else if (event.shiftKey && event.key === 'F5') { event.preventDefault(); stopProject(); }
   else if (event.key === 'F5') { event.preventDefault(); if (debug.state === 'paused') debug.continue(); else runProject(); }
   else if (event.key === 'F6') { event.preventDefault(); debugProject(); }
+  // By the key's place, as Alt (Option) changes the character on a Mac.
+  else if (isLinux ? primaryKey(event) && event.shiftKey && !event.altKey && event.code === 'KeyI'
+    : event.shiftKey && event.altKey && !primaryKey(event) && event.code === 'KeyF') { event.preventDefault(); void reformatFile(); }
   else if (event.key === 'F9') { event.preventDefault(); debug.toggleAtCursor(); }
   else if (event.key === 'F10') { event.preventDefault(); debug.stepOver(); }
   else if (event.shiftKey && event.key === 'F11') { event.preventDefault(); debug.stepOut(); }
@@ -3014,6 +3074,15 @@ window.glistAPI.onBuildOutput((text) => { appendOutput(text); buildLog = (buildL
 // Settings > Build: CMake configures again when its files change, unless turned off.
 const formatOnSaveInput = element<HTMLInputElement>('#format-on-save');
 formatOnSaveInput.checked = formatOnSave();
+const codeStyleInput = element<HTMLSelectElement>('#code-style-mode');
+codeStyleInput.value = codeStyleMode();
+formatOnSaveInput.disabled = codeStyleInput.value === 'none';
+codeStyleInput.addEventListener('change', () => {
+  try { window.localStorage.setItem('glist-studio-code-style', codeStyleInput.value); } catch { /* Storage may be unavailable. */ }
+  formatOnSaveInput.disabled = codeStyleInput.value === 'none';
+  // Open files indent in the new style at once.
+  fileTabs().forEach((tab) => { void applyCodeStyle(tab); });
+});
 formatOnSaveInput.addEventListener('change', () => {
   try { window.localStorage.setItem('glist-studio-format-on-save', formatOnSaveInput.checked ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
 });
@@ -3107,8 +3176,11 @@ const paletteCommands = (): PaletteCommand[] => {
   if (!activeFile()) return menuCommands();
   const category = t('editorCommands');
   const target = currentEditor();
-  const own = editorCommands(target, editorMenuHooks);
-  const listed = new Set([...own.map((command) => command.id), 'editor.action.quickCommand', 'actions.find']);
+  // Reformat is the Edit menu's too, which lists it already.
+  const own = editorCommands(target, editorMenuHooks).filter((command) => command.id !== 'glist.reformat');
+  // Monaco's Format Document and Format Selection are Reformat File's, which leaves #includes where they are.
+  const listed = new Set([...own.map((command) => command.id), 'editor.action.quickCommand', 'actions.find',
+    'editor.action.formatDocument', 'editor.action.formatSelection']);
   const rest = target.getSupportedActions()
     .filter((action) => action.label && !listed.has(action.id))
     .sort((left, right) => left.label.localeCompare(right.label))

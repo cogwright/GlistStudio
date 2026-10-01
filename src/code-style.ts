@@ -9,6 +9,8 @@ import path from 'node:path';
 export interface CodeStyle {
   // The .clang-format it comes from.
   file: string;
+  // Glist Studio's own, for a file with no .clang-format above it.
+  builtIn?: boolean;
   useTab: boolean;
   indentWidth: number;
   tabWidth: number;
@@ -18,7 +20,7 @@ export interface CodeStyle {
   disabled: boolean;
 }
 
-type Values = Omit<CodeStyle, 'file'>;
+type Values = Omit<CodeStyle, 'file' | 'builtIn'>;
 
 // What each predefined style starts from, as clang-format defines them.
 const predefined: Record<string, Values> = {
@@ -67,8 +69,9 @@ export const parseStyle = (text: string, parent: () => Values = () => predefined
   return values;
 };
 
-// The style a file follows, or null when no style file is above it.
-export const codeStyleFor = async (filePath: string): Promise<CodeStyle | null> => {
+// The style a file follows. With no style file above it, the one given as
+// built in, Glist Studio's, or null without one.
+export const codeStyleFor = async (filePath: string, builtIn?: string): Promise<CodeStyle | null> => {
   const read = async (folder: string): Promise<CodeStyle | null> => {
     const file = styleFileFrom(folder);
     if (!file) return null;
@@ -76,5 +79,12 @@ export const codeStyleFor = async (filePath: string): Promise<CodeStyle | null> 
     const above = /^\s*BasedOnStyle\s*:\s*InheritParentConfig/im.test(text) ? await read(path.dirname(path.dirname(file))) : null;
     return { ...parseStyle(text, () => above ?? predefined.llvm), file };
   };
-  return read(path.dirname(path.resolve(filePath)));
+  const found = await read(path.dirname(path.resolve(filePath)));
+  return found || !builtIn ? found : builtInCodeStyle(builtIn);
+};
+
+// Glist Studio's own style, from the .clang-format it keeps, or null when it cannot be read.
+export const builtInCodeStyle = async (file: string): Promise<CodeStyle | null> => {
+  const text = await fs.readFile(file, 'utf8').catch((): null => null);
+  return text === null ? null : { ...parseStyle(text), file, builtIn: true };
 };
