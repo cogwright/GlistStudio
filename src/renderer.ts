@@ -2292,6 +2292,8 @@ const buildProject = async (): Promise<void> => {
     const result = await window.glistAPI.buildProject();
     clangd.buildFinished();
     void targetPicker.refresh();
+    // A build can change open files, such as CMakeLists.txt when sources were added.
+    void reloadOpenFiles();
     appendOutput(result.message, result.success ? 'success' : 'error');
     setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
     if (!result.success) noticeBuildFailed(result.message);
@@ -2307,6 +2309,7 @@ const runProject = async (): Promise<void> => {
     const result = await window.glistAPI.runProject();
     clangd.buildFinished();
     void targetPicker.refresh();
+    void reloadOpenFiles();
     appendOutput(result.message, result.success ? 'success' : 'error');
     if (!result.success) noticeBuildFailed(result.message);
   });
@@ -2322,6 +2325,7 @@ const debugProject = async (): Promise<void> => {
     await debug.start();
     clangd.buildFinished();
     void targetPicker.refresh();
+    void reloadOpenFiles();
   });
 };
 
