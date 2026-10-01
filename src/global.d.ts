@@ -384,6 +384,8 @@ interface GlistGitCommitFile {
   path: string;
   from?: string;
   state: GlistGitFileState;
+  // The commit it is in, when not the one shown: a stash's new files.
+  at?: string;
 }
 interface GlistGitCommitDetails extends GlistGitCommit {
   committer: string;
