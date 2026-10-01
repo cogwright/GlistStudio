@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { codeStyleFor, parseStyle } from '../src/code-style.ts';
+import { glistCodeStyle } from '../src/default-code-style.ts';
 import { changedLines, codeLines, editsWithin } from '../src/format-lines.ts';
 import { initializeStudio, openProjectAt, pluginDllFolders, studio, systemFolders } from '../src/studio.ts';
 
@@ -157,6 +158,18 @@ try {
   const outside = await codeStyleFor(path.join(styleRoot, 'Other', 'main.cpp'));
   // None above it here, unless the machine has one further up.
   assert.ok(outside === null || !outside.file.startsWith(styleRoot));
+  // Glist Studio's own, given as built in, for a file with none above it: Glist Engine's tabs, 4 wide.
+  place('Studio/code-style/.clang-format', glistCodeStyle);
+  const builtIn = path.join(styleRoot, 'Studio', 'code-style', '.clang-format');
+  if (outside === null) {
+    assert.deepEqual(await codeStyleFor(path.join(styleRoot, 'Other', 'main.cpp'), builtIn), {
+      useTab: true, indentWidth: 4, tabWidth: 4, columnLimit: 0, disabled: false, file: builtIn, builtIn: true,
+    });
+  }
+  // A file's own .clang-format still comes first.
+  assert.equal((await codeStyleFor(path.join(styleRoot, 'App', 'src', 'gCanvas.cpp'), builtIn))?.builtIn, undefined);
+  assert.match(glistCodeStyle, /^SpaceBeforeParens: Never$/m);
+  assert.match(glistCodeStyle, /^UseTab: Always$/m);
 } finally {
   rmSync(styleRoot, { recursive: true, force: true });
 }

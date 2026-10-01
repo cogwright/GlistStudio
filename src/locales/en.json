@@ -605,8 +605,8 @@
     "showTargets": "Show all targets",
     "showTargetsHint": "Adds a list beside Run of every target CMake builds, the engine's and plugins' too, as CLion has. Build, Run and Debug then use the one chosen.",
     "codeFormatting": "Code Formatting",
-    "formatOnSave": "Format the lines you changed in C++ files by their .clang-format when saving",
-    "formatOnSaveHint": "A .clang-format file in a file's folder or a folder above it sets how the code is laid out. The editor then indents as it says, with tabs or spaces, and marks where lines should end. Saving formats only the lines changed since the last save, and leaves the order of #include lines as it is. Files without a .clang-format are saved as they are.",
+    "formatOnSave": "Format the lines you changed in C++ files when saving",
+    "formatOnSaveHint": "Saving formats only the lines changed since the last save, in the style chosen, and leaves the order of #include lines as it is. Edit > Reformat File formats a whole file, or the lines chosen.",
     "targetChoice": "Target to build and run",
     "targetLibrary": "library",
     "targetStep": "build step",
@@ -672,7 +672,13 @@
     "reformatSelection": "Reformat Selected Lines",
     "reformatNoStyle": "There is no .clang-format in this file's folder or a folder above it, so there is no layout to format it by. Add one to the project's folder.",
     "reformatDisabled": "This file's .clang-format says not to format it (DisableFormat).",
-    "reformatUnavailable": "The file could not be formatted: clangd, which formats it, is not running or did not answer."
+    "reformatUnavailable": "The file could not be formatted: clangd, which formats it, is not running or did not answer.",
+    "codeStyleMode": "Code style",
+    "codeStyleGlist": "Glist Engine's style",
+    "codeStyleProject": "The project's .clang-format",
+    "codeStyleNone": "None",
+    "codeStyleHint": "Glist Engine's style is how the engine itself is written: tabs 4 wide, braces on the same line, and if( without a space. It is Glist Studio's own and is never put into a project. The project's .clang-format is the nearest one in a file's folder or a folder above it, with Glist Engine's style where there is none. The editor indents in the style chosen, and marks where lines should end when it has a limit.",
+    "reformatOff": "Code formatting is off: Settings > Code Formatting chooses a style."
   },
   "platforms": {
     "darwin": {

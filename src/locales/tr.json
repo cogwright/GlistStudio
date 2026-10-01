@@ -605,8 +605,8 @@
     "showTargets": "Tüm hedefleri göster",
     "showTargetsHint": "Çalıştır düğmesinin yanına, motor ve eklentiler dahil CMake'in derlediği tüm hedeflerin bir listesini ekler (CLion'daki gibi). Derle, Çalıştır ve Hata Ayıkla komutları seçilen bu hedefi kullanır.",
     "codeFormatting": "Kod Biçimlendirme",
-    "formatOnSave": "C++ dosyalarında değiştirdiğiniz satırları kaydederken .clang-format ayarlarına göre biçimlendir",
-    "formatOnSaveHint": "Bir dosyanın bulunduğu veya üst klasörlerinden birindeki .clang-format dosyası, kodun nasıl düzenleneceğini belirler. Düzenleyici de buna göre sekmeler veya boşluklar kullanarak girinti yapar ve satırların nerede bitmesi gerektiğini ayarlar. Kaydetmek yalnızca son kayıttan bu yana değişen satırları biçimlendirir ve #include satırlarının sırasını değiştirmez. Bu dosyaya sahip olmayan dosyalar oldukları gibi kaydedilir.",
+    "formatOnSave": "C++ dosyalarında değiştirdiğiniz satırları kaydederken biçimlendir",
+    "formatOnSaveHint": "Kaydetmek, yalnızca son kayıttan bu yana değişen satırları seçilen stilde biçimlendirir ve #include satırlarının sırasını değiştirmez. Düzen > Dosyayı Yeniden Biçimlendir, bütün bir dosyayı veya seçili satırları biçimlendirir.",
     "targetChoice": "Derlenip çalıştırılacak hedef",
     "targetLibrary": "kütüphane",
     "targetStep": "derleme adımı",
@@ -672,7 +672,13 @@
     "reformatSelection": "Seçili Satırları Yeniden Biçimlendir",
     "reformatNoStyle": "Bu dosyanın klasöründe veya üst klasörlerinde .clang-format yok, bu yüzden biçimlendirmek için bir düzen yok. Proje klasörüne bir tane ekleyin.",
     "reformatDisabled": "Bu dosyanın .clang-format dosyası onu biçimlendirmemeyi söylüyor (DisableFormat).",
-    "reformatUnavailable": "Dosya biçimlendirilemedi: onu biçimlendiren clangd çalışmıyor veya yanıt vermedi."
+    "reformatUnavailable": "Dosya biçimlendirilemedi: onu biçimlendiren clangd çalışmıyor veya yanıt vermedi.",
+    "codeStyleMode": "Kod stili",
+    "codeStyleGlist": "Glist Engine stili",
+    "codeStyleProject": "Projenin .clang-format dosyası",
+    "codeStyleNone": "Yok",
+    "codeStyleHint": "Glist Engine stili, motorun kendi kodunun yazıldığı biçimdir: 4 genişliğinde sekmeler, aynı satırda süslü parantezler ve boşluksuz if(. Glist Studio'nun kendisinindir ve hiçbir zaman bir projeye eklenmez. Projenin .clang-format dosyası, dosyanın klasöründeki veya üst klasörlerindeki en yakın dosyadır; olmadığı yerde Glist Engine stili kullanılır. Düzenleyici seçilen stile göre girinti yapar ve bir sınır varsa satırların nerede bitmesi gerektiğini gösterir.",
+    "reformatOff": "Kod biçimlendirme kapalı: Ayarlar > Kod Biçimlendirme'den bir stil seçin."
   },
   "platforms": {
     "darwin": {

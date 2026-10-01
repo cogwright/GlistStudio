@@ -8,7 +8,7 @@ import type {
 } from 'vscode-languageserver-protocol';
 import type { LineRange } from './format-lines';
 import { t } from './localization';
-import { baseName, pathUri } from './paths';
+import { baseName, joinPath, pathUri, uriPath } from './paths';
 import { restyleSemanticTokens, styledModifiers } from './themes';
 
 export interface ClangdHost {
@@ -131,6 +131,8 @@ const toSymbol = (symbol: DocumentSymbol | SymbolInformation): monaco.languages.
 // Speaks LSP to clangd over the glistAPI bridge and feeds Monaco from it.
 export class ClangdClient {
   private nextId = 1;
+  // Copies of files formatted by Glist Studio's own style, each at its own path.
+  private copies = 0;
   private readonly pending = new Map<number | string, Pending>();
   // Models the user has open, and the change listeners of those clangd knows about.
   private readonly tracked = new Set<monaco.editor.ITextModel>();
@@ -279,13 +281,33 @@ export class ClangdClient {
   }
 
   // The edits that format some lines by the .clang-format, for format on save
-  // of what changed, as clangd formats each range; null when it cannot now.
-  async formatLineEdits(model: monaco.editor.ITextModel, ranges: LineRange[]): Promise<monaco.languages.TextEdit[] | null> {
+  // of what changed and Reformat File, as clangd formats each range; null when
+  // it cannot now. With a folder, by the .clang-format there, Glist Studio's own:
+  // clangd looks for the style above the file, so it is given a copy of the
+  // text as a file in that folder, held in its memory only, and the edits for
+  // the copy are the file's.
+  async formatLineEdits(model: monaco.editor.ITextModel, ranges: LineRange[], styleFolder?: string): Promise<monaco.languages.TextEdit[] | null> {
     const options = model.getOptions();
-    const answers = await Promise.all(ranges.map((range) => this.query<TextEdit[]>(model, 'textDocument/rangeFormatting', {
+    const params = (range: LineRange): object => ({
       range: { start: { line: range.start - 1, character: 0 }, end: { line: range.end - 1, character: model.getLineMaxColumn(range.end) - 1 } },
       options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
-    })));
+    });
+    let answers: Array<TextEdit[] | null>;
+    if (styleFolder) {
+      if (!this.capabilities) return null;
+      this.copies += 1;
+      const uri = pathUri(joinPath(joinPath(styleFolder, String(this.copies)), baseName(uriPath(model.uri)))).toString();
+      this.notify('textDocument/didOpen', { textDocument: { uri, languageId: 'cpp', version: 1, text: model.getValue() } });
+      try {
+        answers = await Promise.all(ranges.map((range) => this.request<TextEdit[] | null>('textDocument/rangeFormatting', {
+          textDocument: { uri }, ...params(range),
+        }).catch((): null => null)));
+      } finally {
+        this.notify('textDocument/didClose', { textDocument: { uri } });
+      }
+    } else {
+      answers = await Promise.all(ranges.map((range) => this.query<TextEdit[]>(model, 'textDocument/rangeFormatting', params(range))));
+    }
     if (answers.some((edits) => edits === null)) return null;
     return answers.flatMap((edits) => (edits ?? []).map(toTextEdit));
   }

@@ -10,7 +10,8 @@ import { findDebugAdapter } from './debug-adapters';
 import { debuggerRelease, installDebugger, installedDebugger, removeDebugger } from './debugger-download';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
-import { codeStyleFor } from './code-style';
+import { builtInCodeStyle, codeStyleFor } from './code-style';
+import { glistCodeStyle } from './default-code-style';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
 import { filesIn, searchFolders, type SearchFolder } from './file-search';
 import { createGitService } from './git-service';
@@ -47,6 +48,26 @@ export const defaultProjectsDirectory = (): string => path.join(glistRoot(), 'my
 // the Node.js runtime Settings installs. GLIST_STUDIO_HOME moves it, for tests.
 export const studioHome = (): string => (process.env.GLIST_STUDIO_HOME
   ? path.resolve(process.env.GLIST_STUDIO_HOME) : path.join(glistRoot(), 'GlistStudio'));
+
+// Glist Studio's own .clang-format, Glist Engine's style, for files with none
+// above them. It is written in Glist Studio's folder, not the project's; clangd
+// formats a copy of such a file in memory as if it were there (clangd.ts).
+let builtInStyleFile: Promise<string> | null = null;
+const builtInStyle = (): Promise<string> => {
+  if (!builtInStyleFile) {
+    builtInStyleFile = (async () => {
+      const file = path.join(studioHome(), 'code-style', '.clang-format');
+      if (await fs.readFile(file, 'utf8').catch(() => '') !== glistCodeStyle) {
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, glistCodeStyle, 'utf8');
+      }
+      return file;
+    })();
+    // Not written, as the folder could not be made: tried again next time.
+    builtInStyleFile.catch(() => { builtInStyleFile = null; });
+  }
+  return builtInStyleFile;
+};
 
 const currentUsername = (): string => {
   const environmentUsername = process.env.USERNAME || process.env.USER;
@@ -1516,7 +1537,14 @@ export const studio: Handlers = {
   readFile: readProjectFile,
   readWorkspaceFile,
   // Only style files are read, wherever the file is: clang-format looks as far up.
-  codeStyle: (filePath: unknown) => (typeof filePath === 'string' ? codeStyleFor(filePath) : null),
+  // Glist Engine's style unless Settings says the project's, or none.
+  codeStyle: (filePath: unknown, mode: unknown) => {
+    if (typeof filePath !== 'string' || mode === 'none') return null;
+    return builtInStyle().then(
+      (file) => (mode === 'project' ? codeStyleFor(filePath, file) : builtInCodeStyle(file)),
+      () => (mode === 'project' ? codeStyleFor(filePath) : null),
+    );
+  },
   listDependencies,
   listWorkspaceDirectory,
   searchText,

@@ -605,8 +605,8 @@
     "showTargets": "Afficher toutes les cibles",
     "showTargetsHint": "Ajoute à côté d'Exécuter une liste de toutes les cibles que CMake compile, y compris celles du moteur et des plugins, comme dans CLion. Compiler, Exécuter et Déboguer utilisent alors celle choisie.",
     "codeFormatting": "Mise en forme du code",
-    "formatOnSave": "Mettre en forme les lignes modifiées des fichiers C++ selon leur .clang-format à l'enregistrement",
-    "formatOnSaveHint": "Un fichier .clang-format dans le dossier d'un fichier ou dans un dossier parent définit la mise en page du code. L'éditeur indente alors comme il l'indique, avec des tabulations ou des espaces, et marque où les lignes doivent s'arrêter. L'enregistrement ne met en forme que les lignes modifiées depuis le dernier enregistrement, et laisse l'ordre des lignes #include tel quel. Les fichiers sans .clang-format sont enregistrés tels quels.",
+    "formatOnSave": "Mettre en forme les lignes modifiées des fichiers C++ à l'enregistrement",
+    "formatOnSaveHint": "L'enregistrement ne met en forme que les lignes modifiées depuis le dernier enregistrement, dans le style choisi, et laisse l'ordre des lignes #include tel quel. Édition > Reformater le fichier met en forme un fichier entier, ou les lignes sélectionnées.",
     "targetChoice": "Cible à compiler et exécuter",
     "targetLibrary": "bibliothèque",
     "targetStep": "étape de compilation",
@@ -672,7 +672,13 @@
     "reformatSelection": "Reformater les lignes sélectionnées",
     "reformatNoStyle": "Il n'y a pas de .clang-format dans le dossier de ce fichier ni dans un dossier parent, donc aucune mise en page à suivre. Ajoutez-en un au dossier du projet.",
     "reformatDisabled": "Le .clang-format de ce fichier demande de ne pas le mettre en forme (DisableFormat).",
-    "reformatUnavailable": "Le fichier n'a pas pu être mis en forme: clangd, qui s'en charge, ne fonctionne pas ou n'a pas répondu."
+    "reformatUnavailable": "Le fichier n'a pas pu être mis en forme: clangd, qui s'en charge, ne fonctionne pas ou n'a pas répondu.",
+    "codeStyleMode": "Style du code",
+    "codeStyleGlist": "Style de Glist Engine",
+    "codeStyleProject": "Le .clang-format du projet",
+    "codeStyleNone": "Aucun",
+    "codeStyleHint": "Le style de Glist Engine est celui du code du moteur: tabulations de 4, accolades sur la même ligne, et if( sans espace. Il appartient à Glist Studio et n'est jamais ajouté à un projet. Le .clang-format du projet est le plus proche dans le dossier d'un fichier ou un dossier parent, avec le style de Glist Engine là où il n'y en a pas. L'éditeur indente dans le style choisi, et marque où les lignes doivent s'arrêter s'il y a une limite.",
+    "reformatOff": "La mise en forme du code est désactivée: Paramètres > Mise en forme du code permet de choisir un style."
   },
   "platforms": {
     "darwin": {
