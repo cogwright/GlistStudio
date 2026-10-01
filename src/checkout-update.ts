@@ -25,13 +25,17 @@ export type Git = (args: string[], cwd: string, logged?: boolean) => Promise<Git
 // same in every language and version, so they can be in any. A system without
 // a locale gets one: gettext ignores LANGUAGE under the C locale, and turns
 // letters its character set lacks into others (ü into "u), so it writes UTF-8.
-export const gitLanguage = (language: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+// One every system has: Linux often lacks en_US.UTF-8 but has C.UTF-8, which
+// macOS's gettext takes for plain C; Windows' only reads the name.
+const fallbackLocale = (platform: NodeJS.Platform): string => (platform === 'linux' ? 'C.UTF-8' : 'en_US.UTF-8');
+
+export const gitLanguage = (language: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv => {
   const messages = env.LC_ALL || env.LC_MESSAGES || env.LANG || '';
   const characters = env.LC_ALL || env.LC_CTYPE || env.LANG || '';
   return {
     LANGUAGE: language,
-    ...(!messages || /^(C|POSIX)([._@]|$)/i.test(messages) ? { LC_MESSAGES: 'en_US.UTF-8' } : {}),
-    ...(env.LC_ALL || /utf-?8/i.test(characters) ? {} : { LC_CTYPE: 'en_US.UTF-8' }),
+    ...(!messages || /^(C|POSIX)([._@]|$)/i.test(messages) ? { LC_MESSAGES: fallbackLocale(platform) } : {}),
+    ...(env.LC_ALL || /utf-?8/i.test(characters) ? {} : { LC_CTYPE: fallbackLocale(platform) }),
   };
 };
 
