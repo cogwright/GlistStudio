@@ -353,15 +353,13 @@ export class GitEditor {
     if (!filePath || this.client.changeOf(filePath)?.state !== 'conflict') { marks.conflictLines.clear(); return; }
     const blocks = conflictBlocks(model.getLinesContent());
     const decoration = (from: number, to: number, className: string, label?: string): monaco.editor.IModelDeltaDecoration[] => (to < from ? []
-      : [{
-        range: new monaco.Range(from, 1, to, 1),
-        options: {
-          isWholeLine: true,
-          className,
-          // Whose side a marker line starts or ends, in words.
-          ...(label ? { after: { content: `  ${label}`, inlineClassName: 'git-conflict-label' } } : {}),
-        },
-      }]);
+      : [{ range: new monaco.Range(from, 1, to, 1), options: { isWholeLine: true, className } },
+        // Whose side a marker line starts or ends, in words, after the marker's own text:
+        // text at an empty range is not drawn, so the label spans the line.
+        ...(label ? [{
+          range: new monaco.Range(from, 1, from, model.getLineMaxColumn(from)),
+          options: { after: { content: `  ${label}`, inlineClassName: 'git-conflict-label' } },
+        }] : [])]);
     const [upper, lower] = this.mineIsUpper(filePath) ? ['mine', 'theirs'] as const : ['theirs', 'mine'] as const;
     marks.conflictLines.set(blocks.flatMap((block) => [
       ...decoration(block.start, block.start, `git-conflict-marker ${upper}`, t(upper)),
