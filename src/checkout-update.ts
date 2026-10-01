@@ -36,7 +36,7 @@ export const gitRunner = (environment: () => NodeJS.ProcessEnv, report?: (entry:
       resolve({ code: -1, stdout, stderr: error.message });
     });
     child.once('close', (code) => {
-      if (code !== 0) show({ kind: 'error', text: `exit code ${code ?? -1}` });
+      if (code !== 0) show({ kind: 'error', text: '', code: code ?? -1 });
       resolve({ code: code ?? -1, stdout, stderr });
     });
   });
@@ -130,7 +130,7 @@ export const createCheckouts = (context: CheckoutContext) => {
     state.defaultBranch = main;
     if (options.fetch) {
       const fetched = await git(['fetch', '--quiet', remote, main], folder, options.logged);
-      if (fetched.code !== 0) state.fetchError = gitMessage(fetched, 'git fetch failed');
+      if (fetched.code !== 0) state.fetchError = gitMessage(fetched, say('commandFailed', { command: 'fetch' }));
     }
     const target = `refs/remotes/${remote}/${main}`;
     if ((await git(['rev-parse', '--verify', '--quiet', target], folder)).code !== 0 || !head) return state;
@@ -176,20 +176,20 @@ export const createCheckouts = (context: CheckoutContext) => {
     if (choice === 'replace' && (changed > 0 || ahead > 0)) {
       const kept: GlistCheckoutResult['kept'] = {};
       if (changed > 0) {
-        const message = `Glist Studio: kept before updating ${name}`;
+        const message = say('keptBefore', { name });
         const stashed = await change(['stash', 'push', '--include-untracked', '--message', message]);
-        if (stashed.code !== 0) return failed(gitMessage(stashed, 'git stash failed'));
+        if (stashed.code !== 0) return failed(gitMessage(stashed, say('commandFailed', { command: 'stash' })));
         kept.stash = message;
       }
       if (ahead > 0) {
         const stamp = new Date().toISOString().replace(/\.\d+Z$/, '').replace(/[-:]/g, '').replace('T', '-');
         const branch = `glist-studio/kept-${stamp}`;
         const saved = await change(['branch', branch, 'HEAD']);
-        if (saved.code !== 0) return failed(gitMessage(saved, 'git branch failed'));
+        if (saved.code !== 0) return failed(gitMessage(saved, say('commandFailed', { command: 'branch' })));
         kept.branch = branch;
       }
       const moved = await change(ahead > 0 ? ['reset', '--hard', '--quiet', target] : ['merge', '--ff-only', '--quiet', target]);
-      if (moved.code !== 0) return failed(gitMessage(moved, 'git reset failed'));
+      if (moved.code !== 0) return failed(gitMessage(moved, say('commandFailed', { command: ahead > 0 ? 'reset' : 'merge' })));
       return { success: true, message: name, how: 'replace', kept };
     }
     const how = ahead === 0 ? 'fast-forward' : keepBy;
@@ -198,9 +198,9 @@ export const createCheckouts = (context: CheckoutContext) => {
     // when the new version brings a file of the same name.
     let stash = '';
     if (changed > 0) {
-      stash = `Glist Studio: kept while updating ${name}`;
+      stash = say('keptWhile', { name });
       const stashed = await change(['stash', 'push', '--include-untracked', '--message', stash]);
-      if (stashed.code !== 0) return failed(gitMessage(stashed, 'git stash failed'));
+      if (stashed.code !== 0) return failed(gitMessage(stashed, say('commandFailed', { command: 'stash' })));
     }
     // A file that clashes with the new version keeps both, marked, as git's
     // own does, and the stash stays, so nothing of the user's is lost.
@@ -222,7 +222,7 @@ export const createCheckouts = (context: CheckoutContext) => {
         return { success: false, message: say('conflicts', { name, source }), conflicts: true, how };
       }
       await putBack();
-      return failed(gitMessage(result, `git ${args[0]} failed`));
+      return failed(gitMessage(result, say('commandFailed', { command: args[0] })));
     }
     const stashClash = !(await putBack());
     return { success: true, message: name, how, ...(stashClash ? { stashClash: true } : {}) };

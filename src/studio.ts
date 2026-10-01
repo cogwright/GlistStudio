@@ -16,6 +16,7 @@ import { filesIn, searchFolders, type SearchFolder } from './file-search';
 import { createGitService } from './git-service';
 import { createCheckouts, gitRunner } from './checkout-update';
 import { isLanguage, languages, type Language, type Words } from './languages';
+import { outputBanner } from './output-format';
 import { createPluginService } from './plugins';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 import { queryPattern } from './text-search';
@@ -249,7 +250,7 @@ const freeTarget = (destination: string, originalName: string, isDirectory: bool
   const parsed = path.parse(originalName);
   let target = path.join(destination, originalName);
   for (let index = 1; existsSync(target); index += 1) {
-    const copy = ` - Copy${index > 1 ? ` ${index}` : ''}`;
+    const copy = `${msg('copySuffix')}${index > 1 ? ` ${index}` : ''}`;
     target = path.join(destination, isDirectory ? `${originalName}${copy}` : `${parsed.name}${copy}${parsed.ext}`);
   }
   return target;
@@ -836,7 +837,7 @@ const configureNow = async (projectRoot: string): Promise<void> => {
   buildGeneration += 1;
   const generation = buildGeneration;
   sendToRenderer('build:status', { running: true, label: msg('configuring') });
-  sendToRenderer('build:output', '\n── CONFIGURE ────────────────────────────────────\n');
+  sendToRenderer('build:output', outputBanner(msg('outputConfigure')));
   let code = 1;
   try {
     code = await configure(projectRoot, 'Release', resolveToolchain(projectRoot));
@@ -894,7 +895,7 @@ const findRunnable = async (projectRoot: string, buildType: BuildType = 'Release
 const runProject = async (): Promise<ProcessResult> => {
   if (runProcess) return { success: false, message: msg('appRunning') };
   const projectRoot = requireProjectRoot();
-  sendToRenderer('run:output', '\n── BUILD & RUN ──────────────────────────────────\n');
+  sendToRenderer('run:output', outputBanner(msg('outputBuildAndRun')));
   const buildResult = await configureAndBuild();
   if (!buildResult.success) {
     return { success: false, message: `${msg('runCancelled')}: ${buildResult.message}` };
@@ -1437,7 +1438,7 @@ const installAgentFromSettings = async (agent: unknown): Promise<ProcessResult> 
   installingAgent = true;
   const report = (text: string): void => sendToRenderer('agent:install', text);
   try {
-    await installAgent(agent, agentPlaces(processEnvironment(resolveToolchain(terminalDirectory()))), report);
+    await installAgent(agent, agentPlaces(processEnvironment(resolveToolchain(terminalDirectory()))), report, { downloading: msg('agentDownloading'), installing: msg('agentInstallingPackage') });
     return { success: true, message: msg('agentInstalled') };
   } catch (error) {
     return { success: false, message: `${msg('agentInstallFailed')}: ${error instanceof Error ? error.message : String(error)}` };

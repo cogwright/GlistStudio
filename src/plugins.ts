@@ -71,7 +71,7 @@ export const createPluginService = (context: PluginContext) => {
       headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Glist Studio' },
       signal: AbortSignal.timeout(15000),
     });
-    if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
+    if (!response.ok) throw new Error(say('githubAnswered', { status: String(response.status) }));
     return response.json();
   };
   const described = (entry: GitHubRepository, extra: boolean): Repository => ({
@@ -167,7 +167,7 @@ export const createPluginService = (context: PluginContext) => {
     const result = await git(['clone', '--quiet', `${site}/${repository.owner}/${repository.name}.git`, target], pluginsFolder(), true);
     if (result.code !== 0) {
       await fs.rm(target, { recursive: true, force: true });
-      return failed(gitMessage(result, `git clone stopped with code ${result.code}`));
+      return failed(gitMessage(result, say('cloneStopped', { code: String(result.code) })));
     }
     return { success: true, message: repository.name };
   };

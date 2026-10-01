@@ -738,7 +738,12 @@
     "installerMissing": "Glist Engine's installer could not be downloaded",
     "pathFolderTitle": "Add a folder to PATH",
     "askpassPrompt": "Glist Engine's installer needs your password to install the tools it uses.",
-    "invalidRegex": "This regular expression is not valid."
+    "invalidRegex": "This regular expression is not valid.",
+    "copySuffix": " - Copy",
+    "outputConfigure": "CONFIGURE",
+    "outputBuildAndRun": "BUILD & RUN",
+    "agentDownloading": "Downloading {name}",
+    "agentInstallingPackage": "Installing {name}"
   },
   "git": {
     "noProject": "Open a project first.",
@@ -776,19 +781,28 @@
     "patchCommit": "A patch is being applied: resolve the conflicts, then choose Continue.",
     "notPatch": "This is not a patch.",
     "patchApplied": "Patch applied.",
-    "patchCommitted": "Patch applied as commits."
+    "patchCommitted": "Patch applied as commits.",
+    "exitCode": "exit code",
+    "stashBeforeCheckout": "Glist Studio: before checkout",
+    "askCancel": "Cancel",
+    "askOk": "OK"
   },
   "plugins": {
     "badName": "This is not a plugin name.",
     "notPublished": "{name} is not in the plugin list.",
     "installedAlready": "{name} is already in glistplugins.",
     "noProject": "Open a project first.",
-    "noPluginList": "CMakeLists.txt has no set(PLUGINS ...) to add it to."
+    "noPluginList": "CMakeLists.txt has no set(PLUGINS ...) to add it to.",
+    "githubAnswered": "GitHub answered {status}",
+    "cloneStopped": "git clone stopped with code {code}"
   },
   "updates": {
     "notFromSource": "{name} was not installed from {source}, and none of its remotes is {source}, so it is not updated from there.",
     "otherBranch": "{name} is on the branch {branch}; updates are for {main}.",
     "detached": "{name} is on a commit rather than a branch, so it is not updated.",
-    "conflicts": "The changes in {name} conflict with the new ones from {source}."
+    "conflicts": "The changes in {name} conflict with the new ones from {source}.",
+    "commandFailed": "git {command} failed",
+    "keptBefore": "Glist Studio: kept before updating {name}",
+    "keptWhile": "Glist Studio: kept while updating {name}"
   }
 }
