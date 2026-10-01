@@ -95,6 +95,70 @@ const defaultIgnore = '# Built by Glist Studio and CMake\n_build/\n\n# Made by t
 
 const askpassPrograms = ['zenity', 'kdialog', 'ssh-askpass', '/usr/lib/ssh/ssh-askpass', '/usr/libexec/openssh/ssh-askpass'];
 
+// Windows has no dialog program a script can call, so PowerShell, which every
+// Windows has, shows a form. Git's credential manager asks for HTTPS logins,
+// never for an SSH key's passphrase. Git for Windows runs the script with its
+// own sh, as it runs ssh; the form goes in encoded, so neither sh nor MSYS's
+// path conversion changes it.
+export const windowsAskpassScript = (words: Pick<Words['git'], 'askpass' | 'askOk' | 'askCancel'>): string => {
+  const text = (value: string): string => `'${value.replace(/'/g, "''")}'`;
+  const form = `Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+$prompt = if ($env:GLIST_STUDIO_PROMPT) { $env:GLIST_STUDIO_PROMPT } else { ${text(words.askpass)} }
+if ($env:SSH_ASKPASS_PROMPT -eq 'confirm') {
+  $answer = [System.Windows.Forms.MessageBox]::Show($prompt, 'Git', [System.Windows.Forms.MessageBoxButtons]::OKCancel, [System.Windows.Forms.MessageBoxIcon]::Question)
+  if ($answer -eq [System.Windows.Forms.DialogResult]::OK) { exit 0 } else { exit 1 }
+}
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Git'
+$form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+$form.MaximizeBox = $false
+$form.MinimizeBox = $false
+$form.TopMost = $true
+$form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+$form.AutoSize = $true
+$form.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+$form.Padding = New-Object System.Windows.Forms.Padding 12
+$panel = New-Object System.Windows.Forms.TableLayoutPanel
+$panel.AutoSize = $true
+$panel.ColumnCount = 1
+$label = New-Object System.Windows.Forms.Label
+$label.Text = $prompt
+$label.AutoSize = $true
+$label.MaximumSize = New-Object System.Drawing.Size 380, 0
+$box = New-Object System.Windows.Forms.TextBox
+$box.Width = 380
+$box.UseSystemPasswordChar = $prompt -match 'assword|assphrase|PIN'
+$buttons = New-Object System.Windows.Forms.FlowLayoutPanel
+$buttons.AutoSize = $true
+$buttons.FlowDirection = [System.Windows.Forms.FlowDirection]::RightToLeft
+$buttons.Anchor = [System.Windows.Forms.AnchorStyles]::Right
+$cancel = New-Object System.Windows.Forms.Button
+$cancel.Text = ${text(words.askCancel)}
+$cancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$ok = New-Object System.Windows.Forms.Button
+$ok.Text = ${text(words.askOk)}
+$ok.DialogResult = [System.Windows.Forms.DialogResult]::OK
+$buttons.Controls.Add($cancel)
+$buttons.Controls.Add($ok)
+$panel.Controls.Add($label)
+$panel.Controls.Add($box)
+$panel.Controls.Add($buttons)
+$form.Controls.Add($panel)
+$form.AcceptButton = $ok
+$form.CancelButton = $cancel
+$form.Add_Shown({ $form.Activate(); $box.Select() })
+if ($form.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { exit 1 }
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
+[Console]::Out.Write($box.Text)
+`;
+  return `#!/bin/sh
+# GIT_ASKPASS and SSH_ASKPASS for Glist Studio: a Windows dialog asks, and the
+# answer goes to git without passing through the studio.
+GLIST_STUDIO_PROMPT="$1" MSYS2_ARG_CONV_EXCL='*' MSYS_NO_PATHCONV=1 exec powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ${Buffer.from(form, 'utf16le').toString('base64')}
+`;
+};
+
 export const createGitService = (context: GitContext) => {
   const say = (key: MessageKey): string => languages[context.language()].git[key];
   const fail = (key: MessageKey): never => { throw new Error(say(key)); };
@@ -105,12 +169,13 @@ export const createGitService = (context: GitContext) => {
 
   const report = (entry: GlistGitConsoleEntry): void => context.send('git:console', entry);
 
-  // The helper git and ssh run for a password or a yes/no question, with the
-  // question as its argument. It shows the system's own dialog, so what is
-  // typed goes from the system to git without passing through the studio.
-  // Windows's Git asks through its own credential manager.
+  // The helper git and ssh run for a password, a key's passphrase or a yes/no
+  // question, with the question as its argument. It shows the system's own
+  // dialog, so what is typed goes from the system to git without passing
+  // through the studio.
   let askpass: string | null | undefined;
   const askpassScript = (): string | null => {
+    if (process.platform === 'win32') return windowsAskpassScript(languages[context.language()].git);
     if (process.platform === 'darwin') {
       return `#!/bin/sh
 # GIT_ASKPASS and SSH_ASKPASS for Glist Studio: a macOS dialog asks, and the
@@ -125,7 +190,7 @@ exec /usr/bin/osascript -e 'on run argv' -e "text returned of (display dialog (i
     const searchPath = (process.env.PATH ?? '').split(path.delimiter);
     const found = askpassPrograms.some((program) => (path.isAbsolute(program)
       ? existsSync(program) : searchPath.some((directory) => existsSync(path.join(directory, program)))));
-    if (process.platform === 'win32' || !found) return null;
+    if (!found) return null;
     return `#!/bin/sh
 # GIT_ASKPASS and SSH_ASKPASS for Glist Studio: the desktop's dialog asks, and
 # the answer goes to git without passing through the studio.

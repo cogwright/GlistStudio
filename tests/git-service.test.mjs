@@ -4,9 +4,32 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import { createGitService, credentialListener } from '../src/git-service.ts';
+import { createGitService, credentialListener, windowsAskpassScript } from '../src/git-service.ts';
 import { createHostProtection, githubRepository, matchesBranch, protectionFrom } from '../src/git-protection.ts';
 import { githubCommitPage, readRepositoryHead } from '../src/repository-head.ts';
+
+// Windows's askpass: sh hands PowerShell the question and the form, encoded, with
+// MSYS's path conversion off. A stand-in powershell.exe says what it was given.
+{
+  const folder = mkdtempSync(path.join(tmpdir(), 'glist-askpass-'));
+  try {
+    const script = path.join(folder, 'askpass.sh');
+    writeFileSync(script, windowsAskpassScript({ askpass: 'Git needs a password.', askOk: 'Tamam', askCancel: "L'annuler" }), { mode: 0o700 });
+    writeFileSync(path.join(folder, 'powershell.exe'), '#!/bin/sh\nprintf "%s\\n" "$GLIST_STUDIO_PROMPT" "$MSYS2_ARG_CONV_EXCL" "$@"\n', { mode: 0o700 });
+    const question = "Enter passphrase for key '/c/Users/Ada Lovelace/.ssh/id_ed25519': ";
+    const given = execFileSync('sh', [script, question], { encoding: 'utf8', env: { ...process.env, PATH: `${folder}${path.delimiter}${process.env.PATH}` } }).split('\n');
+    assert.equal(given[0], question, 'the question, spaces and quotes as they were');
+    assert.equal(given[1], '*');
+    assert.deepEqual(given.slice(2, 7), ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand']);
+    const form = Buffer.from(given[7], 'base64').toString('utf16le');
+    assert.match(form, /\$box\.UseSystemPasswordChar = \$prompt -match 'assword\|assphrase\|PIN'/);
+    assert.match(form, /\$ok\.Text = 'Tamam'/);
+    assert.match(form, /\$cancel\.Text = 'L''annuler'/, 'a quote in a label is doubled for PowerShell');
+    assert.match(form, /\[Console\]::Out\.Write\(\$box\.Text\)\n$/);
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
 
 // Protected branches: names and patterns, GitHub addresses, and asking GitHub.
 assert.equal(matchesBranch('main', ['main', 'master']), true);
