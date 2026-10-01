@@ -47,6 +47,13 @@ jobs:
     name: ${{ matrix.name }}
     needs: version
     runs-on: ${{ matrix.os }}
+    # A newer push to the same branch stops this build, so merging several pull
+    # requests at once builds and publishes only the last; the older runs end as
+    # cancelled. Only builds are stopped, never a prerelease being published,
+    # and a version tag's build always finishes.
+    concurrency:
+      group: build-${{ github.ref }}-${{ matrix.label }}
+      cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
     strategy:
       fail-fast: false
       matrix:
