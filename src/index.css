@@ -980,6 +980,9 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .plugin-state.update { color: var(--ui-accent); }
 /* The Engine view: the engine's facts, where it stands, and GlistEngine's new commits. */
 .engine-card { padding: 10px 12px; }
+/* No engine yet: the message, and Install under it, inside the same margins. */
+.engine-empty { padding: 8px 12px; }
+.engine-empty .plugins-message { margin: 0 0 12px; overflow-wrap: anywhere; }
 .engine-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 5px 12px; margin: 10px 0 8px; font-size: 12px; }
 .engine-facts dt { color: var(--ui-fg-muted); }
 .engine-facts dd { min-width: 0; margin: 0; color: var(--ui-fg); overflow-wrap: anywhere; }

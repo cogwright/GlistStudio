@@ -73,9 +73,13 @@ export class EngineView {
     if (!state) { this.host.replaceChildren(); return; }
     const message = (text: string): HTMLElement => Object.assign(document.createElement('p'), { className: 'plugins-message', textContent: text });
     if (!state.found) {
-      const install = Object.assign(document.createElement('button'), { type: 'button', className: 'empty-tree-action primary', textContent: t('installGlist') });
+      // As the explorer's empty state: the words, then the button under them, inset alike.
+      const install = Object.assign(document.createElement('button'), { type: 'button', className: 'empty-tree-action primary' });
+      install.append(icon('cloud-download'), Object.assign(document.createElement('span'), { textContent: t('installGlist') }));
       install.addEventListener('click', () => this.hooks.install());
-      this.host.replaceChildren(message(fill('engineNotFound', { location: state.location })), install);
+      const empty = Object.assign(document.createElement('div'), { className: 'engine-empty' });
+      empty.append(message(fill('engineNotFound', { location: state.location })), install);
+      this.host.replaceChildren(empty);
       return;
     }
     if (!state.repository) {
