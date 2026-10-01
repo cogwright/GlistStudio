@@ -13,6 +13,11 @@ import { toolLanguage } from './tool-language';
 // a protected branch, which a rebase would rewrite; changed files are put
 // aside and back. Replacing it, the commits stay on a branch of their own and
 // the changed files in a stash. Nothing here needs Electron.
+//
+// A copy cloned from a fork on GitHub, with none of its remotes the source, is
+// given the source as upstream, so it updates from there and the fork can be
+// brought up to date from it. A copy whose origin is anything else is left as
+// it is, for its Git tools.
 
 export interface GitResult { code: number; stdout: string; stderr: string }
 // Logged commands are the ones that change a copy, and the fetch an update
@@ -51,6 +56,8 @@ export interface CheckoutContext {
   site: string;
   // Whether a remote's branch is protected, as Settings > Git and GitHub say.
   isProtected(folder: string, remote: string, branch: string): Promise<boolean>;
+  // Whether a remote's address is a fork of the source, as GitHub says (see githubForks).
+  isForkOf?(address: string, source: string): Promise<boolean>;
   language(): Language;
 }
 
@@ -67,6 +74,32 @@ export const isSourceAddress = (address: string, source: string, site = 'https:/
   return plain(address) === plain(`${site}/${source}`);
 };
 
+// What a repository on GitHub was forked from, asked of GitHub's API once a
+// session and without signing in, so a private fork counts as none. When
+// GitHub cannot be reached, it is asked again the next time.
+export const githubForks = (api: string) => {
+  const known = new Map<string, string[]>();
+  return async (address: string, source: string): Promise<boolean> => {
+    const repository = githubRepository(address)?.toLowerCase();
+    if (!repository) return false;
+    if (!known.has(repository)) {
+      try {
+        const response = await fetch(`${api}/repos/${repository}`, {
+          headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Glist Studio' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!response.ok && response.status !== 404) return false;
+        const found = response.ok ? await response.json() as { parent?: { full_name?: unknown }; source?: { full_name?: unknown } } : {};
+        known.set(repository, [found.parent?.full_name, found.source?.full_name]
+          .filter((name): name is string => typeof name === 'string').map((name) => name.toLowerCase()));
+      } catch {
+        return false;
+      }
+    }
+    return known.get(repository)?.includes(source.toLowerCase()) ?? false;
+  };
+};
+
 export const createCheckouts = (context: CheckoutContext) => {
   const { git } = context;
   const say = (key: keyof Words['updates'], values: Record<string, string>): string =>
@@ -76,13 +109,17 @@ export const createCheckouts = (context: CheckoutContext) => {
 
   const isCheckout = (folder: string): boolean => existsSync(path.join(folder, '.git'));
 
-  // The remote whose address is the source, origin first.
+  // The remote whose address is the source, origin first; or upstream, added
+  // as the source when origin is a fork of it and no remote has that name yet.
   const sourceRemote = async (folder: string, source: string): Promise<string | null> => {
-    const found = lines(await git(['config', '--get-regexp', '^remote\\..*\\.url$'], folder))
-      .map((line) => { const at = line.indexOf(' '); return { name: line.slice('remote.'.length, at - '.url'.length), address: line.slice(at + 1) }; })
-      .filter((remote) => isSourceAddress(remote.address, source, context.site))
-      .map((remote) => remote.name);
-    return found.includes('origin') ? 'origin' : found[0] ?? null;
+    const remotes = lines(await git(['config', '--get-regexp', '^remote\\..*\\.url$'], folder))
+      .map((line) => { const at = line.indexOf(' '); return { name: line.slice('remote.'.length, at - '.url'.length), address: line.slice(at + 1) }; });
+    const found = remotes.filter((remote) => isSourceAddress(remote.address, source, context.site)).map((remote) => remote.name);
+    if (found.length > 0) return found.includes('origin') ? 'origin' : found[0];
+    const origin = remotes.find((remote) => remote.name === 'origin');
+    if (!origin || remotes.some((remote) => remote.name === 'upstream') || !(await context.isForkOf?.(origin.address, source))) return null;
+    const added = await git(['remote', 'add', 'upstream', `${context.site}/${source}.git`], folder, true);
+    return added.code === 0 ? 'upstream' : null;
   };
 
   // The source's default branch: as known, as the remote says when asked, as

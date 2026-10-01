@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createCheckouts, gitRunner, isSourceAddress } from '../src/checkout-update.ts';
+import http from 'node:http';
+import { createCheckouts, githubForks, gitRunner, isSourceAddress } from '../src/checkout-update.ts';
 import { toolLanguage } from '../src/tool-language.ts';
 
 // Updating a copy of the engine from GlistEngine, against bare repositories
@@ -216,9 +217,62 @@ try {
   git(copy, 'remote', 'remove', 'upstream');
   assert.equal((await inspect()).remote, null);
   assert.match((await update()).message, /none of its remotes is GlistEngine\/GlistEngine/);
+
+  // Cloned from a fork on GitHub: the source is added as upstream, and the copy updates from it.
+  // An upstream of its own, or an origin that is not a fork, is left as it is.
+  const forks = createCheckouts({
+    git: gitRunner(() => process.env), site, isProtected: async () => false, language: () => 'en',
+    isForkOf: async (address, wanted) => address === fork && wanted === 'GlistEngine/GlistEngine',
+  });
+  git(copy, 'remote', 'add', 'upstream', path.join(root, 'elsewhere'));
+  assert.equal((await forks.inspect(copy, 'GlistEngine/GlistEngine')).remote, null, 'an upstream of its own stays');
+  git(copy, 'remote', 'remove', 'upstream');
+  publish('gApp.h', 'app 10\n', 'App ten');
+  const forked = await forks.inspect(copy, 'GlistEngine/GlistEngine', { fetch: true });
+  assert.equal(forked.remote, 'upstream');
+  assert.equal(git(copy, 'remote', 'get-url', 'upstream'), `${site}/GlistEngine/GlistEngine.git`);
+  assert.ok(forked.behind > 0, 'the fork is behind its source');
+  assert.equal((await forks.update(copy, 'GlistEngine', 'GlistEngine/GlistEngine', 'keep')).success, true);
+  assert.equal(read('gApp.h'), 'app 10\n');
+  git(copy, 'remote', 'remove', 'upstream');
+  git(copy, 'remote', 'set-url', 'origin', path.join(root, 'elsewhere'));
+  assert.equal((await forks.inspect(copy, 'GlistEngine/GlistEngine')).remote, null);
+  assert.match((await forks.update(copy, 'GlistEngine', 'GlistEngine/GlistEngine')).message, /Its Git tools can update it/);
+  assert.equal(git(copy, 'remote'), 'origin', 'nothing added for an origin that is not a fork');
   assert.deepEqual(await checkouts.inspect(path.join(root, 'nothing'), 'GlistEngine/GlistEngine'), { repository: false });
 } finally {
   rmSync(root, { recursive: true, force: true });
+}
+
+// What GitHub says a repository was forked from: its parent, or the one that was forked first.
+// Asked once; not asked for an address elsewhere; asked again after an error.
+{
+  let asked = 0;
+  const github = http.createServer((request, response) => {
+    asked += 1;
+    const answers = {
+      '/repos/student/glistengine': { fork: true, parent: { full_name: 'classmate/GlistEngine' }, source: { full_name: 'GlistEngine/GlistEngine' } },
+      '/repos/student/game': { fork: false },
+    };
+    response.statusCode = answers[request.url] ? 200 : request.url === '/repos/student/down' ? 503 : 404;
+    response.end(JSON.stringify(answers[request.url] ?? {}));
+  });
+  await new Promise((resolve) => github.listen(0, '127.0.0.1', resolve));
+  const isForkOf = githubForks(`http://127.0.0.1:${github.address().port}`);
+  try {
+    assert.equal(await isForkOf('git@github.com:student/GlistEngine.git', 'GlistEngine/GlistEngine'), true);
+    assert.equal(await isForkOf('https://github.com/student/GlistEngine', 'classmate/glistengine'), true);
+    assert.equal(asked, 1);
+    assert.equal(await isForkOf('https://github.com/student/game.git', 'GlistEngine/GlistEngine'), false);
+    assert.equal(await isForkOf('https://github.com/student/private.git', 'GlistEngine/GlistEngine'), false);
+    assert.equal(await isForkOf('https://gitlab.com/student/GlistEngine.git', 'GlistEngine/GlistEngine'), false);
+    assert.equal(asked, 3);
+    await isForkOf('https://github.com/student/down', 'GlistEngine/GlistEngine');
+    await isForkOf('https://github.com/student/down', 'GlistEngine/GlistEngine');
+    assert.equal(asked, 5);
+  } finally {
+    github.close();
+  }
 }
 
 // What git, GCC and make are given to answer in the editor's language: with no locale, one the

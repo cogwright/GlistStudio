@@ -1,7 +1,7 @@
 import { existsSync, promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { createCheckouts, gitMessage, gitRunner } from './checkout-update';
+import { createCheckouts, githubForks, gitMessage, gitRunner } from './checkout-update';
 import { pluginsInCmake, setPluginUsed } from './cmake';
 import { defaultProtection, matchesBranch } from './git-protection';
 import { languages, type Language, type Words } from './languages';
@@ -60,6 +60,7 @@ export const createPluginService = (context: PluginContext) => {
     git,
     site,
     isProtected: context.isProtected ?? (async (_folder, _remote, branch) => matchesBranch(branch, defaultProtection.branches)),
+    isForkOf: githubForks(api),
     language: context.language,
   });
 
