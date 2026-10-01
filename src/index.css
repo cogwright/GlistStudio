@@ -930,9 +930,9 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .push-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .push-time { color: var(--ui-fg-muted); font-size: 11px; }
 .push-commits li.push-nothing { display: block; color: var(--ui-fg-muted); line-height: 24px; }
-.git-settings, .build-settings { padding: 0; border: 0; }
-.build-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
-.studio-dialog .build-settings .checkbox-row { margin-top: 10px; }
+.git-settings, .build-settings, .format-settings { padding: 0; border: 0; }
+.build-settings legend, .format-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
+.studio-dialog .build-settings .checkbox-row, .studio-dialog .format-settings .checkbox-row { margin-top: 10px; }
 .git-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .studio-dialog .git-toggle { margin-top: 10px; }
 .studio-dialog .git-options .git-protect { margin-top: 16px; }
