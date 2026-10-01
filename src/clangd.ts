@@ -6,6 +6,7 @@ import type {
   SemanticTokens, ServerCapabilities, SignatureHelp, SymbolInformation, TextEdit, WorkDoneProgressBegin,
   WorkDoneProgressEnd, WorkDoneProgressReport, WorkspaceEdit,
 } from 'vscode-languageserver-protocol';
+import type { LineRange } from './format-lines';
 import { t } from './localization';
 import { baseName, pathUri } from './paths';
 import { restyleSemanticTokens, styledModifiers } from './themes';
@@ -277,14 +278,16 @@ export class ClangdClient {
     }
   }
 
-  // The edits that format a whole document by its .clang-format, for format on
-  // save; null when clangd cannot format it now.
-  async formatEdits(model: monaco.editor.ITextModel): Promise<monaco.languages.TextEdit[] | null> {
+  // The edits that format some lines by the .clang-format, for format on save
+  // of what changed, as clangd formats each range; null when it cannot now.
+  async formatLineEdits(model: monaco.editor.ITextModel, ranges: LineRange[]): Promise<monaco.languages.TextEdit[] | null> {
     const options = model.getOptions();
-    const edits = await this.query<TextEdit[]>(model, 'textDocument/formatting', {
+    const answers = await Promise.all(ranges.map((range) => this.query<TextEdit[]>(model, 'textDocument/rangeFormatting', {
+      range: { start: { line: range.start - 1, character: 0 }, end: { line: range.end - 1, character: model.getLineMaxColumn(range.end) - 1 } },
       options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
-    });
-    return edits?.map(toTextEdit) ?? null;
+    })));
+    if (answers.some((edits) => edits === null)) return null;
+    return answers.flatMap((edits) => (edits ?? []).map(toTextEdit));
   }
 
   async switchSourceHeader(model: monaco.editor.ITextModel): Promise<monaco.Uri | null> {

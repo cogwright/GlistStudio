@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { codeStyleFor, parseStyle } from '../src/code-style.ts';
+import { changedLines, editsWithin } from '../src/format-lines.ts';
 import { initializeStudio, openProjectAt, pluginDllFolders, studio, systemFolders } from '../src/studio.ts';
 
 // What the studio may write: the project, and the engine and the plugins the
@@ -158,6 +159,39 @@ try {
   assert.ok(outside === null || !outside.file.startsWith(styleRoot));
 } finally {
   rmSync(styleRoot, { recursive: true, force: true });
+}
+
+// Format on save for the lines changed since the last save.
+{
+  const saved = ['#include "b.h"', '#include "a.h"', '', 'void f() {', '    if (x)  y = 1;', '\tz = 2;', '}', ''].join('\n');
+  // Nothing changed, nothing to format.
+  assert.deepEqual(changedLines(saved, saved), []);
+  // One line typed into.
+  assert.deepEqual(changedLines(saved, saved.replace('\tz = 2;', '\tz =  3;')), [{ start: 6, end: 6 }]);
+  // Lines added together are one range.
+  assert.deepEqual(changedLines(saved, saved.replace('\tz = 2;', '\tz = 2;\n  w=1;\n  v=2;')), [{ start: 7, end: 8 }]);
+  // An #include changed is left out, so its block is never sorted.
+  assert.deepEqual(changedLines(saved, saved.replace('#include "a.h"', '#include "c.h"')), []);
+  assert.deepEqual(changedLines(saved, saved.replace('#include "a.h"\n', '#include "a.h"\nint g;\n#include "c.h"\nint h;\n')), [{ start: 3, end: 3 }, { start: 5, end: 5 }]);
+  // Lines only removed leave nothing.
+  assert.deepEqual(changedLines(saved, saved.replace('\tz = 2;\n', '')), []);
+  // A file never saved: every line but the #includes.
+  assert.deepEqual(changedLines('', 'int a;\n#include "x.h"\nint b;'), [{ start: 1, end: 1 }, { start: 3, end: 3 }]);
+
+  // Edits on the changed lines stay; others, and repeats, go.
+  const edit = (startLineNumber, startColumn, endLineNumber, endColumn, text) => ({ range: { startLineNumber, startColumn, endLineNumber, endColumn }, text });
+  const ranges = [{ start: 5, end: 5 }];
+  assert.deepEqual(editsWithin([
+    edit(5, 1, 5, 5, '\t'), // its indent
+    edit(4, 11, 5, 1, '\n'), // the line break before it
+    edit(5, 7, 5, 8, ''), // a space inside it
+    edit(2, 1, 3, 1, ''), // an #include block sorted
+    edit(6, 1, 6, 2, '    '), // a line nobody changed
+    edit(5, 7, 5, 8, ''), // the same edit again, from another range
+    edit(5, 7, 5, 9, ' '), // one overlapping another
+  ], ranges), [edit(4, 11, 5, 1, '\n'), edit(5, 1, 5, 5, '\t'), edit(5, 7, 5, 8, '')]);
+  // Two inserts at one place from two ranges: one.
+  assert.deepEqual(editsWithin([edit(5, 1, 5, 1, '\t'), edit(5, 1, 5, 1, '\t')], ranges), [edit(5, 1, 5, 1, '\t')]);
 }
 
 console.log('Studio file tests passed.');
