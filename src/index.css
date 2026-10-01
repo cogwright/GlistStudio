@@ -443,6 +443,8 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .welcome h1 { margin: 12px 0 4px; color: var(--ui-fg-strong); font-size: 21px; font-weight: 400; }
 .welcome > p { margin: 0 0 26px; color: var(--ui-fg-muted); }
 .shortcut-list { display: flex; flex-wrap: wrap; justify-content: center; margin-top: 18px; gap: 8px 18px; color: var(--ui-fg-muted); font-size: 11px; }
+/* The search shortcuts, a row of their own under the build ones. */
+.shortcut-list + .shortcut-list { margin-top: 10px; }
 kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-strong); border-radius: 3px; color: var(--ui-fg-muted); background: var(--ui-raised); font: inherit; }
 
 .output-panel { grid-row: 5; display: flex; min-height: 0; flex-direction: column; overflow: hidden; border-top: 1px solid var(--ui-border); background: var(--ui-chrome); }
