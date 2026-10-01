@@ -606,9 +606,13 @@ const runBuildCommand = (
   const child = spawn(executable, args, {
     cwd: workingDirectory,
     // Colored progress from CMake's makefiles, and colored diagnostics from the
-    // compiler in build trees created from now on; GCC and make in the editor's
-    // language where they have it.
-    env: ((base) => ({ ...base, CLICOLOR_FORCE: '1', CMAKE_COLOR_DIAGNOSTICS: 'ON', ...toolLanguage(language, base) }))(processEnvironment(toolchain)),
+    // compiler; GCC and make in the editor's language where they have it.
+    env: ((base) => ({
+      ...base, CLICOLOR_FORCE: '1', CMAKE_COLOR_DIAGNOSTICS: 'ON', ...toolLanguage(language, base),
+      // Clang's own: colors into a pipe too, as escape codes rather than through
+      // the Windows console, which the Output panel never sees. '#' keeps it quiet.
+      CCC_OVERRIDE_OPTIONS: ['#', '+-fcolor-diagnostics', '+-fansi-escape-codes', base.CCC_OVERRIDE_OPTIONS].filter(Boolean).join(' '),
+    }))(processEnvironment(toolchain)),
     windowsHide: true,
     detached: ownProcessGroup,
   });
