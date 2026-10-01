@@ -907,6 +907,10 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .git-row-detail { min-width: 0; overflow: hidden; color: var(--ui-fg-muted); text-overflow: ellipsis; white-space: nowrap; }
 .git-row-date { color: var(--ui-fg-muted); font-size: 11px; white-space: nowrap; }
 .git-row-actions { display: flex; gap: 2px; }
+/* A row's actions in words, such as a stash's Apply, Apply and Delete and Delete. */
+.git-row-button { height: 20px; padding: 0 7px; border: 1px solid var(--ui-border-strong); border-radius: 3px; color: var(--ui-fg); background: var(--ui-hover); font: inherit; font-size: 11px; cursor: pointer; }
+.git-row-button:hover { color: var(--ui-fg-strong); background: var(--ui-hover-strong); }
+.git-row-button.danger:hover { border-color: var(--ui-danger); color: var(--ui-danger); }
 .git-badge { display: inline-flex; height: 16px; flex: 0 0 auto; align-items: center; gap: 2px; padding: 0 6px; border-radius: 8px; color: var(--ui-fg-muted); background: var(--ui-inset); font-size: 10.5px; font-weight: 600; }
 .git-badge.current { color: var(--ui-on-accent); background: var(--ui-accent); }
 .git-badge.gone { color: var(--ui-warning); }

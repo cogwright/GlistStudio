@@ -694,10 +694,18 @@ class StashesView {
       const when = element('span', 'git-row-date', relativeTime(stash.date * 1000));
       when.title = fullTime(stash.date * 1000);
       const actions = element('span', 'git-row-actions');
+      // In words: the two apply icons look alike.
+      const action = (label: TranslationKey, run: () => void, danger = false): HTMLButtonElement => {
+        const button = element('button', `git-row-button${danger ? ' danger' : ''}`, t(label));
+        button.type = 'button';
+        button.dataset.i18n = label;
+        button.addEventListener('click', (event) => { event.stopPropagation(); run(); });
+        return button;
+      };
       actions.append(
-        toolButton('git-stash-apply', 'applyStash', () => { void this.unstash(stash, false); }),
-        toolButton('git-stash-pop', 'popStash', () => { void this.unstash(stash, true); }),
-        toolButton('trash', 'dropStash', () => { void this.drop(stash); }),
+        action('applyStash', () => { void this.unstash(stash, false); }),
+        action('popStash', () => { void this.unstash(stash, true); }),
+        action('dropStash', () => { void this.drop(stash); }, true),
       );
       row.append(name, element('span', 'git-row-detail', stash.name), when, actions);
       row.addEventListener('click', () => {
