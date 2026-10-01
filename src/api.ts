@@ -50,6 +50,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   setZoomFactor: 'view:set-zoom-factor',
   setAutoConfigure: 'build:auto-configure',
   openEngineSite: 'app:open-engine-site',
+  openEngineRepository: 'app:open-engine-repository',
   startClangd: 'clangd:start',
   sendClangd: 'clangd:send',
   startDebugging: 'debug:start',

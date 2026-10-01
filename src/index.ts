@@ -155,6 +155,7 @@ const registerIpcHandlers = (): void => {
     return openProjectAt(result.filePaths[0]);
   });
   ipcMain.handle(invokeChannels.openEngineSite, () => shell.openExternal('https://www.glistengine.com/'));
+  ipcMain.handle(invokeChannels.openEngineRepository, () => shell.openExternal('https://github.com/GlistEngine/GlistEngine'));
   ipcMain.handle(invokeChannels.setAppMenu, (event, menus: GlistAppMenu[], words: GlistAppMenuWords) => setAppMenu(event.sender, menus, words));
   ipcMain.handle(invokeChannels.chooseFolder, async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);

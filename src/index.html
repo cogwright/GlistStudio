@@ -240,6 +240,17 @@
         </div>
       </dialog>
 
+      <dialog id="star-dialog" class="studio-dialog star-dialog">
+        <form method="dialog">
+          <h2 data-i18n="starTitle">Enjoying Glist Engine?</h2>
+          <p class="star-text" data-i18n="starText">Glist Engine is free and open source. A star on GitHub helps more people find it, and tells the people who make it that it is used.</p>
+          <div class="dialog-actions">
+            <button type="submit" value="later" data-i18n="starLater">Not Now</button>
+            <button type="submit" id="star-open" class="primary" value="star"><i data-icon="star-full"></i><span data-i18n="starOpen">Star on GitHub</span></button>
+          </div>
+        </form>
+      </dialog>
+
       <dialog id="open-project-dialog" class="studio-dialog project-picker">
         <h2 data-i18n="openProject">Open Project</h2>
         <input id="project-filter" type="search" autocomplete="off" placeholder="Search projects" data-i18n-placeholder="searchProjects" />

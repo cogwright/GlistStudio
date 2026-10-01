@@ -51,6 +51,7 @@ import sourceControl from '@vscode/codicons/src/icons/source-control.svg';
 import tag from '@vscode/codicons/src/icons/tag.svg';
 import edit from '@vscode/codicons/src/icons/edit.svg';
 import splitHorizontal from '@vscode/codicons/src/icons/split-horizontal.svg';
+import starFull from '@vscode/codicons/src/icons/star-full.svg';
 import chevronUp from '@vscode/codicons/src/icons/chevron-up.svg';
 import chevronDown from '@vscode/codicons/src/icons/chevron-down.svg';
 import info from '@vscode/codicons/src/icons/info.svg';
@@ -129,6 +130,7 @@ const icons = {
   'settings-gear': settingsGear,
   'source-control': sourceControl,
   'split-horizontal': splitHorizontal,
+  'star-full': starFull,
   'symbol-class': symbolClass,
   'symbol-constant': symbolConstant,
   'symbol-enum': symbolEnum,
