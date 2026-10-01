@@ -10,6 +10,7 @@ import { findDebugAdapter } from './debug-adapters';
 import { debuggerRelease, installDebugger, installedDebugger, removeDebugger } from './debugger-download';
 import { MessageProcess } from './message-process';
 import { renderCppClass } from './class-template';
+import { codeStyleFor } from './code-style';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
 import { filesIn, searchFolders, type SearchFolder } from './file-search';
 import { createGitService } from './git-service';
@@ -1458,6 +1459,8 @@ export const studio: Handlers = {
   openCommandPrompt,
   readFile: readProjectFile,
   readWorkspaceFile,
+  // Only style files are read, wherever the file is: clang-format looks as far up.
+  codeStyle: (filePath: unknown) => (typeof filePath === 'string' ? codeStyleFor(filePath) : null),
   listDependencies,
   listWorkspaceDirectory,
   searchText,

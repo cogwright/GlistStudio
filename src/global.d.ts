@@ -17,6 +17,17 @@ declare module '@vscode/codicons/src/icons/*.svg' {
 
 // The engine or a plugin an app is built with. A plugin the app names may be
 // missing from glistplugins.
+// What the editor takes from a .clang-format: tabs or spaces, the indent and
+// tab widths, where lines end (0 for nowhere), and whether formatting is off.
+interface GlistCodeStyle {
+  file: string;
+  useTab: boolean;
+  indentWidth: number;
+  tabWidth: number;
+  columnLimit: number;
+  disabled: boolean;
+}
+
 interface GlistDependency {
   name: string;
   kind: 'engine' | 'plugin';
@@ -514,6 +525,8 @@ interface Window {
     openCommandPrompt(entryPath: string): Promise<void>;
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
+    // The .clang-format a C or C++ file follows, or null.
+    codeStyle(filePath: string): Promise<GlistCodeStyle | null>;
     listDependencies(): Promise<GlistDependency[]>;
     // Find in Files; a new search stops the one before.
     searchText(query: GlistSearchQuery): Promise<GlistSearchResult>;

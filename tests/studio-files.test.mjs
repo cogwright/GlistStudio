@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { codeStyleFor, parseStyle } from '../src/code-style.ts';
 import { initializeStudio, openProjectAt, pluginDllFolders, studio, systemFolders } from '../src/studio.ts';
 
 // What the studio may write: the project, and the engine and the plugins the
@@ -81,6 +82,56 @@ try {
   assert.equal((await studio.pathEntries()).some((entry) => entry.source === 'custom'), false);
 } finally {
   rmSync(root, { recursive: true, force: true });
+}
+
+// The .clang-format a file follows, for the editor's indentation and format on save.
+
+// The predefined styles' values, and the file's own on top.
+assert.deepEqual(parseStyle(''), { useTab: false, indentWidth: 2, tabWidth: 8, columnLimit: 80, disabled: false });
+assert.deepEqual(parseStyle('BasedOnStyle: Microsoft'), { useTab: false, indentWidth: 4, tabWidth: 4, columnLimit: 120, disabled: false });
+assert.deepEqual(parseStyle([
+  '# Glist style',
+  'BasedOnStyle: WebKit',
+  'UseTab: ForIndentation   # tabs, aligned with spaces',
+  'IndentWidth: 4',
+  "TabWidth: '4'",
+  'BraceWrapping:',
+  '  AfterClass: true',
+  '  IndentWidth: 9',
+].join('\n')), { useTab: true, indentWidth: 4, tabWidth: 4, columnLimit: 0, disabled: false });
+assert.equal(parseStyle('UseTab: Never').useTab, false);
+assert.equal(parseStyle('UseTab: false').useTab, false);
+assert.equal(parseStyle('UseTab: Always').useTab, true);
+assert.equal(parseStyle('DisableFormat: true').disabled, true);
+// One document for every language, and C++'s own on top; others are not C++'s.
+assert.deepEqual(parseStyle([
+  'IndentWidth: 3', '---', 'Language: JavaScript', 'IndentWidth: 7', '---', 'Language: Cpp', 'ColumnLimit: 100', '...',
+].join('\n')), { useTab: false, indentWidth: 3, tabWidth: 8, columnLimit: 100, disabled: false });
+
+const styleRoot = mkdtempSync(path.join(tmpdir(), 'glist-style-'));
+try {
+  const place = (relative, contents) => {
+    mkdirSync(path.dirname(path.join(styleRoot, relative)), { recursive: true });
+    writeFileSync(path.join(styleRoot, relative), contents);
+  };
+  place('App/.clang-format', 'BasedOnStyle: LLVM\nUseTab: Always\nIndentWidth: 4\nTabWidth: 4\nColumnLimit: 100\n');
+  place('App/src/gCanvas.cpp', '');
+  place('App/src/third/_clang-format', 'BasedOnStyle: InheritParentConfig\nColumnLimit: 70\n');
+  place('App/src/third/lib.h', '');
+  // The nearest one counts, from the file's own folder up.
+  assert.deepEqual(await codeStyleFor(path.join(styleRoot, 'App', 'src', 'gCanvas.cpp')), {
+    file: path.join(styleRoot, 'App', '.clang-format'), useTab: true, indentWidth: 4, tabWidth: 4, columnLimit: 100, disabled: false,
+  });
+  // InheritParentConfig starts from the one further up.
+  assert.deepEqual(await codeStyleFor(path.join(styleRoot, 'App', 'src', 'third', 'lib.h')), {
+    file: path.join(styleRoot, 'App', 'src', 'third', '_clang-format'), useTab: true, indentWidth: 4, tabWidth: 4, columnLimit: 70, disabled: false,
+  });
+  place('Other/main.cpp', '');
+  const outside = await codeStyleFor(path.join(styleRoot, 'Other', 'main.cpp'));
+  // None above it here, unless the machine has one further up.
+  assert.ok(outside === null || !outside.file.startsWith(styleRoot));
+} finally {
+  rmSync(styleRoot, { recursive: true, force: true });
 }
 
 console.log('Studio file tests passed.');

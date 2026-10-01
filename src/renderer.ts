@@ -60,6 +60,8 @@ interface OpenFile {
   // The model's alternative version id when it matched the file on disk.
   savedVersion: number;
   readOnly: boolean;
+  // The .clang-format a C or C++ file follows, once known.
+  style?: GlistCodeStyle | null;
 }
 
 // A file compared between two versions, in a tab of its own: the last commit
@@ -607,7 +609,7 @@ const showGroups = (): void => {
       view.editor.setModel(tab.model);
       view.editor.restoreViewState(view.viewStates.get(tab.path) ?? null);
     }
-    view.editor.updateOptions({ readOnly: tab.readOnly });
+    view.editor.updateOptions({ readOnly: tab.readOnly, rulers: rulersFor(tab) });
     view.host.classList.add('visible');
     // Measured now, not on the next frame, so a line can be revealed right away.
     view.editor.layout();
@@ -896,7 +898,54 @@ const addDocument = (filePath: string, model: monaco.editor.ITextModel, readOnly
     }
   });
   clangd.track(model);
+  void applyCodeStyle(file);
   return file;
+};
+
+// Where a file's .clang-format says lines end.
+const rulersFor = (file: OpenFile | undefined): number[] => (file?.style?.columnLimit ? [file.style.columnLimit] : []);
+
+// The editor indents a C or C++ file as its .clang-format says, with tabs or
+// spaces and as far, rather than as it guesses from the text.
+const applyCodeStyle = async (file: OpenFile): Promise<void> => {
+  if (file.model.getLanguageId() !== 'cpp') return;
+  file.style = await window.glistAPI.codeStyle(file.path).catch((): null => null);
+  const { style } = file;
+  if (style && !file.model.isDisposed()) file.model.updateOptions({ insertSpaces: !style.useTab, tabSize: style.tabWidth, indentSize: style.indentWidth });
+  groupViews.forEach((view) => {
+    if (view.editor.getModel() === file.model) view.editor.updateOptions({ rulers: rulersFor(file) });
+  });
+};
+
+const formatOnSave = (): boolean => {
+  try { return window.localStorage.getItem('glist-studio-format-on-save') !== 'off'; } catch { return true; }
+};
+
+// Before a C or C++ file is saved, it is formatted by its .clang-format, as one
+// step Undo takes back. Without a .clang-format, or with clangd not answering
+// in time, it is saved as it is.
+const formatForSaving = async (file: OpenFile): Promise<void> => {
+  if (!formatOnSave() || file.readOnly || file.model.getLanguageId() !== 'cpp') return;
+  const style = await window.glistAPI.codeStyle(file.path).catch((): null => null);
+  if (!style || style.disabled) return;
+  const version = file.model.getVersionId();
+  const edits = await Promise.race([
+    clangd.formatEdits(file.model),
+    new Promise<null>((resolve) => { window.setTimeout(() => resolve(null), 3000); }),
+  ]);
+  // Typed into meanwhile, the edits would be for text that is gone.
+  if (!edits || edits.length === 0 || file.model.getVersionId() !== version) return;
+  const operations = edits.map((edit) => ({ range: edit.range, text: edit.text }));
+  // Through an editor showing it, the one worked in first, so its cursor keeps its place.
+  const view = currentEditor().getModel() === file.model
+    ? currentEditor() : groupViews.find((candidate) => candidate.editor.getModel() === file.model)?.editor;
+  if (view) {
+    view.pushUndoStop();
+    view.executeEdits('clang-format', operations);
+    view.pushUndoStop();
+  } else {
+    file.model.pushEditOperations([], operations, () => null);
+  }
 };
 
 // Opens a tab on a model that matches the file on disk, on the side being
@@ -909,12 +958,15 @@ const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boo
 
 // The text is taken once, so anything typed while it is written stays unsaved.
 const saveFile = async (file: OpenFile): Promise<void> => {
+  await formatForSaving(file);
   const version = file.model.getAlternativeVersionId();
   await window.glistAPI.writeFile(file.path, file.model.getValue());
   file.savedVersion = version;
   clangd.saved(file.model);
   refreshDirtyMark(file);
   if (baseName(file.path) === 'CMakeLists.txt' && isProjectPath(file.path)) void learnDependencies().then(refreshDependencies);
+  // A changed .clang-format: the open files indent as it now says.
+  if (/^[._]clang-format$/.test(file.name)) fileTabs().forEach((tab) => { void applyCodeStyle(tab); });
   void git.refresh();
 };
 
@@ -2799,6 +2851,11 @@ window.addEventListener('beforeunload', (event) => {
 
 window.glistAPI.onBuildOutput((text) => { appendOutput(text); buildLog = (buildLog + text).slice(-200000); });
 // Settings > Build: CMake configures again when its files change, unless turned off.
+const formatOnSaveInput = element<HTMLInputElement>('#format-on-save');
+formatOnSaveInput.checked = formatOnSave();
+formatOnSaveInput.addEventListener('change', () => {
+  try { window.localStorage.setItem('glist-studio-format-on-save', formatOnSaveInput.checked ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
+});
 const autoConfigureInput = element<HTMLInputElement>('#auto-configure');
 autoConfigureInput.checked = ((): boolean => { try { return window.localStorage.getItem('glist-studio-auto-configure') !== 'off'; } catch { return true; } })();
 void window.glistAPI.setAutoConfigure(autoConfigureInput.checked);
