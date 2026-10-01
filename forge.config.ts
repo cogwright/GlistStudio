@@ -32,6 +32,16 @@ const copyNodePty = async (buildPath: string, platform: string, arch: string): P
   }
 };
 
+// Release builds are signed with Glist's Developer ID and notarized by Apple
+// when the release workflow has loaded the certificate into MACOS_KEYCHAIN and
+// the notary key into APPLE_API_KEY_FILE (.github/workflows/release.yml), so
+// macOS opens them without a warning. Anywhere else, such as a developer's
+// machine, ad hoc, which Apple Silicon needs to run the app at all.
+const keychain = process.env.MACOS_KEYCHAIN;
+const notaryKey = process.env.APPLE_API_KEY_FILE;
+const notaryKeyId = process.env.APPLE_API_KEY_ID;
+const notaryIssuer = process.env.APPLE_API_ISSUER;
+
 const config: ForgeConfig = {
   packagerConfig: {
     // Outside the archive, node-pty can run its helper programs and scripts.
@@ -41,11 +51,17 @@ const config: ForgeConfig = {
     // A plain name for the Linux binary, which the AppImage launcher runs.
     executableName: 'gliststudio',
     extraResource: ['./assets/glistengine.ico', './assets/glistengine.png', './glistapp-template', './THIRD_PARTY_NOTICES.md'],
-    // Ad-hoc, until there is a Developer ID. Signing here, after the two halves
-    // of a universal build are merged, also keeps the fuses plugin from
-    // signing only the arm64 half, which the merge rejects. The hardened
-    // runtime is for notarization and refuses ad-hoc signed frameworks.
-    osxSign: { identity: '-', identityValidation: false, optionsForFile: () => ({ hardenedRuntime: false }) },
+    // Signing here, after the two halves of a universal build are merged, keeps
+    // the fuses plugin from signing only the arm64 half, which the merge
+    // rejects. The hardened runtime, which notarization requires, refuses
+    // ad-hoc signed frameworks, so it comes only with the Developer ID.
+    osxSign: keychain
+      ? { keychain, optionsForFile: () => ({ hardenedRuntime: true, entitlements: path.resolve('assets', 'entitlements.mac.plist') }) }
+      : { identity: '-', identityValidation: false, optionsForFile: () => ({ hardenedRuntime: false }) },
+    // Apple checks the signed app and the ticket is stapled to it, so it opens offline too.
+    ...(keychain && notaryKey && notaryKeyId && notaryIssuer
+      ? { osxNotarize: { appleApiKey: notaryKey, appleApiKeyId: notaryKeyId, appleApiIssuer: notaryIssuer } }
+      : {}),
     // Single-architecture files that both halves have, which the merge would otherwise refuse.
     osxUniversal: { x64ArchFiles: '**/node_modules/node-pty/prebuilds/**' },
   },
