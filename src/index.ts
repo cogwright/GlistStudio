@@ -122,7 +122,16 @@ const setAppMenu = (sender: Electron.WebContents, menus: GlistAppMenu[], words: 
       ],
     },
     ...menus.map((menu): MenuItemConstructorOptions => ({ label: String(menu.label), submenu: items(menu) })),
-    { role: 'windowMenu', label: word('window') },
+    {
+      role: 'windowMenu',
+      label: word('window'),
+      submenu: [
+        { role: 'minimize', label: word('minimize') },
+        { role: 'zoom', label: word('zoom') },
+        { type: 'separator' },
+        { role: 'front', label: word('front') },
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   return true;

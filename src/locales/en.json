@@ -646,7 +646,22 @@
     "searchSymbolsHint": "Type the name of a class, function or variable.",
     "searchSymbolsBuild": "Build the project once, then its classes and functions can be searched.",
     "searchSymbolsOff": "Symbols come from clangd, which is not running.",
-    "searchNothing": "Nothing found."
+    "searchNothing": "Nothing found.",
+    "mainTools": "Main tools",
+    "explorerView": "Explorer",
+    "runArgumentsExample": "--level 2 \"my file.txt\"",
+    "remoteUrlExample": "https://github.com/user/project.git",
+    "outputBuild": "BUILD",
+    "outputDebug": "DEBUG",
+    "debugStopped": "Debugging stopped",
+    "pausedBreakpoint": "breakpoint",
+    "pausedStep": "step",
+    "pausedPause": "you paused it",
+    "pausedException": "an exception was thrown",
+    "pausedEntry": "start of the program",
+    "macMinimize": "Minimize",
+    "macZoom": "Zoom",
+    "macFront": "Bring All to Front"
   },
   "platforms": {
     "darwin": {

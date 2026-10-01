@@ -696,7 +696,7 @@ class RemotesView {
       submit: t('create'),
       fields: [
         { kind: 'text', key: 'name', label: t('remoteName'), value: remotes.some((remote) => remote.name === 'origin') ? '' : 'origin', required: true },
-        { kind: 'text', key: 'url', label: t('remoteUrl'), placeholder: 'https://github.com/user/project.git', required: true, autofocus: true },
+        { kind: 'text', key: 'url', label: t('remoteUrl'), placeholder: t('remoteUrlExample'), required: true, autofocus: true },
       ],
       validate: async (entered) => {
         const result = await window.glistAPI.gitRun({ kind: 'add-remote', name: String(entered.name), url: String(entered.url) }, this.place.root);
@@ -852,7 +852,7 @@ class ConsoleView {
       this.output.append(line);
       this.current = null;
     } else if (entry.kind === 'error') {
-      this.output.append(element('span', 'ansi-red', `${entry.text}\n`));
+      this.output.append(element('span', 'ansi-red', `${entry.code === undefined ? entry.text : `${t('exitCode')} ${entry.code}`}\n`));
       this.current = null;
     } else {
       if (!this.current) {

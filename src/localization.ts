@@ -21,6 +21,9 @@ export const savedLanguage = (): Language => {
 let language: Language = savedLanguage();
 
 export const getLanguage = (): Language => language;
+// A whole percentage as the language writes it: 100%, %100, 100 %.
+export const percent = (value: number): string =>
+  new Intl.NumberFormat(language, { style: 'percent', maximumFractionDigits: 0 }).format(value / 100);
 export const t = (key: TranslationKey): string =>
   hostWords(languages[language])?.[key] ?? languages[language].interface[key];
 

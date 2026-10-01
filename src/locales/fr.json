@@ -646,7 +646,22 @@
     "searchSymbolsHint": "Tapez le nom d'une classe, d'une fonction ou d'une variable.",
     "searchSymbolsBuild": "Compilez le projet une fois; ses classes et ses fonctions pourront ensuite être recherchées.",
     "searchSymbolsOff": "Les symboles viennent de clangd, qui n'est pas lancé.",
-    "searchNothing": "Aucun résultat."
+    "searchNothing": "Aucun résultat.",
+    "mainTools": "Outils principaux",
+    "explorerView": "Explorateur",
+    "runArgumentsExample": "--level 2 \"mon fichier.txt\"",
+    "remoteUrlExample": "https://github.com/utilisateur/projet.git",
+    "outputBuild": "COMPILATION",
+    "outputDebug": "DÉBOGAGE",
+    "debugStopped": "Débogage arrêté",
+    "pausedBreakpoint": "point d'arrêt",
+    "pausedStep": "pas à pas",
+    "pausedPause": "mis en pause par vous",
+    "pausedException": "une exception a été levée",
+    "pausedEntry": "début du programme",
+    "macMinimize": "Placer dans le Dock",
+    "macZoom": "Réduire/agrandir",
+    "macFront": "Tout ramener au premier plan"
   },
   "platforms": {
     "darwin": {

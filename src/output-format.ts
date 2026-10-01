@@ -1,6 +1,10 @@
 // Output from builds and programs, as DOM nodes: ANSI colors become spans in
 // theme colors, and file locations such as src/gCanvas.cpp:12:5 become links.
 
+// The line the Output panel starts a build, run or debug session with, in
+// the window's or the backend's words.
+export const outputBanner = (title: string): string => `\n── ${title} ${'─'.repeat(Math.max(4, 45 - title.length))}\n`;
+
 const ansiNames = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'];
 
 export interface OutputStyle {

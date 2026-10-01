@@ -646,7 +646,22 @@
     "searchSymbolsHint": "Bir sınıfın, fonksiyonun veya değişkenin adını yazın.",
     "searchSymbolsBuild": "Sınıfları ve fonksiyonları arayabilmek için projeyi bir kez derleyin.",
     "searchSymbolsOff": "Semboller clangd'den gelir ve clangd şu an çalışmıyor.",
-    "searchNothing": "Hiçbir şey bulunamadı."
+    "searchNothing": "Hiçbir şey bulunamadı.",
+    "mainTools": "Ana araçlar",
+    "explorerView": "Gezgin",
+    "runArgumentsExample": "--level 2 \"dosyam.txt\"",
+    "remoteUrlExample": "https://github.com/kullanici/proje.git",
+    "outputBuild": "DERLEME",
+    "outputDebug": "HATA AYIKLAMA",
+    "debugStopped": "Hata ayıklama durduruldu",
+    "pausedBreakpoint": "kesme noktası",
+    "pausedStep": "adım",
+    "pausedPause": "siz duraklattınız",
+    "pausedException": "bir istisna (exception) oluştu",
+    "pausedEntry": "programın başı",
+    "macMinimize": "Küçült",
+    "macZoom": "Büyüt",
+    "macFront": "Tümünü Öne Getir"
   },
   "platforms": {
     "darwin": {
