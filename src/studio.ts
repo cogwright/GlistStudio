@@ -17,7 +17,7 @@ import { filesIn, searchFolders, type SearchFolder } from './file-search';
 import { createGitService } from './git-service';
 import { createCheckouts, gitRunner } from './checkout-update';
 import { isLanguage, languages, type Language, type Words } from './languages';
-import { outputBanner } from './output-format';
+import { errorOutput, outputBanner } from './output-format';
 import { createPluginService } from './plugins';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 import { queryPattern } from './text-search';
@@ -606,9 +606,13 @@ const runBuildCommand = (
   const child = spawn(executable, args, {
     cwd: workingDirectory,
     // Colored progress from CMake's makefiles, and colored diagnostics from the
-    // compiler in build trees created from now on; GCC and make in the editor's
-    // language where they have it.
-    env: ((base) => ({ ...base, CLICOLOR_FORCE: '1', CMAKE_COLOR_DIAGNOSTICS: 'ON', ...toolLanguage(language, base) }))(processEnvironment(toolchain)),
+    // compiler; GCC and make in the editor's language where they have it.
+    env: ((base) => ({
+      ...base, CLICOLOR_FORCE: '1', CMAKE_COLOR_DIAGNOSTICS: 'ON', ...toolLanguage(language, base),
+      // Clang's own: colors into a pipe too, as escape codes rather than through
+      // the Windows console, which the Output panel never sees. '#' keeps it quiet.
+      CCC_OVERRIDE_OPTIONS: ['#', '+-fcolor-diagnostics', '+-fansi-escape-codes', base.CCC_OVERRIDE_OPTIONS].filter(Boolean).join(' '),
+    }))(processEnvironment(toolchain)),
     windowsHide: true,
     detached: ownProcessGroup,
   });
@@ -954,7 +958,7 @@ const runProject = async (): Promise<ProcessResult> => {
     runProcess = child;
     sendToRenderer('run:status', { running: true });
     child.stdout.on('data', (chunk: Buffer) => sendToRenderer('run:output', chunk.toString()));
-    child.stderr.on('data', (chunk: Buffer) => sendToRenderer('run:output', chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => sendToRenderer('run:output', errorOutput(chunk.toString())));
     child.once('error', (error) => sendToRenderer('run:output', `${msg('launchFailed')}: ${error.message}\n`));
     child.once('close', (exitCode) => {
       if (runProcess !== child) return;
