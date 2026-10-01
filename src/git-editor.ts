@@ -353,15 +353,13 @@ export class GitEditor {
     if (!filePath || this.client.changeOf(filePath)?.state !== 'conflict') { marks.conflictLines.clear(); return; }
     const blocks = conflictBlocks(model.getLinesContent());
     const decoration = (from: number, to: number, className: string, label?: string): monaco.editor.IModelDeltaDecoration[] => (to < from ? []
-      : [{
-        range: new monaco.Range(from, 1, to, 1),
-        options: {
-          isWholeLine: true,
-          className,
-          // Whose side a marker line starts or ends, in words.
-          ...(label ? { after: { content: `  ${label}`, inlineClassName: 'git-conflict-label' } } : {}),
-        },
-      }]);
+      : [{ range: new monaco.Range(from, 1, to, 1), options: { isWholeLine: true, className } },
+        // Whose side a marker line starts or ends, in words, after the marker's own text:
+        // text at an empty range is not drawn, so the label spans the line.
+        ...(label ? [{
+          range: new monaco.Range(from, 1, from, model.getLineMaxColumn(from)),
+          options: { after: { content: `  ${label}`, inlineClassName: 'git-conflict-label' } },
+        }] : [])]);
     const [upper, lower] = this.mineIsUpper(filePath) ? ['mine', 'theirs'] as const : ['theirs', 'mine'] as const;
     marks.conflictLines.set(blocks.flatMap((block) => [
       ...decoration(block.start, block.start, `git-conflict-marker ${upper}`, t(upper)),
@@ -375,11 +373,11 @@ export class GitEditor {
   private lenses: monaco.languages.CodeLensProvider = { provideCodeLenses: () => ({ lenses: [], dispose: () => undefined }) };
 
   // Which part of a conflict is the person's own: above the ======= line in a
-  // merge, cherry-pick or revert, and below it in a rebase or a stash brought back,
+  // merge, cherry-pick, revert or patch applied, and below it in a rebase or a stash brought back,
   // by what the file's own repository is doing: the project's, the engine's or a plugin's.
   private mineIsUpper(filePath: string): boolean {
     const operation = this.client.repositoryOf(filePath)?.operation;
-    return operation === 'merge' || operation === 'cherry-pick' || operation === 'revert';
+    return operation === 'merge' || operation === 'cherry-pick' || operation === 'revert' || operation === 'am';
   }
 
   private registerConflictLenses(): void {

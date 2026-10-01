@@ -31,6 +31,7 @@ import { editorCommands, editorMenu, editorMenuPoint, type EditorMenuHooks } fro
 import { EditorLayout, maxGroups } from './editor-layout';
 import { CommandPalette, type PaletteCommand } from './command-palette';
 import { FindInFiles } from './find-in-files';
+import { applyPatchFiles, applyPatchFromClipboard } from './patches';
 import { SearchEverywhere, type SymbolHit } from './search-everywhere';
 import { declarationAt } from './symbol-signature';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
@@ -2500,6 +2501,8 @@ const configureMenus = (): void => {
       item(t('stashChanges'), () => { showGitPanel('stashes'); void gitPanel.stash(); }),
       item(t('gitLogMenu'), () => showGitPanel('log')),
       item(t('remotesMenu'), () => showGitPanel('remotes')),
+      item(t('applyPatch'), () => { void applyPatchFiles(git); }),
+      item(t('applyPatchClipboard'), () => { void applyPatchFromClipboard(git); }),
       { kind: 'separator' },
       { kind: 'heading', label: t('currentFile') },
       item(t('showDiff'), () => { if (file) void openWorkingDiff(file.path); }, { disabled: !tracked }),

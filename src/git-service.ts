@@ -278,6 +278,12 @@ exit 1
 
   const operation = async (repo: Repository): Promise<{ operation: GlistGitOperation | null; subject?: string }> => {
     const inGitDir = (file: string): string => path.join(repo.gitDir, file);
+    // git am keeps its state where an older rebase did; the file applying tells them apart.
+    if (existsSync(inGitDir('rebase-apply/applying'))) {
+      const message = await readFileIfThere(inGitDir('rebase-apply/final-commit'))
+        || (await readFileIfThere(inGitDir('rebase-apply/info'))).match(/^Subject: (.*)$/m)?.[1] || '';
+      return { operation: 'am', subject: message.split('\n')[0].trim() || undefined };
+    }
     if (existsSync(inGitDir('rebase-merge')) || existsSync(inGitDir('rebase-apply'))) {
       const head = (await readFileIfThere(inGitDir('rebase-merge/head-name')) || await readFileIfThere(inGitDir('rebase-apply/head-name'))).trim();
       return { operation: 'rebase', subject: head.replace(/^refs\/heads\//, '') || undefined };
@@ -378,6 +384,72 @@ exit 1
       if (found.code === 0) commits.unshift(...parseLog(text(found)));
     }
     return commits;
+  };
+
+  // A patch to share. Commits as git format-patch writes them, which git am
+  // makes again with their authors and messages, oldest first; merge commits
+  // have none of their own. Changes not committed yet as a diff against the
+  // last commit, new files too.
+  const patch = async (request: unknown): Promise<GlistGitPatch> => {
+    const asked = (request ?? {}) as { root?: unknown; commits?: unknown; paths?: unknown };
+    const repo = await repository(asked.root);
+    const repositoryName = path.basename(repo.folder);
+    if (Array.isArray(asked.commits) && asked.commits.length > 0) {
+      const hashes = new Set<string>();
+      for (const value of asked.commits) {
+        const resolved = text(await run(['rev-parse', '--verify', '--quiet', `${revision(value)}^{commit}`], { cwd: repo.folder })).trim();
+        if (!resolved) fail('invalidRevision');
+        hashes.add(resolved);
+      }
+      // In the order history has them, parents first: dates can tie, ancestry cannot.
+      const ordered = text(await run(['rev-list', '--topo-order', '--reverse', ...hashes], { cwd: repo.folder }))
+        .split('\n').filter((hash) => hashes.has(hash));
+      const parts: string[] = [];
+      for (const hash of ordered) {
+        const made = await run(['format-patch', '-1', '--stdout', '--binary', hash], { cwd: repo.folder });
+        if (made.code !== 0) fail('invalidRevision');
+        parts.push(text(made));
+      }
+      const name = ordered.length === 1
+        ? text(await run(['show', '-s', '--format=%f', ordered[0]], { cwd: repo.folder })).trim() || ordered[0].slice(0, 7)
+        : `${repositoryName}-${ordered.length}-commits`;
+      return { patch: parts.join(''), name: `${name}.patch`, commits: parts.filter(Boolean).length };
+    }
+    const chosen = new Set((Array.isArray(asked.paths) ? asked.paths : []).map((entry) => toGit(repo, entry)));
+    const changes = (await readStatus(repo)).changes.filter((change) => chosen.has(change.path) || (change.from !== undefined && chosen.has(change.from)));
+    const tracked = changes.filter((change) => change.state !== 'untracked').flatMap((change) => (change.from ? [change.from, change.path] : [change.path]));
+    const parts: string[] = [];
+    if (tracked.length > 0) {
+      const hasHead = (await run(['rev-parse', '--verify', '--quiet', 'HEAD'], { cwd: repo.folder })).code === 0;
+      // Before the first commit, against nothing.
+      const base = hasHead ? 'HEAD' : '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+      parts.push(text(await run(literal(['diff', '--binary', base, '--', ...tracked]), { cwd: repo.folder })));
+    }
+    for (const change of changes.filter((entry) => entry.state === 'untracked')) {
+      // git diff says 1 when there is a difference, which a new file always is.
+      parts.push(text(await run(['diff', '--no-index', '--binary', '--', '/dev/null', change.path], { cwd: repo.folder })));
+    }
+    return { patch: parts.join(''), name: `${repositoryName}-changes.patch`, commits: 0 };
+  };
+
+  // A patch brought in. Commits are made again with git am, their authors and
+  // messages kept; changes go into the files with git apply. Either way a
+  // clash leaves both sides marked, for the Commit view to resolve.
+  const applyPatch = async (repo: Repository, value: unknown): Promise<GlistGitResult> => {
+    const patchText = typeof value === 'string' ? value : '';
+    if (!/^(diff --git |--- |From [0-9a-f]{40} )/m.test(patchText)) fail('notPatch');
+    if (/^From [0-9a-f]{40} /.test(patchText)) {
+      const applied = await run(['am', '--3way'], { cwd: repo.folder, input: patchText, logged: true });
+      return applied.code === 0 ? done(say('patchCommitted')) : explain(applied);
+    }
+    const merged = await run(['apply', '--3way'], { cwd: repo.folder, input: patchText, logged: true });
+    if (merged.code === 0) return done(say('patchApplied'));
+    // Files changed since the last commit cannot take a three-way apply; straight into them then.
+    if (/does not match index/.test(merged.stderr)) {
+      const direct = await run(['apply'], { cwd: repo.folder, input: patchText, logged: true });
+      return direct.code === 0 ? done(say('patchApplied')) : explain(direct);
+    }
+    return explain(merged);
   };
 
   const commitDetails = async (value: unknown, root?: unknown): Promise<GlistGitCommitDetails> => {
@@ -564,6 +636,7 @@ exit 1
     const chosen = new Set((Array.isArray(action.paths) ? action.paths : []).map((entry) => toGit(repo, entry)));
     const { operation: current } = await operation(repo);
     if (current === 'rebase') fail('rebaseCommit');
+    if (current === 'am') fail('patchCommit');
     if (current) {
       // Concluding a merge commits everything it brought, with the files chosen added.
       if (parsed.changes.some((entry) => entry.state === 'conflict')) fail('unresolved');
@@ -652,7 +725,7 @@ exit 1
   const resolve = async (repo: Repository, filePath: unknown, side: unknown): Promise<GlistGitResult> => {
     const relative = toGit(repo, filePath);
     const { operation: current } = await operation(repo);
-    const mineStage = current === 'merge' || current === 'cherry-pick' || current === 'revert' ? 2 : 3;
+    const mineStage = current === 'merge' || current === 'cherry-pick' || current === 'revert' || current === 'am' ? 2 : 3;
     const stage: 2 | 3 = side === 'mine' ? mineStage : (5 - mineStage) as 2 | 3;
     const commands = await stageOf(repo, relative, stage)
       ? [literal(['checkout', stage === 2 ? '--ours' : '--theirs', '--', relative]), literal(['add', '--', relative])]
@@ -666,7 +739,14 @@ exit 1
     if (step === 'continue') {
       if (current === 'merge') fail('messageRequired');
       // The files resolved in the editor count as resolved.
-      return steps(repo, [['add', '-u', '--', '.'], [current, '--continue']]);
+      const added = await steps(repo, [['add', '-u', '--', '.']]);
+      if (!added.success) return added;
+      const continued = await run([current, '--continue'], { cwd: repo.folder, logged: true });
+      // A patch whose changes were all left out, keeping one's own side, has nothing left to commit: it is skipped.
+      if (continued.code !== 0 && current === 'am' && /No changes - did you forget to use 'git add'/.test(continued.stdout.toString() + continued.stderr)) {
+        return steps(repo, [['am', '--skip']]);
+      }
+      return continued.code === 0 ? done() : explain(continued);
     }
     if (step === 'skip' && current !== 'merge') return steps(repo, [[current, '--skip']]);
     return steps(repo, [[current, '--abort']]);
@@ -761,6 +841,7 @@ exit 1
       case 'rollback': return rollback(repo, Array.isArray(action.paths) ? action.paths : []);
       case 'ignore': return ignore(repo, Array.isArray(action.paths) ? action.paths : []);
       case 'resolve': return resolve(repo, action.path, action.side);
+      case 'apply-patch': return applyPatch(repo, action.patch);
       case 'unresolve': return steps(repo, [literal(['checkout', '-m', '--', toGit(repo, action.path)])]);
       case 'mark-resolved': {
         const paths = (Array.isArray(action.paths) ? action.paths : []).map((entry) => toGit(repo, entry));
@@ -879,6 +960,7 @@ exit 1
       gitWatch: (on: unknown) => { watching = on === true; return rewatch(); },
       gitLog: log,
       gitCommitDetails: commitDetails,
+      gitPatch: patch,
       gitBranches: branches,
       gitTags: tags,
       gitRemotes: remotes,

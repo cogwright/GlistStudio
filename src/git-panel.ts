@@ -6,6 +6,8 @@ import { graphRows, type GraphRow } from './git-graph';
 import { icon, type IconName } from './icons';
 import { t, type TranslationKey } from './localization';
 import { baseName } from './paths';
+import { applyPatchFiles, applyPatchFromClipboard, copyPatch, savePatch } from './patches';
+import { isMac } from './shortcuts';
 import { fullTime, relativeTime, shortDate } from './time';
 
 // The Git tab under the editor, like JetBrains' Git tool window: the Log with
@@ -136,7 +138,9 @@ class LogView {
   private readonly list = element('div', 'log-list');
   private readonly details = element('div', 'log-details');
   private commits: GlistGitCommit[] = [];
+  // The commit the details show, and every one chosen with Ctrl or Shift, for patches.
   private selected: string | null = null;
+  private chosen = new Set<string>();
   private complete = false;
   private loading = false;
   private path: string | null = null;
@@ -162,7 +166,8 @@ class LogView {
     this.pathChip.addEventListener('click', () => { this.path = null; void this.load(); });
     toolbar.append(this.search, this.refSelect, this.pathChip, element('span', 'git-toolbar-space'),
       toolButton('refresh', 'gitRefresh', () => { void this.load(); }),
-      toolButton('repo-fetch', 'fetch', () => { void this.client.run({ kind: 'fetch' }, { root: this.place.root, busy: 'fetching', success: t('fetched') }).then(() => this.load()); }));
+      toolButton('repo-fetch', 'fetch', () => { void this.client.run({ kind: 'fetch' }, { root: this.place.root, busy: 'fetching', success: t('fetched') }).then(() => this.load()); }),
+      this.applyButton());
     this.list.tabIndex = 0;
     this.list.setAttribute('role', 'grid');
     this.list.addEventListener('scroll', () => {
@@ -287,7 +292,7 @@ class LogView {
       const row = element('div', 'log-row');
       row.dataset.hash = commit.hash;
       row.setAttribute('role', 'row');
-      row.classList.toggle('selected', commit.hash === this.selected);
+      row.classList.toggle('selected', this.chosen.has(commit.hash));
       const subject = element('span', 'log-subject');
       commit.refs.forEach((name) => subject.append(refBadge(name, current)));
       subject.append(element('span', 'log-subject-text', commit.subject));
@@ -295,8 +300,17 @@ class LogView {
       const date = element('span', 'log-date', relativeTime(commit.date * 1000));
       date.title = fullTime(commit.date * 1000);
       row.append(graphElement(rows[index], lanes), subject, element('span', 'log-author', commit.author), date);
-      row.addEventListener('click', () => this.choose(commit.hash));
-      row.addEventListener('contextmenu', (event) => { this.choose(commit.hash); showMenu(event, this.menu(commit)); });
+      row.addEventListener('click', (event) => {
+        if (isMac ? event.metaKey : event.ctrlKey) this.toggle(commit.hash);
+        else if (event.shiftKey && this.selected) this.extend(commit.hash);
+        else this.choose(commit.hash);
+      });
+      row.addEventListener('contextmenu', (event) => {
+        // Several chosen: what goes for all of them; otherwise this one.
+        if (this.chosen.size > 1 && this.chosen.has(commit.hash)) { showMenu(event, this.manyMenu()); return; }
+        this.choose(commit.hash);
+        showMenu(event, this.menu(commit));
+      });
       return row;
     }));
     this.list.scrollTop = scroll;
@@ -305,12 +319,60 @@ class LogView {
 
   private choose(hash: string, reveal = false): void {
     this.selected = hash;
-    this.list.querySelectorAll<HTMLElement>('.log-row').forEach((row) => {
-      const active = row.dataset.hash === hash;
-      row.classList.toggle('selected', active);
-      if (active && reveal) row.scrollIntoView({ block: 'center' });
-    });
+    this.chosen = new Set([hash]);
+    this.markChosen();
+    if (reveal) this.list.querySelector(`[data-hash="${hash}"]`)?.scrollIntoView({ block: 'center' });
     void this.showDetails(hash);
+  }
+
+  // Ctrl (Cmd on a Mac) adds a commit to the chosen ones or takes it out.
+  private toggle(hash: string): void {
+    if (this.chosen.has(hash) && this.chosen.size > 1) this.chosen.delete(hash);
+    else this.chosen.add(hash);
+    this.selected = hash;
+    this.markChosen();
+    void this.showDetails(hash);
+  }
+
+  // Shift chooses every commit from the last one chosen to this one.
+  private extend(hash: string): void {
+    const from = this.commits.findIndex((commit) => commit.hash === this.selected);
+    const to = this.commits.findIndex((commit) => commit.hash === hash);
+    if (from < 0 || to < 0) { this.choose(hash); return; }
+    this.commits.slice(Math.min(from, to), Math.max(from, to) + 1).forEach((commit) => this.chosen.add(commit.hash));
+    this.markChosen();
+  }
+
+  private markChosen(): void {
+    this.list.querySelectorAll<HTMLElement>('.log-row').forEach((row) => row.classList.toggle('selected', this.chosen.has(row.dataset.hash ?? '')));
+  }
+
+  private async patchOf(commits: string[], save: boolean): Promise<void> {
+    const made = await this.client.patch({ root: this.place.root, commits });
+    if (made) { if (save) savePatch(made); else await copyPatch(made); }
+  }
+
+  private manyMenu(): MenuEntry[] {
+    const commits = [...this.chosen];
+    const count = String(commits.length);
+    return [
+      { label: t('copyCommitsAsPatch').replace('{count}', count), run: () => { void this.patchOf(commits, false); } },
+      { label: t('saveCommitsAsPatch').replace('{count}', count), run: () => { void this.patchOf(commits, true); } },
+    ];
+  }
+
+  private applyButton(): HTMLButtonElement {
+    const button = toolButton('diff', 'applyPatch', () => undefined);
+    button.addEventListener('click', (event) => this.applyPatchMenu(event));
+    return button;
+  }
+
+  // Patches from files or the clipboard, into the repository the tab shows.
+  applyPatchMenu(event: MouseEvent): void {
+    showMenu(event, [
+      { label: t('applyPatch'), run: () => { void applyPatchFiles(this.client, this.place.root).then(() => this.load()); } },
+      { label: t('applyPatchClipboard'), run: () => { void applyPatchFromClipboard(this.client, this.place.root).then(() => this.load()); } },
+    ]);
   }
 
   private keydown(event: KeyboardEvent): void {
@@ -366,6 +428,8 @@ class LogView {
     const branch = this.client.repositoryAt(root)?.branch;
     return [
       { label: t('copyHash'), run: () => { void navigator.clipboard.writeText(commit.hash); } },
+      { label: t('copyAsPatch'), run: () => { void this.patchOf([commit.hash], false); } },
+      { label: t('saveAsPatch'), run: () => { void this.patchOf([commit.hash], true); } },
       'separator',
       { label: t('checkoutRevision'), run: () => this.hooks.checkout(commit.hash, root) },
       { label: t('newBranch'), run: () => this.hooks.newBranch(commit.hash, commit.short, root) },
