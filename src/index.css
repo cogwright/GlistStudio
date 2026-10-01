@@ -1033,6 +1033,11 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .about-commit:hover { text-decoration: underline; }
 .about-copy { margin-top: 20px; }
 
+/* The word asking for a star on GitHub, its button with a star. */
+.star-text { margin: 10px 0 0; color: var(--ui-fg); font-size: 13px; line-height: 1.5; }
+.star-dialog #star-open { gap: 6px; }
+.star-dialog #star-open svg.icon { width: 14px; height: 14px; }
+
 /* A page of Settings: its sections spaced apart, each headed alike. */
 .settings-page .settings-section + .settings-section { margin-top: 28px; padding-top: 0; border-top: 0; }
 .settings-page legend, .studio-dialog .settings-page > .settings-section > label:first-child { margin: 0 0 8px; padding: 0; color: var(--ui-fg-strong); font-size: 13px; font-weight: 600; }

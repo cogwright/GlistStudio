@@ -21,6 +21,7 @@ import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isMac, primaryKey, shortcutLabel } from './shortcuts';
+import { setUpStarPrompt } from './star-prompt';
 import { setUpGlistInstaller } from './glist-installer';
 import { TargetPicker } from './targets';
 import { canUpdate, checkForUpdates, setUpUpdates } from './updates';
@@ -2132,6 +2133,13 @@ const disposeOpenFiles = (): void => {
 
 const hasDirtyFiles = (): boolean => [...openFiles.values()].some(isDirty);
 
+// After a project opens with Glist Engine installed, a star for GlistEngine on GitHub, asked for at most twice.
+const askForStar = setUpStarPrompt(
+  { dialog: element<HTMLDialogElement>('#star-dialog'), star: element<HTMLButtonElement>('#star-open') },
+  () => window.glistAPI.glistStatus().then((status) => status.installed),
+  () => { void window.glistAPI.openEngineRepository(); },
+);
+
 const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> => {
   await debug.stop();
   disposeOpenFiles(); activeProject = selected;
@@ -2155,6 +2163,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   debug.setProject(selected.root);
   targetPicker.projectChanged(selected.root);
   runArguments.projectChanged(selected.root, selected.name);
+  void askForStar();
 };
 
 const openProjectWith = async (open: () => Promise<GlistProjectInfo | null>): Promise<void> => {

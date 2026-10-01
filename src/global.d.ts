@@ -582,6 +582,8 @@ interface Window {
     // Whether CMake configures again when its files change.
     setAutoConfigure(on: boolean): Promise<void>;
     openEngineSite(): Promise<void>;
+    // GlistEngine/GlistEngine on GitHub, to star.
+    openEngineRepository(): Promise<void>;
     startClangd(): Promise<GlistClangdStatus>;
     sendClangd(message: unknown): Promise<void>;
     startDebugging(): Promise<GlistDebugStart>;
