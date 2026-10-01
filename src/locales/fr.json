@@ -817,7 +817,7 @@
     "cloneStopped": "git clone s'est arrêté avec le code {code}"
   },
   "updates": {
-    "notFromSource": "{name} n'a pas été installé depuis {source}, et aucun de ses dépôts distants n'est {source}: il n'est donc pas mis à jour depuis là.",
+    "notFromSource": "{name} n'a pas été installé depuis {source}, et aucun de ses dépôts distants n'est {source}: il n'est donc pas mis à jour depuis là. Ses outils Git peuvent le mettre à jour depuis ses propres dépôts distants.",
     "otherBranch": "{name} est sur la branche {branch}; les mises à jour concernent {main}.",
     "detached": "{name} est sur un commit plutôt que sur une branche: il n'est donc pas mis à jour.",
     "conflicts": "Les modifications de {name} sont en conflit avec les nouvelles de {source}.",

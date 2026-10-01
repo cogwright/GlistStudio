@@ -15,7 +15,7 @@ import { glistCodeStyle } from './default-code-style';
 import { cmakeInputs, pluginsInCmake, synchronizeCmake, type CmakeChange } from './cmake';
 import { filesIn, searchFolders, type SearchFolder } from './file-search';
 import { createGitService } from './git-service';
-import { createCheckouts, gitRunner } from './checkout-update';
+import { createCheckouts, githubForks, gitRunner } from './checkout-update';
 import { isLanguage, languages, type Language, type Words } from './languages';
 import { errorOutput, outputBanner } from './output-format';
 import { createPluginService } from './plugins';
@@ -1516,6 +1516,7 @@ const engineCheckouts = createCheckouts({
   git: gitRunner(() => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory())), (entry) => sendToRenderer('git:console', entry), () => language),
   site: 'https://github.com',
   isProtected: (folder, remote, branch) => git.protects(folder, remote, branch),
+  isForkOf: githubForks('https://api.github.com'),
   language: () => language,
 });
 const engineCheckout = async (refresh?: unknown): Promise<GlistEngineCheckout> => {

@@ -817,7 +817,7 @@
     "cloneStopped": "git clone {code} koduyla durdu"
   },
   "updates": {
-    "notFromSource": "{name}, {source} üzerinden kurulmadı ve uzak depolarından hiçbiri {source} değil; bu nedenle oradan güncellenemez.",
+    "notFromSource": "{name}, {source} üzerinden kurulmadı ve uzak depolarından hiçbiri {source} değil; bu nedenle oradan güncellenemez. Git araçlarıyla kendi uzak depolarından güncellenebilir.",
     "otherBranch": "{name}, {branch} dalında bulunuyor; güncellemeler ise {main} dalı içindir.",
     "detached": "{name} bir dal yerine doğrudan bir commit üzerinde bulunuyor (detached), bu yüzden güncellenemez.",
     "conflicts": "{name} içerisindeki değişiklikler, {source} üzerinden gelen yeni değişikliklerle çakışıyor.",
