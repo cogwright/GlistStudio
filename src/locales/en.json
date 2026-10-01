@@ -409,6 +409,8 @@
     "pluginFrom": "From {source}",
     "pluginsNeedGit": "Installing and updating plugins needs Git. Install it from git-scm.com.",
     "pluginsListFailed": "GlistPlugins could not be reached",
+    "pluginsLoading": "Loading plugins...",
+    "pluginsChecking": "Checking for updates...",
     "createRepository": "Create Git Repository",
     "gitNoProject": "Open a project to see its changes.",
     "gitMissing": "Git was not found on this computer. Install it from git-scm.com.",

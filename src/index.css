@@ -982,6 +982,11 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .plugins-list { flex: 1; overflow: auto; padding-bottom: 12px; }
 .plugins-heading { padding: 10px 12px 4px; color: var(--ui-fg-muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
 .plugins-message { margin: 8px 12px; color: var(--ui-fg-muted); font-size: 12px; line-height: 1.4; }
+/* The list loading or checking for updates, with its icon turning. */
+.plugins-loading { display: flex; align-items: center; gap: 7px; margin: 8px 12px; color: var(--ui-fg-muted); font-size: 12px; }
+.plugins-loading svg.icon { width: 14px; height: 14px; flex: 0 0 auto; animation: plugins-turn 1s linear infinite; }
+@keyframes plugins-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .plugins-loading svg.icon { animation: none; } }
 .plugin-row { padding: 8px 12px; border-bottom: 1px solid var(--ui-border); }
 .plugin-header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .plugin-name { min-width: 0; flex: 1 1 100px; overflow: hidden; color: var(--ui-fg-strong); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }

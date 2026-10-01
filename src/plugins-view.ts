@@ -26,11 +26,14 @@ export const pluginTarget = ({ name, source = 'GlistPlugins' }: GlistPlugin): Ch
 export class PluginsView {
   private list: GlistPluginList | null = null;
   private busy = new Set<string>();
+  // Loads of the list that say so, and update checks, under way: the top of the list tells which.
+  private loading = 0;
+  private checking = 0;
 
   constructor(
     private readonly host: HTMLElement,
     private readonly search: HTMLInputElement,
-    refresh: HTMLButtonElement,
+    private readonly refresh: HTMLButtonElement,
     private readonly activity: HTMLElement,
     private readonly hooks: PluginsHooks,
   ) {
@@ -39,14 +42,32 @@ export class PluginsView {
     refresh.addEventListener('click', () => { void this.load(true).then(() => this.checkUpdates()); });
   }
 
+  // The first list, which may come from GitHub, and one asked for with Refresh
+  // say they are loading; the ones when the view is shown again are quick and quiet.
   async load(askGlistPlugins = false): Promise<void> {
-    this.list = await window.glistAPI.listPlugins(askGlistPlugins).catch((error: Error): GlistPluginList => ({ plugins: [], folder: '', gitFound: true, error: error.message }));
+    const told = askGlistPlugins || !this.list;
+    if (told) {
+      this.loading += 1;
+      this.render();
+    }
+    try {
+      this.list = await window.glistAPI.listPlugins(askGlistPlugins).catch((error: Error): GlistPluginList => ({ plugins: [], folder: '', gitFound: true, error: error.message }));
+    } finally {
+      if (told) this.loading -= 1;
+    }
     this.render();
   }
 
   // Fetches installed plugins' new commits, and gives the ones to bring in.
   async checkUpdates(): Promise<GlistPlugin[]> {
-    const outdated = await window.glistAPI.checkPluginUpdates().catch((): GlistPlugin[] => []);
+    this.checking += 1;
+    this.render();
+    let outdated: GlistPlugin[];
+    try {
+      outdated = await window.glistAPI.checkPluginUpdates().catch((): GlistPlugin[] => []);
+    } finally {
+      this.checking -= 1;
+    }
     await this.load();
     return outdated;
   }
@@ -92,10 +113,16 @@ export class PluginsView {
     const list = this.list;
     const outdated = list?.plugins.filter((plugin) => (plugin.behind ?? 0) > 0 && plugin.official && plugin.branch === plugin.defaultBranch) ?? [];
     this.activity.classList.toggle('has-updates', outdated.length > 0);
-    if (!list) return;
+    const working = this.loading > 0 ? t('pluginsLoading') : this.checking > 0 ? t('pluginsChecking') : '';
+    this.refresh.disabled = this.loading > 0;
+    this.host.setAttribute('aria-busy', String(Boolean(working)));
+    const nodes: HTMLElement[] = working ? [this.working(working)] : [];
+    if (!list) {
+      this.host.replaceChildren(...nodes);
+      return;
+    }
     const words = this.search.value.trim().toLowerCase();
     const shown = list.plugins.filter((plugin) => !words || `${plugin.name} ${plugin.description}`.toLowerCase().includes(words));
-    const nodes: HTMLElement[] = [];
     if (!list.gitFound) nodes.push(this.message(t('pluginsNeedGit')));
     if (list.error) nodes.push(this.message(`${t('pluginsListFailed')}: ${list.error}`));
     const section = (title: string, plugins: GlistPlugin[]): void => {
@@ -108,6 +135,14 @@ export class PluginsView {
     section(t('pluginsInstalled'), shown.filter((plugin) => plugin.installed));
     section(t('pluginsAvailable'), shown.filter((plugin) => !plugin.installed));
     this.host.replaceChildren(...nodes);
+  }
+
+  private working(text: string): HTMLElement {
+    const line = document.createElement('p');
+    line.className = 'plugins-loading';
+    line.setAttribute('role', 'status');
+    line.append(icon('refresh'), Object.assign(document.createElement('span'), { textContent: text }));
+    return line;
   }
 
   private message(text: string): HTMLElement {

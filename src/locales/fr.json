@@ -409,6 +409,8 @@
     "pluginFrom": "Depuis {source}",
     "pluginsNeedGit": "Installer et mettre à jour des plugins demande Git. Installez-le depuis git-scm.com.",
     "pluginsListFailed": "GlistPlugins est injoignable",
+    "pluginsLoading": "Chargement des plugins...",
+    "pluginsChecking": "Recherche de mises à jour...",
     "createRepository": "Créer un dépôt Git",
     "gitNoProject": "Ouvrez un projet pour voir ses modifications.",
     "gitMissing": "Git est introuvable sur cet ordinateur. Installez-le depuis git-scm.com.",

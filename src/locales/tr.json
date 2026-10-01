@@ -409,6 +409,8 @@
     "pluginFrom": "Kaynak: {source}",
     "pluginsNeedGit": "Eklentileri kurmak ve güncellemek için Git gereklidir. git-scm.com adresinden kurabilirsiniz.",
     "pluginsListFailed": "GlistPlugins'e ulaşılamadı",
+    "pluginsLoading": "Eklentiler yükleniyor...",
+    "pluginsChecking": "Güncellemeler denetleniyor...",
     "createRepository": "Git Deposu Oluştur",
     "gitNoProject": "Değişikliklerini görmek için bir proje açın.",
     "gitMissing": "Bu bilgisayarda Git bulunamadı. git-scm.com adresinden kurabilirsiniz.",
