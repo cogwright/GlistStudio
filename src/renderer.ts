@@ -914,6 +914,37 @@ const applyCodeStyle = async (file: OpenFile): Promise<void> => {
   });
 };
 
+const formatOnSave = (): boolean => {
+  try { return window.localStorage.getItem('glist-studio-format-on-save') !== 'off'; } catch { return true; }
+};
+
+// Before a C or C++ file is saved, it is formatted by its .clang-format, as one
+// step Undo takes back. Without a .clang-format, or with clangd not answering
+// in time, it is saved as it is.
+const formatForSaving = async (file: OpenFile): Promise<void> => {
+  if (!formatOnSave() || file.readOnly || file.model.getLanguageId() !== 'cpp') return;
+  const style = await window.glistAPI.codeStyle(file.path).catch((): null => null);
+  if (!style || style.disabled) return;
+  const version = file.model.getVersionId();
+  const edits = await Promise.race([
+    clangd.formatEdits(file.model),
+    new Promise<null>((resolve) => { window.setTimeout(() => resolve(null), 3000); }),
+  ]);
+  // Typed into meanwhile, the edits would be for text that is gone.
+  if (!edits || edits.length === 0 || file.model.getVersionId() !== version) return;
+  const operations = edits.map((edit) => ({ range: edit.range, text: edit.text }));
+  // Through an editor showing it, the one worked in first, so its cursor keeps its place.
+  const view = currentEditor().getModel() === file.model
+    ? currentEditor() : groupViews.find((candidate) => candidate.editor.getModel() === file.model)?.editor;
+  if (view) {
+    view.pushUndoStop();
+    view.executeEdits('clang-format', operations);
+    view.pushUndoStop();
+  } else {
+    file.model.pushEditOperations([], operations, () => null);
+  }
+};
+
 // Opens a tab on a model that matches the file on disk, on the side being
 // worked in, without switching to it.
 const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
@@ -924,6 +955,7 @@ const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boo
 
 // The text is taken once, so anything typed while it is written stays unsaved.
 const saveFile = async (file: OpenFile): Promise<void> => {
+  await formatForSaving(file);
   const version = file.model.getAlternativeVersionId();
   await window.glistAPI.writeFile(file.path, file.model.getValue());
   file.savedVersion = version;
@@ -2811,6 +2843,11 @@ window.addEventListener('beforeunload', (event) => {
 
 window.glistAPI.onBuildOutput((text) => { appendOutput(text); buildLog = (buildLog + text).slice(-200000); });
 // Settings > Build: CMake configures again when its files change, unless turned off.
+const formatOnSaveInput = element<HTMLInputElement>('#format-on-save');
+formatOnSaveInput.checked = formatOnSave();
+formatOnSaveInput.addEventListener('change', () => {
+  try { window.localStorage.setItem('glist-studio-format-on-save', formatOnSaveInput.checked ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
+});
 const autoConfigureInput = element<HTMLInputElement>('#auto-configure');
 autoConfigureInput.checked = ((): boolean => { try { return window.localStorage.getItem('glist-studio-auto-configure') !== 'off'; } catch { return true; } })();
 void window.glistAPI.setAutoConfigure(autoConfigureInput.checked);

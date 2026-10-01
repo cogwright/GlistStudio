@@ -275,6 +275,16 @@ export class ClangdClient {
     }
   }
 
+  // The edits that format a whole document by its .clang-format, for format on
+  // save; null when clangd cannot format it now.
+  async formatEdits(model: monaco.editor.ITextModel): Promise<monaco.languages.TextEdit[] | null> {
+    const options = model.getOptions();
+    const edits = await this.query<TextEdit[]>(model, 'textDocument/formatting', {
+      options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
+    });
+    return edits?.map(toTextEdit) ?? null;
+  }
+
   async switchSourceHeader(model: monaco.editor.ITextModel): Promise<monaco.Uri | null> {
     const uri = model.uri.toString();
     if (!this.documents.has(uri)) return null;
