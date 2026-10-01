@@ -1,6 +1,7 @@
 // eslint-disable-next-line import/no-unresolved
 import * as monaco from 'monaco-editor/editor/editor.api';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import { expressionAt } from './debug-expression';
 import { icon } from './icons';
 import { t } from './localization';
 import { baseName, pathUri, uriPath } from './paths';
@@ -53,6 +54,8 @@ export class Debugger {
   private readonly verified = new Map<number, { uri: string; line: number }>();
   // Stops seen, so a reply to Continue or a step can tell whether one came before it.
   private stops = 0;
+  // The last hover's value, which both hovers ask for: this one shows it, clangd's stands aside.
+  private hovered: { key: string; value: Promise<monaco.languages.Hover | null> } | null = null;
   private readonly unverified = new Set<string>();
   private readonly decorations = new Map<string, string[]>();
   private current: { model: monaco.editor.ITextModel; ids: string[] } | null = null;
@@ -389,16 +392,37 @@ export class Debugger {
     await this.renderVariables();
   }
 
-  private async hover(model: monaco.editor.ITextModel, position: monaco.Position): Promise<monaco.languages.Hover | null> {
-    const word = model.getWordAtPosition(position);
-    if (this.state !== 'paused' || !this.frame || !word) return null;
+  // While paused, the value under the pointer instead of its declaration: a
+  // variable, or a member reached through . or ->, with its members, or a
+  // list's items. Null where the debugger has no value, and clangd's hover shows.
+  hover(model: monaco.editor.ITextModel, position: monaco.Position): Promise<monaco.languages.Hover | null> {
+    const frame = this.frame;
+    const found = this.state === 'paused' && frame ? expressionAt(model.getLineContent(position.lineNumber), position.column) : null;
+    if (!frame || !found) return Promise.resolve(null);
+    const key = [this.stops, frame.id, model.uri.toString(), model.getVersionId(), position.lineNumber, found.start, found.expression].join(':');
+    if (this.hovered?.key !== key) this.hovered = { key, value: this.valueOf(found, position.lineNumber, frame.id) };
+    return this.hovered.value;
+  }
+
+  private async valueOf(found: NonNullable<ReturnType<typeof expressionAt>>, line: number, frameId: number): Promise<monaco.languages.Hover | null> {
     const result = await this.request<DebugProtocol.EvaluateResponse['body']>('evaluate', {
-      expression: word.word, frameId: this.frame.id, context: 'hover',
+      expression: found.expression, frameId, context: 'hover',
     }).catch((): null => null);
     if (!result) return null;
+    const members = result.variablesReference
+      ? (await this.request<DebugProtocol.VariablesResponse['body']>('variables', { variablesReference: result.variablesReference }).catch((): null => null))?.variables ?? []
+      : [];
+    const shown = members.slice(0, 40);
+    // An object's own value is only its address or its members again; its members say more.
+    const plain = members.length > 0 && /(^|\s)@\s*0x[0-9a-f]+$|^\{.*\}$/i.test(result.result.trim());
+    const lines = [
+      `${result.type ? `${result.type} ` : ''}${found.expression}${plain ? '' : ` = ${result.result}`}`,
+      ...shown.map((member) => `  ${member.name} = ${member.value}`),
+      ...(members.length > shown.length ? ['  ...'] : []),
+    ];
     return {
-      range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
-      contents: [{ value: `\`\`\`cpp\n${word.word} = ${result.result}\n\`\`\`` }],
+      range: new monaco.Range(line, found.start, line, found.end),
+      contents: [{ value: `\`\`\`cpp\n${lines.join('\n')}\n\`\`\`` }],
     };
   }
 
