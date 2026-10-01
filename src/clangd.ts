@@ -283,6 +283,23 @@ export class ClangdClient {
     return target ? parseUri(target) : null;
   }
 
+  // Classes, functions and the rest in the project and the engine and plugins
+  // it builds with, from clangd's index, best first. Null while clangd is not
+  // running; empty until the project has been built once.
+  async workspaceSymbols(query: string): Promise<SymbolInformation[] | null> {
+    if (!this.capabilities?.workspaceSymbolProvider) return null;
+    try {
+      return (await this.request<SymbolInformation[] | null>('workspace/symbol', { query })) ?? [];
+    } catch {
+      return null;
+    }
+  }
+
+  // No compile commands yet: nothing is indexed until the first build.
+  get waitingForBuild(): boolean {
+    return this.restartAfterBuild;
+  }
+
   private open(model: monaco.editor.ITextModel): void {
     const uri = model.uri.toString();
     if (!this.capabilities || this.documents.has(uri)) return;

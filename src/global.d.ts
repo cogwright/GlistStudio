@@ -24,6 +24,43 @@ interface GlistDependency {
   exists: boolean;
 }
 
+// Find in Files: the text, how to match it, and where: the project, or all
+// with the engine and the plugins it names.
+interface GlistSearchQuery {
+  text: string;
+  matchCase?: boolean;
+  wholeWords?: boolean;
+  regex?: boolean;
+  scope?: 'project' | 'all';
+}
+
+interface GlistFoundFile {
+  path: string;
+  // From its folder, with / between names.
+  relative: string;
+  // The project's, engine's or plugin's name.
+  owner: string;
+  kind: 'project' | 'engine' | 'plugin';
+}
+
+interface GlistSearchMatch {
+  // 1-based.
+  line: number;
+  column: number;
+  length: number;
+  // The line without its indent, or the part of a long one around the match, and where the match starts in it.
+  preview: string;
+  previewStart: number;
+}
+
+interface GlistSearchResult {
+  files: Array<GlistFoundFile & { matches: GlistSearchMatch[] }>;
+  matches: number;
+  // More matches were there than are given.
+  limited: boolean;
+  folders: Array<{ path: string; name: string; kind: GlistFoundFile['kind'] }>;
+}
+
 // A project Open Project offers; lastOpened is when the studio last opened it.
 interface GlistProjectSummary {
   root: string;
@@ -478,6 +515,10 @@ interface Window {
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
     listDependencies(): Promise<GlistDependency[]>;
+    // Find in Files; a new search stops the one before.
+    searchText(query: GlistSearchQuery): Promise<GlistSearchResult>;
+    // The project's files, and the engine's and plugins' with dependencies.
+    listFiles(dependencies: boolean): Promise<GlistFoundFile[]>;
     listWorkspaceDirectory(directoryPath: string): Promise<GlistFileEntry[]>;
     getProjectsDirectory(): Promise<string>;
     listProjects(): Promise<GlistProjectSummary[]>;

@@ -55,6 +55,24 @@ import chevronUp from '@vscode/codicons/src/icons/chevron-up.svg';
 import chevronDown from '@vscode/codicons/src/icons/chevron-down.svg';
 import info from '@vscode/codicons/src/icons/info.svg';
 import errorIcon from '@vscode/codicons/src/icons/error.svg';
+import caseSensitive from '@vscode/codicons/src/icons/case-sensitive.svg';
+import wholeWord from '@vscode/codicons/src/icons/whole-word.svg';
+import regex from '@vscode/codicons/src/icons/regex.svg';
+import symbolClass from '@vscode/codicons/src/icons/symbol-class.svg';
+import symbolConstant from '@vscode/codicons/src/icons/symbol-constant.svg';
+import symbolEnum from '@vscode/codicons/src/icons/symbol-enum.svg';
+import symbolEnumMember from '@vscode/codicons/src/icons/symbol-enum-member.svg';
+import symbolEvent from '@vscode/codicons/src/icons/symbol-event.svg';
+import symbolField from '@vscode/codicons/src/icons/symbol-field.svg';
+import symbolInterface from '@vscode/codicons/src/icons/symbol-interface.svg';
+import symbolMethod from '@vscode/codicons/src/icons/symbol-method.svg';
+import symbolMisc from '@vscode/codicons/src/icons/symbol-misc.svg';
+import symbolNamespace from '@vscode/codicons/src/icons/symbol-namespace.svg';
+import symbolOperator from '@vscode/codicons/src/icons/symbol-operator.svg';
+import symbolParameter from '@vscode/codicons/src/icons/symbol-parameter.svg';
+import symbolProperty from '@vscode/codicons/src/icons/symbol-property.svg';
+import symbolStructure from '@vscode/codicons/src/icons/symbol-structure.svg';
+import symbolVariable from '@vscode/codicons/src/icons/symbol-variable.svg';
 
 // Interface icons: Codicons, the set VS Code uses (CC BY 4.0, see THIRD_PARTY_NOTICES.md).
 // They are inline SVG, so they take the color of the text around them.
@@ -62,6 +80,7 @@ const icons = {
   add,
   'arrow-down': arrowDown,
   'arrow-up': arrowUp,
+  'case-sensitive': caseSensitive,
   check,
   'chevron-down': chevronDown,
   'chevron-right': chevronRight,
@@ -100,6 +119,7 @@ const icons = {
   package: packageIcon,
   play,
   refresh,
+  regex,
   remote,
   'repo-fetch': repoFetch,
   'repo-pull': repoPull,
@@ -109,11 +129,27 @@ const icons = {
   'settings-gear': settingsGear,
   'source-control': sourceControl,
   'split-horizontal': splitHorizontal,
+  'symbol-class': symbolClass,
+  'symbol-constant': symbolConstant,
+  'symbol-enum': symbolEnum,
+  'symbol-enum-member': symbolEnumMember,
+  'symbol-event': symbolEvent,
+  'symbol-field': symbolField,
+  'symbol-interface': symbolInterface,
+  'symbol-method': symbolMethod,
+  'symbol-misc': symbolMisc,
+  'symbol-namespace': symbolNamespace,
+  'symbol-operator': symbolOperator,
+  'symbol-parameter': symbolParameter,
+  'symbol-property': symbolProperty,
+  'symbol-structure': symbolStructure,
+  'symbol-variable': symbolVariable,
   sync,
   tag,
   tools,
   trash,
   warning,
+  'whole-word': wholeWord,
   'zoom-in': zoomIn,
   'zoom-out': zoomOut,
 };

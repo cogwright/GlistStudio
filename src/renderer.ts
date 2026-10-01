@@ -30,6 +30,9 @@ import { showMenu, type MenuEntry } from './context-menu';
 import { editorCommands, editorMenu, editorMenuPoint, type EditorMenuHooks } from './editor-menu';
 import { EditorLayout, maxGroups } from './editor-layout';
 import { CommandPalette, type PaletteCommand } from './command-palette';
+import { FindInFiles } from './find-in-files';
+import { SearchEverywhere, type SymbolHit } from './search-everywhere';
+import { declarationAt } from './symbol-signature';
 import { cloneDialog, formDialog, identityDialog, pushDialog, type PushEntry } from './git-dialogs';
 import { PluginsView, pluginTarget } from './plugins-view';
 import { EngineView, engineTarget } from './engine-view';
@@ -949,31 +952,34 @@ const revealLocation = async (uri: monaco.Uri, selection?: monaco.IRange | monac
   return true;
 };
 
+// A model for a file without a tab, for a peek view or Find in Files' preview.
+const loadModel = async (uri: monaco.Uri): Promise<monaco.editor.ITextModel | null> => {
+  const existing = monaco.editor.getModel(uri);
+  if (existing) return existing;
+  try {
+    const filePath = uriPath(uri);
+    const contents = await readContents(filePath);
+    const loaded = monaco.editor.getModel(uri);
+    if (loaded) return loaded;
+    const model = monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
+    // A peek view can edit this model; give it a tab then, so the change can be saved.
+    const cleanVersion = model.getAlternativeVersionId();
+    const watcher = model.onDidChangeContent((event) => {
+      // Opening the file for real resets the text, which is not an edit.
+      if (event.isFlush) return;
+      watcher.dispose();
+      if (findOpenFile(uri) || !isEditablePath(filePath)) return;
+      addTab(filePath, model, false).savedVersion = cleanVersion;
+      renderTabs();
+    });
+    return model;
+  } catch {
+    return null;
+  }
+};
+
 const clangd = new ClangdClient({
-  loadModel: async (uri) => {
-    const existing = monaco.editor.getModel(uri);
-    if (existing) return existing;
-    try {
-      const filePath = uriPath(uri);
-      const contents = await readContents(filePath);
-      const loaded = monaco.editor.getModel(uri);
-      if (loaded) return loaded;
-      const model = monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
-      // A peek view can edit this model; give it a tab then, so the change can be saved.
-      const cleanVersion = model.getAlternativeVersionId();
-      const watcher = model.onDidChangeContent((event) => {
-        // Opening the file for real resets the text, which is not an edit.
-        if (event.isFlush) return;
-        watcher.dispose();
-        if (findOpenFile(uri) || !isEditablePath(filePath)) return;
-        addTab(filePath, model, false).savedVersion = cleanVersion;
-        renderTabs();
-      });
-      return model;
-    } catch {
-      return null;
-    }
-  },
+  loadModel,
   openForEdit: async (uri) => {
     const filePath = uriPath(uri);
     if (!isProjectPath(filePath)) return null;
@@ -2323,6 +2329,8 @@ const configureMenus = (): void => {
         item(t('redo'), () => currentEditor().trigger('menu', 'redo', null), { shortcut: isMac ? 'Cmd+Shift+Z' : 'Ctrl+Y', disabled: !activeFile(), role: 'redo' }),
         { kind: 'separator' },
         item(t('find'), () => currentEditor().getAction('actions.find')?.run(), { shortcut: 'Ctrl+F', disabled: !activeFile() }),
+        item(t('findInFilesMenu'), () => findInFiles.open(), { shortcut: 'Ctrl+Shift+F', disabled: !activeProject }),
+        item(t('searchEverywhere'), () => searchEverywhere.open(), { hint: t('doubleShift') }),
       ],
       view: [
         { kind: 'heading', label: t('layout') },
@@ -2875,9 +2883,9 @@ window.addEventListener('keydown', (event) => {
   else if (key === 't' && !event.shiftKey && git.repository) run(() => { void updateProject(); });
 }, { capture: true });
 
-// The command palette: the menus' commands and, with a file open, the editor's,
-// the studio's own first and then the rest of Monaco's, in Monaco's words.
-const commandPalette = new CommandPalette(() => {
+// The command palette's commands: the menus' and, with a file open, the
+// editor's, the studio's own first and then the rest of Monaco's, in Monaco's words.
+const paletteCommands = (): PaletteCommand[] => {
   if (!activeFile()) return menuCommands();
   const category = t('editorCommands');
   const target = currentEditor();
@@ -2888,6 +2896,61 @@ const commandPalette = new CommandPalette(() => {
     .sort((left, right) => left.label.localeCompare(right.label))
     .map((action) => ({ label: action.label, category, run: () => { target.focus(); void action.run(); } }));
   return [...menuCommands(), ...own.map((command) => ({ ...command, category })), ...rest];
+};
+const commandPalette = new CommandPalette(paletteCommands);
+
+// Find in Files, on Ctrl+Shift+F.
+const findInFiles = new FindInFiles({
+  search: (query) => window.glistAPI.searchText(query),
+  unsaved: () => [...openFiles.values()].flatMap((tab) => (tab.kind === 'file' && isDirty(tab) ? [{ path: tab.path, text: tab.model.getValue() }] : [])),
+  model: (filePath) => loadModel(pathUri(filePath)),
+  open: (filePath, range) => { void revealLocation(pathUri(filePath), range); },
+  selection: () => {
+    if (!activeFile()) return '';
+    const target = currentEditor();
+    const selection = target.getSelection();
+    if (!selection || selection.isEmpty() || selection.startLineNumber !== selection.endLineNumber) return '';
+    return target.getModel()?.getValueInRange(selection) ?? '';
+  },
+});
+
+// Search Everywhere, on a double Shift. A symbol's declaration is read from its
+// file, the editor's text when it is open, and kept a little while for the next letters typed.
+const declarations = new Map<string, { read: number; text: Promise<string> }>();
+const declaredText = (filePath: string): Promise<string> => {
+  const open = monaco.editor.getModel(pathUri(filePath));
+  if (open) return Promise.resolve(open.getValue());
+  const kept = declarations.get(filePath);
+  if (kept && Date.now() - kept.read < 30000) return kept.text;
+  const text = readContents(filePath).catch(() => '');
+  declarations.set(filePath, { read: Date.now(), text });
+  return text;
+};
+const searchEverywhere = new SearchEverywhere({
+  files: () => (activeProject ? window.glistAPI.listFiles(true) : Promise.resolve([])),
+  recent: () => [...new Set([layout.activeKey, ...layout.keys()])]
+    .filter((key): key is string => typeof key === 'string' && openFiles.get(key)?.kind === 'file'),
+  symbols: async (query) => {
+    if (clangd.waitingForBuild) return 'build';
+    const found = await clangd.workspaceSymbols(query);
+    if (!found) return 'off';
+    const hits = found.map((symbol): SymbolHit => {
+      const filePath = uriPath(monaco.Uri.parse(symbol.location.uri));
+      return {
+        name: symbol.name, kind: symbol.kind, container: symbol.containerName ?? '', path: filePath,
+        line: symbol.location.range.start.line, character: symbol.location.range.start.character,
+        place: isProjectPath(filePath) ? 'project' : dependencyFolderOf(filePath) ? 'glist' : 'system',
+      };
+    });
+    // The project's own first, then the engine's and plugins', then the system's, each in clangd's order.
+    const order: SymbolHit['place'][] = ['project', 'glist', 'system'];
+    return order.flatMap((place) => hits.filter((hit) => hit.place === place));
+  },
+  signature: async (hit) => declarationAt(await declaredText(hit.path), hit.line, hit.character),
+  commands: paletteCommands,
+  openFile: (filePath, line, column) => {
+    void revealLocation(pathUri(filePath), line ? { lineNumber: line, column: column ?? 1 } : undefined);
+  },
 });
 
 // Ctrl+\ opens the tab in front on the other side too, as in VS Code. In a
@@ -2914,6 +2977,38 @@ window.addEventListener('keydown', (event) => {
   event.stopPropagation();
   commandPalette.toggle();
 }, { capture: true });
+
+// Ctrl+Shift+F finds text in the project's files, from anywhere.
+window.addEventListener('keydown', (event) => {
+  if (!primaryKey(event) || !event.shiftKey || event.altKey || event.key.toLowerCase() !== 'f') return;
+  if (!activeProject || document.querySelector('dialog[open]')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  findInFiles.open();
+}, { capture: true });
+
+// Shift pressed and let go twice, with no other key or click between, opens
+// Search Everywhere, as in JetBrains' IDEs.
+let shiftAlone = false;
+let shiftTapped = 0;
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Shift') {
+    if (!event.repeat) shiftAlone = !event.ctrlKey && !event.altKey && !event.metaKey;
+    return;
+  }
+  shiftAlone = false;
+  shiftTapped = 0;
+}, { capture: true });
+window.addEventListener('keyup', (event) => {
+  if (event.key !== 'Shift') return;
+  const tapped = shiftAlone;
+  shiftAlone = false;
+  if (!tapped) { shiftTapped = 0; return; }
+  if (performance.now() - shiftTapped > 400) { shiftTapped = performance.now(); return; }
+  shiftTapped = 0;
+  if (!document.querySelector('dialog[open]')) searchEverywhere.open();
+}, { capture: true });
+window.addEventListener('pointerdown', () => { shiftAlone = false; shiftTapped = 0; }, { capture: true });
 
 // Settings > Git: turning it on, and the name and email commits are signed with.
 const gitEnabledInput = element<HTMLInputElement>('#git-enabled');
