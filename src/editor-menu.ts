@@ -2,6 +2,7 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 import { type MenuEntry } from './context-menu';
 import { t, type TranslationKey } from './localization';
+import { isLinux, reformatShortcut } from './shortcuts';
 
 // The editor's right-click menu, drawn by the studio instead of Monaco, so it
 // looks like the others and its words follow the interface language at once.
@@ -19,11 +20,11 @@ export interface EditorMenuHooks {
   navigates(): boolean;
   switchSourceHeader(): void;
   commandPalette(): void;
+  // Reformat File, or the lines chosen, by the .clang-format.
+  reformat(): void;
   // Git's entries for the file, while Git is on and knows it.
   git(): MenuEntry[];
 }
-
-const isLinux = /Linux/.test(navigator.platform);
 
 // The editor's commands, grouped as its menu shows them. Code navigation only
 // in the main editor, not in a diff.
@@ -58,9 +59,9 @@ const groups = (editor: monaco.editor.ICodeEditor, hooks: EditorMenuHooks, navig
     change: writable ? [
       ...(supported('editor.action.rename') ? [command('editor.action.rename', 'renameSymbol', 'F2')] : []),
       ...(supported('editor.action.changeAll') ? [command('editor.action.changeAll', 'changeAllOccurrences', 'Ctrl+F2')] : []),
-      ...(supported('editor.action.formatDocument') ? [command('editor.action.formatDocument', 'formatDocument', isLinux ? 'Ctrl+Shift+I' : 'Shift+Alt+F')] : []),
-      ...(selection && !selection.isEmpty() && supported('editor.action.formatSelection')
-        ? [command('editor.action.formatSelection', 'formatSelection')] : []),
+      ...(model?.getLanguageId() === 'cpp' ? [{
+        id: 'glist.reformat', label: t(selection && !selection.isEmpty() ? 'reformatSelection' : 'reformatFile'), shortcut: reformatShortcut, run: hooks.reformat,
+      }] : []),
     ] : [],
     clipboard: [
       ...(writable ? [command('editor.action.clipboardCutAction', 'cut', 'Ctrl+X')] : []),

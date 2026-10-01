@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { codeStyleFor, parseStyle } from '../src/code-style.ts';
-import { changedLines, editsWithin } from '../src/format-lines.ts';
+import { changedLines, codeLines, editsWithin } from '../src/format-lines.ts';
 import { initializeStudio, openProjectAt, pluginDllFolders, studio, systemFolders } from '../src/studio.ts';
 
 // What the studio may write: the project, and the engine and the plugins the
@@ -159,6 +159,15 @@ try {
   assert.ok(outside === null || !outside.file.startsWith(styleRoot));
 } finally {
   rmSync(styleRoot, { recursive: true, force: true });
+}
+
+// Reformat File: the whole text or some lines, #include lines left out.
+{
+  const text = '#include "b.h"\n#include "a.h"\n\nint  f( ){\n  return 1;\n}\n';
+  assert.deepEqual(codeLines(text), [{ start: 3, end: 7 }]);
+  assert.deepEqual(codeLines(text, 4, 5), [{ start: 4, end: 5 }]);
+  assert.deepEqual(codeLines(text, 1, 2), []);
+  assert.deepEqual(codeLines('int a;\n#include "x.h"\nint b;', 1, 99), [{ start: 1, end: 1 }, { start: 3, end: 3 }]);
 }
 
 // Format on save for the lines changed since the last save.

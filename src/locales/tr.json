@@ -257,8 +257,6 @@
     "peekReferences": "Referanslara Göz At",
     "renameSymbol": "Sembolü Yeniden Adlandır",
     "changeAllOccurrences": "Tüm Geçen Yerleri Değiştir",
-    "formatDocument": "Belgeyi Biçimlendir",
-    "formatSelection": "Seçimi Biçimlendir",
     "cut": "Kes",
     "commandPalette": "Komut Paleti",
     "paletteSearch": "Bir komut yazın",
@@ -669,7 +667,12 @@
     "crashArithmetic": "Çöktü: yapılamayan bir hesap, sıfıra bölme gibi",
     "crashInstruction": "Çöktü: çalıştırılamayan bir komut",
     "crashSignal": "Çöktü",
-    "crashHint": "Program çöktüğü için burada durdu. Değerlerini görmek için bu satırdaki adların üzerine gelin; çağrı yığını Çalıştır ve Hata Ayıkla'da."
+    "crashHint": "Program çöktüğü için burada durdu. Değerlerini görmek için bu satırdaki adların üzerine gelin; çağrı yığını Çalıştır ve Hata Ayıkla'da.",
+    "reformatFile": "Dosyayı Yeniden Biçimlendir",
+    "reformatSelection": "Seçili Satırları Yeniden Biçimlendir",
+    "reformatNoStyle": "Bu dosyanın klasöründe veya üst klasörlerinde .clang-format yok, bu yüzden biçimlendirmek için bir düzen yok. Proje klasörüne bir tane ekleyin.",
+    "reformatDisabled": "Bu dosyanın .clang-format dosyası onu biçimlendirmemeyi söylüyor (DisableFormat).",
+    "reformatUnavailable": "Dosya biçimlendirilemedi: onu biçimlendiren clangd çalışmıyor veya yanıt vermedi."
   },
   "platforms": {
     "darwin": {

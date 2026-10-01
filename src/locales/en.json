@@ -257,8 +257,6 @@
     "peekReferences": "Peek References",
     "renameSymbol": "Rename Symbol",
     "changeAllOccurrences": "Change All Occurrences",
-    "formatDocument": "Format Document",
-    "formatSelection": "Format Selection",
     "cut": "Cut",
     "commandPalette": "Command Palette",
     "paletteSearch": "Type a command",
@@ -669,7 +667,12 @@
     "crashArithmetic": "Crashed: a calculation it cannot do, as dividing by zero",
     "crashInstruction": "Crashed: an instruction it cannot run",
     "crashSignal": "Crashed",
-    "crashHint": "The program stopped here because it crashed. Point at the names on this line to see their values, and see the call stack in Run and Debug."
+    "crashHint": "The program stopped here because it crashed. Point at the names on this line to see their values, and see the call stack in Run and Debug.",
+    "reformatFile": "Reformat File",
+    "reformatSelection": "Reformat Selected Lines",
+    "reformatNoStyle": "There is no .clang-format in this file's folder or a folder above it, so there is no layout to format it by. Add one to the project's folder.",
+    "reformatDisabled": "This file's .clang-format says not to format it (DisableFormat).",
+    "reformatUnavailable": "The file could not be formatted: clangd, which formats it, is not running or did not answer."
   },
   "platforms": {
     "darwin": {

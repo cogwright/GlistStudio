@@ -257,8 +257,6 @@
     "peekReferences": "Aperçu des références",
     "renameSymbol": "Renommer le symbole",
     "changeAllOccurrences": "Modifier toutes les occurrences",
-    "formatDocument": "Mettre le document en forme",
-    "formatSelection": "Mettre la sélection en forme",
     "cut": "Couper",
     "commandPalette": "Palette de commandes",
     "paletteSearch": "Tapez une commande",
@@ -669,7 +667,12 @@
     "crashArithmetic": "Plantage: un calcul impossible, comme une division par zéro",
     "crashInstruction": "Plantage: une instruction impossible à exécuter",
     "crashSignal": "Plantage",
-    "crashHint": "Le programme s'est arrêté ici parce qu'il a planté. Pointez les noms de cette ligne pour voir leurs valeurs, et la pile d'appels dans Exécution et débogage."
+    "crashHint": "Le programme s'est arrêté ici parce qu'il a planté. Pointez les noms de cette ligne pour voir leurs valeurs, et la pile d'appels dans Exécution et débogage.",
+    "reformatFile": "Reformater le fichier",
+    "reformatSelection": "Reformater les lignes sélectionnées",
+    "reformatNoStyle": "Il n'y a pas de .clang-format dans le dossier de ce fichier ni dans un dossier parent, donc aucune mise en page à suivre. Ajoutez-en un au dossier du projet.",
+    "reformatDisabled": "Le .clang-format de ce fichier demande de ne pas le mettre en forme (DisableFormat).",
+    "reformatUnavailable": "Le fichier n'a pas pu être mis en forme: clangd, qui s'en charge, ne fonctionne pas ou n'a pas répondu."
   },
   "platforms": {
     "darwin": {
