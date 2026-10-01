@@ -1452,6 +1452,7 @@ const plugins = createPluginService({
     ?? path.dirname(projectsDirectory()),
   projectCmake: () => (activeProjectRoot ? path.join(activeProjectRoot, 'CMakeLists.txt') : null),
   environment: () => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory())),
+  report: (entry) => sendToRenderer('git:console', entry),
   language: () => language,
   isProtected: (folder, remote, branch) => git.protects(folder, remote, branch),
 });
@@ -1477,7 +1478,7 @@ const engineFolder = (): string => path.join(activeProjectRoot
   ? findAncestorWith(activeProjectRoot, path.join('GlistEngine', 'engine')) ?? path.resolve(activeProjectRoot, '..', '..')
   : path.dirname(projectsDirectory()), 'GlistEngine');
 const engineCheckouts = createCheckouts({
-  git: gitRunner(() => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory()))),
+  git: gitRunner(() => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory())), (entry) => sendToRenderer('git:console', entry)),
   site: 'https://github.com',
   isProtected: (folder, remote, branch) => git.protects(folder, remote, branch),
   language: () => language,

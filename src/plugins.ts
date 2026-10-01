@@ -1,7 +1,7 @@
 import { existsSync, promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import { createCheckouts, gitRunner } from './checkout-update';
+import { createCheckouts, gitMessage, gitRunner } from './checkout-update';
 import { pluginsInCmake, setPluginUsed } from './cmake';
 import { defaultProtection, matchesBranch } from './git-protection';
 import { languages, type Language, type Words } from './languages';
@@ -26,6 +26,8 @@ export interface PluginContext {
   hidden?: string[];
   // Whether a remote's branch is protected; by default main and master are.
   isProtected?(folder: string, remote: string, branch: string): Promise<boolean>;
+  // The Git console, for the commands that change a plugin's copy.
+  report?(entry: GlistGitConsoleEntry): void;
 }
 
 const organization = 'GlistPlugins';
@@ -53,7 +55,7 @@ export const createPluginService = (context: PluginContext) => {
   const api = context.api ?? 'https://api.github.com';
   const site = context.site ?? 'https://github.com';
   let listed: { at: number; repositories: Repository[] } | null = null;
-  const git = gitRunner(context.environment);
+  const git = gitRunner(context.environment, context.report);
   const checkouts = createCheckouts({
     git,
     site,
@@ -162,10 +164,10 @@ export const createPluginService = (context: PluginContext) => {
     const target = path.join(pluginsFolder(), repository.name);
     if (existsSync(target)) return failed(say('installedAlready', { name: repository.name }));
     await fs.mkdir(pluginsFolder(), { recursive: true });
-    const result = await git(['clone', '--quiet', `${site}/${repository.owner}/${repository.name}.git`, target], pluginsFolder());
+    const result = await git(['clone', '--quiet', `${site}/${repository.owner}/${repository.name}.git`, target], pluginsFolder(), true);
     if (result.code !== 0) {
       await fs.rm(target, { recursive: true, force: true });
-      return failed(result.stderr.trim().split('\n').pop() ?? `git clone stopped with code ${result.code}`);
+      return failed(gitMessage(result, `git clone stopped with code ${result.code}`));
     }
     return { success: true, message: repository.name };
   };
