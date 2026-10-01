@@ -788,7 +788,6 @@
     "githubToken": "GitHub burada hesap parolası kabul etmemektedir. Parola yerine bir kişisel erişim belirteci (personal access token) kullanın (github.com/settings/tokens).",
     "noUpstream": "Bu dal henüz bir uzak dala bağlanmamış. Önce dalı uzak depoya gönderin.",
     "noRemote": "Bu depoya bağlı bir uzak depo yok. Git > Uzak Depolar altından bir tane ekleyebilirsiniz.",
-    "network": "Uzak depoya ulaşılamadı. Depo adresini ve internet bağlantınızı kontrol edin.",
     "done": "Tamamlandı.",
     "committed": "Commit edildi",
     "pushed": "Gönderildi (Pushed).",
@@ -802,7 +801,8 @@
     "exitCode": "çıkış kodu",
     "stashBeforeCheckout": "Glist Studio: dal değiştirmeden önce",
     "askCancel": "İptal",
-    "askOk": "Tamam"
+    "askOk": "Tamam",
+    "loginNeeded": "Uzak depo giriş yapılmasını istiyor, ancak giriş yapılmadı."
   },
   "plugins": {
     "badName": "Bu geçerli bir eklenti adı değil.",

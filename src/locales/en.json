@@ -788,7 +788,6 @@
     "githubToken": "GitHub does not take account passwords here. Use a personal access token as the password (github.com/settings/tokens).",
     "noUpstream": "This branch is not connected to a remote branch yet. Push it first.",
     "noRemote": "This repository has no remote. Add one under Git > Remotes.",
-    "network": "The remote could not be reached. Check the address and the internet connection.",
     "done": "Done.",
     "committed": "Committed",
     "pushed": "Pushed.",
@@ -802,7 +801,8 @@
     "exitCode": "exit code",
     "stashBeforeCheckout": "Glist Studio: before checkout",
     "askCancel": "Cancel",
-    "askOk": "OK"
+    "askOk": "OK",
+    "loginNeeded": "The remote needs a login, and none was given."
   },
   "plugins": {
     "badName": "This is not a plugin name.",

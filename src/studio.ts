@@ -1500,7 +1500,7 @@ const engineFolder = (): string => path.join(activeProjectRoot
   ? findAncestorWith(activeProjectRoot, path.join('GlistEngine', 'engine')) ?? path.resolve(activeProjectRoot, '..', '..')
   : path.dirname(projectsDirectory()), 'GlistEngine');
 const engineCheckouts = createCheckouts({
-  git: gitRunner(() => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory())), (entry) => sendToRenderer('git:console', entry)),
+  git: gitRunner(() => processEnvironment(resolveToolchain(activeProjectRoot ?? projectsDirectory())), (entry) => sendToRenderer('git:console', entry), () => language),
   site: 'https://github.com',
   isProtected: (folder, remote, branch) => git.protects(folder, remote, branch),
   language: () => language,

@@ -19,13 +19,32 @@ export interface GitResult { code: number; stdout: string; stderr: string }
 // they ran in. The many questions a background check asks are not.
 export type Git = (args: string[], cwd: string, logged?: boolean) => Promise<GitResult>;
 
-export const gitRunner = (environment: () => NodeJS.ProcessEnv, report?: (entry: GlistGitConsoleEntry) => void): Git =>
+// What makes git answer in the editor's language where it has the language, as
+// Homebrew's, Git for Windows and Linux distributions' do (Apple's is English
+// only). Glist Studio reads none of git's sentences, only formats git keeps the
+// same in every language and version, so they can be in any. A system without
+// a locale gets one: gettext ignores LANGUAGE under the C locale, and turns
+// letters its character set lacks into others (ü into "u), so it writes UTF-8.
+export const gitLanguage = (language: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+  const messages = env.LC_ALL || env.LC_MESSAGES || env.LANG || '';
+  const characters = env.LC_ALL || env.LC_CTYPE || env.LANG || '';
+  return {
+    LANGUAGE: language,
+    ...(!messages || /^(C|POSIX)([._@]|$)/i.test(messages) ? { LC_MESSAGES: 'en_US.UTF-8' } : {}),
+    ...(env.LC_ALL || /utf-?8/i.test(characters) ? {} : { LC_CTYPE: 'en_US.UTF-8' }),
+  };
+};
+
+// Without a language, git answers in English, as the tests expect.
+export const gitRunner = (environment: () => NodeJS.ProcessEnv, report?: (entry: GlistGitConsoleEntry) => void, language?: () => string): Git =>
   (args, cwd, logged = false) => new Promise((resolve) => {
     const show = logged && report ? report : (): void => undefined;
     show({ kind: 'command', text: ['git', '-C', path.basename(cwd), ...args].map((arg) => (/^[\w@%+=:,./{}^~-]+$/.test(arg) ? arg : `"${arg}"`)).join(' ') });
     const child = spawn('git', args, {
       cwd, windowsHide: true,
-      env: { ...environment(), GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_EDITOR: 'true', LC_ALL: 'C' },
+      env: ((base) => ({
+        ...base, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_EDITOR: 'true', ...(language ? gitLanguage(language(), base) : { LC_ALL: 'C' }),
+      }))(environment()),
     });
     let stdout = '';
     let stderr = '';
