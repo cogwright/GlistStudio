@@ -1855,6 +1855,8 @@ const dependencySection = async (projectRoot: string): Promise<HTMLElement | nul
   const label = document.createElement('span');
   label.className = 'tree-label';
   label.textContent = t('dependencies');
+  // Marked, so a change of language reaches it without drawing the tree again.
+  label.dataset.i18n = 'dependencies';
   title.append(arrow, label);
   const children = document.createElement('div');
   children.className = 'tree-children';
@@ -1875,7 +1877,9 @@ const dependencySection = async (projectRoot: string): Promise<HTMLElement | nul
     const missing = document.createElement('div');
     missing.className = 'tree-row missing';
     missing.style.paddingLeft = '10px';
-    missing.title = t(dependency.kind === 'engine' ? 'engineMissing' : 'pluginMissing');
+    const why: TranslationKey = dependency.kind === 'engine' ? 'engineMissing' : 'pluginMissing';
+    missing.dataset.i18nTitle = why;
+    missing.title = t(why);
     const warningIcon = document.createElement('span');
     warningIcon.className = 'file-icon dependency';
     warningIcon.append(icon('warning'));
@@ -2795,7 +2799,11 @@ settingsLanguage.addEventListener('change', () => {
   agentSettings.render();
   commitPane.render();
   gitPanel.reload();
-  void window.glistAPI.setLanguage(next);
+  // The Plugins and Engine views draw their words when they load; once the backend speaks the language too.
+  void window.glistAPI.setLanguage(next).then(() => {
+    void pluginsView.load();
+    void engineView.load();
+  });
 });
 setUpFontSettings({
   code: element<HTMLInputElement>('#font-code'),

@@ -4,7 +4,7 @@ import { stateLetter, stateText, type GitClient } from './git-client';
 import { formDialog } from './git-dialogs';
 import { graphRows, type GraphRow } from './git-graph';
 import { icon, type IconName } from './icons';
-import { t, type TranslationKey } from './localization';
+import { t, translate, type TranslationKey } from './localization';
 import { baseName } from './paths';
 import { applyPatchFiles, applyPatchFromClipboard, copyPatch, savePatch } from './patches';
 import { isMac } from './shortcuts';
@@ -147,6 +147,8 @@ class LogView {
   // A branch or tag to show once the list of them is filled.
   private pendingRef: string | null = null;
   private generation = 0;
+  // The current branch's commits no remote has yet, which can be dropped.
+  private unpublished = new Set<string>();
   private searchTimer = 0;
 
   constructor(private readonly client: GitClient, private readonly hooks: GitPanelHooks, private readonly place: Place) {
@@ -221,6 +223,10 @@ class LogView {
 
   async load(): Promise<void> {
     this.generation += 1;
+    const generation = this.generation;
+    void window.glistAPI.gitUnpublished(this.place.root).catch((): string[] => []).then((hashes) => {
+      if (generation === this.generation) this.unpublished = new Set(hashes);
+    });
     this.commits = [];
     this.complete = false;
     // A page still coming for the load before is dropped when it arrives.
@@ -453,6 +459,13 @@ class LogView {
       { label: t('cherryPick'), run: () => run({ kind: 'cherry-pick', commit: commit.hash }), disabled: !branch },
       { label: t('revertCommit'), run: () => run({ kind: 'revert', commit: commit.hash }), disabled: !branch },
       { label: t('resetHere'), run: () => { void this.reset(commit); }, disabled: !branch, danger: true },
+      ...(this.unpublished.has(commit.hash) && commit.parents.length === 1 ? [{
+        label: t('dropCommit'),
+        danger: true,
+        run: () => {
+          if (window.confirm(t('confirmDropCommit').replace('{subject}', commit.subject))) run({ kind: 'drop-commit', commit: commit.hash }, t('commitDropped'));
+        },
+      }] : []),
     ];
   }
 
@@ -758,10 +771,18 @@ class StashesView {
       const when = element('span', 'git-row-date', relativeTime(stash.date * 1000));
       when.title = fullTime(stash.date * 1000);
       const actions = element('span', 'git-row-actions');
+      // In words: the two apply icons look alike.
+      const action = (label: TranslationKey, run: () => void, danger = false): HTMLButtonElement => {
+        const button = element('button', `git-row-button${danger ? ' danger' : ''}`, t(label));
+        button.type = 'button';
+        button.dataset.i18n = label;
+        button.addEventListener('click', (event) => { event.stopPropagation(); run(); });
+        return button;
+      };
       actions.append(
-        toolButton('git-stash-apply', 'applyStash', () => { void this.unstash(stash, false); }),
-        toolButton('git-stash-pop', 'popStash', () => { void this.unstash(stash, true); }),
-        toolButton('trash', 'dropStash', () => { void this.drop(stash); }),
+        action('applyStash', () => { void this.unstash(stash, false); }),
+        action('popStash', () => { void this.unstash(stash, true); }),
+        action('dropStash', () => { void this.drop(stash); }, true),
       );
       row.append(name, element('span', 'git-row-detail', stash.name), when, actions);
       row.addEventListener('click', () => {
@@ -933,7 +954,11 @@ export class GitPanel {
       tab.setAttribute('aria-selected', String(key === view));
     });
     const content = { log: this.log, branches: this.branches, remotes: this.remotes, stashes: this.stashes, console: this.console }[view];
-    if (this.body.firstElementChild !== content.element) this.body.replaceChildren(content.element);
+    if (this.body.firstElementChild !== content.element) {
+      // Off the page when the language last changed, it may still have the words before.
+      translate(content.element);
+      this.body.replaceChildren(content.element);
+    }
     if (!load || !this.stale.has(view)) return;
     this.stale.delete(view);
     if (view !== 'console') void (content as { load(): Promise<void> }).load();

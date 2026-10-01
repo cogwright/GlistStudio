@@ -1,6 +1,7 @@
 import { showMenu } from './context-menu';
 import { fileIconElement } from './file-icons';
 import { stateLetter, stateText, type GitClient } from './git-client';
+import { formDialog } from './git-dialogs';
 import { icon } from './icons';
 import { t, type TranslationKey } from './localization';
 import { copyPatch, savePatch } from './patches';
@@ -161,6 +162,7 @@ export class CommitView {
         toggle: () => { if (this.collapsed.has(group)) this.collapsed.delete(group); else this.collapsed.add(group); },
         checkbox: group !== 'conflicts',
         title: group === 'conflicts' ? t('conflictHint') : undefined,
+        menu: group === 'conflicts' ? undefined : (event) => this.groupMenu(event, changes),
       }));
       if (!this.collapsed.has(group)) changes.forEach((change) => nodes.push(this.changeRow(group, change)));
     });
@@ -183,6 +185,7 @@ export class CommitView {
         checkbox: true,
         title: t('sharedChanges').replace('{name}', dependency.name),
         kind: t(kindText[dependency.kind]),
+        menu: (event) => this.groupMenu(event, changes, dependency.folder),
       });
       return [header, ...(open ? changes.map((change) => this.changeRow('shared', change, dependency)) : [])];
     });
@@ -322,7 +325,7 @@ export class CommitView {
   }
 
   private groupRow(label: string, changes: GlistGitChange[], options: {
-    open: boolean; toggle: () => void; checkbox: boolean; title?: string; kind?: string;
+    open: boolean; toggle: () => void; checkbox: boolean; title?: string; kind?: string; menu?: (event: MouseEvent) => void;
   }): HTMLElement {
     const row = document.createElement('div');
     row.className = 'change-group';
@@ -362,8 +365,49 @@ export class CommitView {
     count.textContent = String(changes.length);
     row.append(count);
     row.addEventListener('click', () => { options.toggle(); this.render(); });
+    const { menu } = options;
+    if (menu) row.addEventListener('contextmenu', (event) => menu(event));
     if (options.title) row.title = options.title;
     return row;
+  }
+
+  // A group's right-click menu: its files put aside in a stash, or their changes taken back.
+  private groupMenu(event: MouseEvent, changes: GlistGitChange[], root?: string): void {
+    const files = changes.filter((change) => change.state !== 'conflict');
+    if (files.length === 0) return;
+    const tracked = files.filter((change) => change.state !== 'untracked');
+    const unversioned = files.filter((change) => change.state === 'untracked');
+    showMenu(event, [
+      { label: t('stashChanges'), run: () => { void this.stashChanges(files, root); } },
+      'separator',
+      ...(tracked.length > 0 ? [{ label: t('rollbackAll'), danger: true, run: () => { void this.rollback(tracked, root); } }] : []),
+      // Deleting is for the project's own files; the engine's and plugins' are read-only here.
+      ...(unversioned.length > 0 && root === undefined
+        ? [{ label: t('deleteNewFiles'), danger: true, run: () => { void this.deleteAllUnversioned(unversioned); } }] : []),
+    ]);
+  }
+
+  // Files put aside in a stash of their own, new ones too, to bring back later from the Stashes tab.
+  private async stashChanges(changes: GlistGitChange[], root?: string): Promise<void> {
+    const values = await formDialog({
+      title: t('stashChanges').replace('...', ''),
+      hint: changes.length === 1 ? baseName(changes[0].path) : t('stashFilesHint').replace('{count}', String(changes.length)),
+      submit: t('stashChanges').replace('...', ''),
+      fields: [{ kind: 'text', key: 'message', label: t('stashMessage') }],
+    });
+    if (!values) return;
+    await this.client.run({
+      kind: 'stash',
+      message: String(values.message),
+      untracked: changes.some((change) => change.state === 'untracked'),
+      paths: changes.flatMap((change) => (change.from ? [change.path, change.from] : [change.path])),
+    }, { root, success: t('changesStashed') });
+  }
+
+  private async deleteAllUnversioned(changes: GlistGitChange[]): Promise<void> {
+    if (!window.confirm(t('confirmDeleteNewFiles').replace('{count}', String(changes.length)))) return;
+    for (const change of changes) await this.hooks.deleteFile(change.path);
+    await this.client.refresh();
   }
 
   // A file of the project, or of an engine or plugin with its repository.
@@ -456,6 +500,7 @@ export class CommitView {
       { label: t('showDiff'), run: () => this.hooks.openDiff(change) },
       { label: t('openFile'), run: () => this.hooks.openFile(change.path), disabled: change.state === 'deleted' },
       ...(untracked ? [] : [{ label: t('showHistory'), run: () => this.hooks.showHistory(change.from ?? change.path) }]),
+      { label: t('stashChanges'), run: () => { void this.stashChanges([change], root); } },
       'separator',
       ...(untracked
         ? [

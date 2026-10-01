@@ -80,6 +80,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   gitStatus: 'git:status',
   gitWatch: 'git:watch',
   gitLog: 'git:log',
+  gitUnpublished: 'git:unpublished',
   gitCommitDetails: 'git:commit-details',
   gitPatch: 'git:patch',
   gitBranches: 'git:branches',

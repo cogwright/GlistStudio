@@ -485,6 +485,25 @@ exit 1
     };
   };
 
+  // Commits of the current branch no remote has yet: the ones that can be
+  // dropped without rewriting history someone else may already have.
+  const unpublishedIn = async (repo: Repository): Promise<string[]> =>
+    text(await run(['rev-list', '--max-count=500', 'HEAD', '--not', '--remotes'], { cwd: repo.folder })).split('\n').filter(Boolean);
+  const unpublished = async (root?: unknown): Promise<string[]> => unpublishedIn(await repository(root));
+
+  // Takes a commit out of the current branch, the ones after it replayed
+  // without it; changes not committed yet are put aside meanwhile. Only one not
+  // pushed yet, and not a merge or before one, which a rebase would flatten.
+  const dropCommit = async (repo: Repository, value: unknown): Promise<GlistGitResult> => {
+    const hash = text(await run(['rev-parse', '--verify', '--quiet', `${revision(value)}^{commit}`], { cwd: repo.folder })).trim();
+    if (!hash) fail('invalidRevision');
+    if ((await run(['merge-base', '--is-ancestor', hash, 'HEAD'], { cwd: repo.folder })).code !== 0) fail('dropOtherBranch');
+    if (!(await unpublishedIn(repo)).includes(hash)) fail('dropPushed');
+    const merges = text(await run(['rev-list', '--merges', `${hash}..HEAD`], { cwd: repo.folder })).trim();
+    if (await commitParents(repo, hash) !== 1 || merges) fail('dropMerge');
+    return steps(repo, [['rebase', '--autostash', '--onto', `${hash}^`, hash]]);
+  };
+
   const branches = async (root?: unknown): Promise<GlistGitBranch[]> => {
     const repo = await repository(root);
     const result = await run(['for-each-ref', `--format=${branchFormat}`, '--sort=-committerdate', 'refs/heads', 'refs/remotes'],
@@ -862,6 +881,7 @@ exit 1
         const merge = await commitParents(repo, commitHash) > 1;
         return steps(repo, [['cherry-pick', ...(merge ? ['-m', '1'] : []), commitHash]]);
       }
+      case 'drop-commit': return dropCommit(repo, action.commit);
       case 'revert': {
         const commitHash = revision(action.commit);
         const merge = await commitParents(repo, commitHash) > 1;
@@ -890,7 +910,11 @@ exit 1
       case 'set-remote-url': return steps(repo, [['remote', 'set-url', name(action.name), url(action.url)]]);
       case 'stash': {
         const message = typeof action.message === 'string' ? action.message.trim() : '';
-        return steps(repo, [['stash', 'push', ...(action.untracked ? ['--include-untracked'] : []), ...(message ? ['-m', message] : [])]]);
+        // Only the files asked for, each named as it is: the literal magic per path,
+        // since --literal-pathspecs makes git stash -u leave the new files it saved on disk.
+        const paths = (Array.isArray(action.paths) ? action.paths : []).map((entry) => `:(literal)${toGit(repo, entry)}`);
+        return steps(repo, [['stash', 'push', ...(action.untracked ? ['--include-untracked'] : []), ...(message ? ['-m', message] : []),
+          ...(paths.length > 0 ? ['--', ...paths] : [])]]);
       }
       case 'unstash': {
         const stash = revision(action.name);
@@ -959,6 +983,7 @@ exit 1
       gitStatus: status,
       gitWatch: (on: unknown) => { watching = on === true; return rewatch(); },
       gitLog: log,
+      gitUnpublished: unpublished,
       gitCommitDetails: commitDetails,
       gitPatch: patch,
       gitBranches: branches,
