@@ -509,7 +509,8 @@ const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'norm
   else {
     const message = document.createElement('span');
     message.className = kind === 'success' ? 'ansi-green' : 'ansi-red';
-    message.append(...formatOutput(`${kind === 'success' ? '✓' : '✕'} ${text}`, newOutputStyle(), openOutputLocation));
+    // The mark on the text's own line, however many line breaks it came with.
+    message.append(...formatOutput(`${kind === 'success' ? '✓' : '✕'} ${text.replace(/^\s*\n|\n\s*$/g, '')}`, newOutputStyle(), openOutputLocation));
     output.append('\n', message, '\n');
   }
   output.scrollTop = output.scrollHeight;
