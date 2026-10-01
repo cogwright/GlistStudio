@@ -1051,7 +1051,7 @@ const clangd = new ClangdClient({
   },
   log: (text) => appendOutput(`\n${text}\n`),
   buildNeeded: (needed) => { buildNotice.hidden = !needed; },
-  hoverTaken: (model, position) => debug.hover(model, position).then(Boolean),
+  hoverTaken: (model, position) => debug.valueAt(model, position).then(Boolean),
   status: (text, busy) => {
     clangdStatus.hidden = !text;
     clangdStatus.classList.toggle('active', busy);

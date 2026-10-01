@@ -1,10 +1,13 @@
 // eslint-disable-next-line import/no-unresolved
 import * as monaco from 'monaco-editor/editor/editor.api';
 import type { DebugProtocol } from '@vscode/debugprotocol';
+import { crashOf, type Crash, type CrashKind } from './debug-crash';
 import { expressionAt } from './debug-expression';
+import { ValuePopup, type PopupValue } from './debug-value-popup';
+import { shownValue } from './debug-values';
 import { icon } from './icons';
 import { t, type TranslationKey } from './localization';
-import { baseName, pathUri, uriPath } from './paths';
+import { baseName, isWithin, pathUri, uriPath } from './paths';
 
 export type DebugState = 'idle' | 'starting' | 'running' | 'paused';
 
@@ -44,6 +47,26 @@ const pauseReasons: Partial<Record<string, TranslationKey>> = {
   'instruction breakpoint': 'pausedBreakpoint', step: 'pausedStep', pause: 'pausedPause', exception: 'pausedException',
   entry: 'pausedEntry', goto: 'pausedStep',
 };
+// A crash in words, with what the debugger or the program said: an exception's
+// type and message or an assert's condition after a colon, the signal after a dot.
+const crashWords: Record<CrashKind, TranslationKey> = {
+  memory: 'crashMemory', exception: 'crashException', assert: 'crashAssert', abort: 'crashAbort',
+  arithmetic: 'crashArithmetic', instruction: 'crashInstruction', signal: 'crashSignal',
+};
+const crashText = (crash: Crash): string => {
+  if (!crash.detail) return t(crashWords[crash.kind]);
+  return crash.kind === 'exception' || crash.kind === 'assert'
+    ? `${t(crashWords[crash.kind])}: ${crash.detail}` : `${t(crashWords[crash.kind])} · ${crash.detail}`;
+};
+
+// What hovering evaluates while paused, and what it gave.
+interface HoverValue {
+  expression: string;
+  start: number;
+  end: number;
+  result: DebugProtocol.EvaluateResponse['body'];
+}
+
 const pauseReason = (body: DebugProtocol.StoppedEvent['body']): string => {
   const key = pauseReasons[body.reason];
   return key ? t(key) : body.description ?? body.reason;
@@ -65,8 +88,14 @@ export class Debugger {
   private readonly verified = new Map<number, { uri: string; line: number }>();
   // Stops seen, so a reply to Continue or a step can tell whether one came before it.
   private stops = 0;
-  // The last hover's value, which both hovers ask for: this one shows it, clangd's stands aside.
-  private hovered: { key: string; value: Promise<monaco.languages.Hover | null> } | null = null;
+  // The last value pointed at, which the value popup shows and clangd's hover stands aside for.
+  private hovered: { key: string; value: Promise<HoverValue | null> } | null = null;
+  // A value popup for each editor, closed when the program goes on.
+  private readonly popups = new Set<ValuePopup>();
+  // What the program printed last, which says what an abort was.
+  private printed = '';
+  // The crash the program stopped on, and the frame of the project's own code it stopped in.
+  private crash: (Crash & { frameId: number }) | null = null;
   private readonly unverified = new Set<string>();
   private readonly decorations = new Map<string, string[]>();
   private current: { model: monaco.editor.ITextModel; ids: string[] } | null = null;
@@ -81,9 +110,6 @@ export class Debugger {
       this.finish();
     });
     monaco.editor.onDidCreateModel((model) => this.decorate(model));
-    monaco.languages.registerHoverProvider('cpp', {
-      provideHover: async (model, position) => this.hover(model, position),
-    });
     this.render();
   }
 
@@ -104,6 +130,7 @@ export class Debugger {
       hint.set(line ? [{ range: new monaco.Range(line, 1, line, 1), options: { glyphMarginClassName: 'debug-breakpoint-hint' } }] : []);
     });
     editor.onMouseLeave(() => hint.clear());
+    this.popups.add(new ValuePopup(editor, (model, position) => this.popupFor(model, position)));
   }
 
   get active(): boolean {
@@ -151,6 +178,7 @@ export class Debugger {
       return;
     }
     this.installedDebugger = Boolean(started.installedDebugger);
+    this.printed = '';
     try {
       // Adapters send 'initialized' after the initialize response or after launch; catch either.
       const initialized = this.nextEvent('initialized');
@@ -209,12 +237,14 @@ export class Debugger {
   private resumed(): void {
     this.frames = [];
     this.frame = null;
+    this.crash = null;
     this.clearCurrentLine();
     this.setState('running');
   }
 
   private setState(state: DebugState): void {
     this.state = state;
+    if (state !== 'paused') this.popups.forEach((popup) => popup.hide());
     this.render();
     this.host.changed();
   }
@@ -228,6 +258,7 @@ export class Debugger {
     this.unverified.clear();
     this.frames = [];
     this.frame = null;
+    this.crash = null;
     this.clearCurrentLine();
     monaco.editor.getModels().forEach((model) => this.decorate(model));
     void window.glistAPI.stopDebugging();
@@ -277,9 +308,28 @@ export class Debugger {
         const body = (event as DebugProtocol.StoppedEvent).body;
         this.threadId = body.threadId ?? this.threadId;
         this.stops += 1;
+        const stops = this.stops;
+        let crash = crashOf(body.reason, body.description, body.text, this.printed);
         this.setState('paused');
-        this.host.views.status.textContent = `${t('debugPaused')}: ${pauseReason(body)}`;
-        await this.loadStack();
+        this.host.views.status.textContent = crash ? crashText(crash) : `${t('debugPaused')}: ${pauseReason(body)}`;
+        this.host.views.status.classList.toggle('crashed', crash !== null);
+        await this.loadStack(crash);
+        if (!crash) break;
+        // An abort is most often an exception nothing caught or an assert, which the
+        // program may say just after the stop.
+        if (crash.kind === 'abort' || crash.kind === 'signal') {
+          await new Promise((resolve) => { window.setTimeout(resolve, 500); });
+          if (stops !== this.stops || this.state !== 'paused') break;
+          const named = crashOf(body.reason, body.description, body.text, this.printed);
+          if (named && named.kind !== crash.kind && this.crash) {
+            crash = named;
+            this.crash = { ...named, frameId: this.crash.frameId };
+            this.host.views.status.textContent = crashText(named);
+            this.markCurrent(this.frame);
+          }
+        }
+        const where = this.frames.find((frame) => frame.id === this.crash?.frameId);
+        this.host.log(`${crashText(crash)}${where?.source?.path ? ` (${baseName(where.source.path)}:${where.line})` : ''}`, 'error');
         break;
       }
       case 'continued':
@@ -287,7 +337,10 @@ export class Debugger {
         break;
       case 'output': {
         const { category, output } = (event as DebugProtocol.OutputEvent).body;
-        if (category === 'stdout' || category === 'stderr' || category === 'important') this.host.log(output, 'normal');
+        if (category === 'stdout' || category === 'stderr' || category === 'important') {
+          this.host.log(output, 'normal');
+          this.printed = (this.printed + output).slice(-4000);
+        }
         break;
       }
       case 'exited':
@@ -375,65 +428,80 @@ export class Debugger {
     this.current = null;
   }
 
-  private async loadStack(): Promise<void> {
+  private async loadStack(crash: Crash | null = null): Promise<void> {
     const body = await this.request<DebugProtocol.StackTraceResponse['body']>('stackTrace', { threadId: this.threadId, levels: 50 })
       .catch((): null => null);
     this.frames = body?.stackFrames ?? [];
-    // The innermost frame with source, since system libraries have none.
-    await this.selectFrame(this.frames.find((frame) => frame.source?.path) ?? this.frames[0] ?? null);
+    // The innermost frame with source, since system libraries have none. A crash
+    // stops in the system's or the C++ library's code, which can have source too:
+    // the line to look at is the innermost one of the project's own.
+    const root = this.projectRoot;
+    const ours = (frame: DebugProtocol.StackFrame): boolean => Boolean(root && frame.source?.path && isWithin(frame.source.path, root));
+    const frame = (crash ? this.frames.find(ours) : undefined) ?? this.frames.find((entry) => entry.source?.path) ?? this.frames[0] ?? null;
+    this.crash = crash && frame ? { ...crash, frameId: frame.id } : null;
+    await this.selectFrame(frame);
   }
 
   private async selectFrame(frame: DebugProtocol.StackFrame | null): Promise<void> {
     this.frame = frame;
     this.clearCurrentLine();
     const path = frame?.source?.path;
-    if (frame && path && await this.host.openLocation(path, frame.line)) {
-      const model = monaco.editor.getModel(pathUri(path));
-      if (model) {
-        this.current = {
-          model,
-          ids: model.deltaDecorations([], [{
-            range: new monaco.Range(frame.line, 1, frame.line, 1),
-            options: { isWholeLine: true, className: 'debug-current-line', glyphMarginClassName: 'debug-current-arrow' },
-          }]),
-        };
-      }
-    }
+    if (frame && path && await this.host.openLocation(path, frame.line)) this.markCurrent(frame);
     this.render();
     await this.renderVariables();
   }
 
-  // While paused, the value under the pointer instead of its declaration: a
-  // variable, or a member reached through . or ->, with its members, or a
-  // list's items. Null where the debugger has no value, and clangd's hover shows.
-  hover(model: monaco.editor.ITextModel, position: monaco.Position): Promise<monaco.languages.Hover | null> {
+  // The current line: yellow, or red with what happened at its end for the line a crash stopped on.
+  private markCurrent(frame: DebugProtocol.StackFrame | null): void {
+    this.clearCurrentLine();
+    const path = frame?.source?.path;
+    const model = frame && path ? monaco.editor.getModel(pathUri(path)) : null;
+    if (!frame || !model || frame.line < 1 || frame.line > model.getLineCount()) return;
+    const crash = this.crash?.frameId === frame.id ? this.crash : null;
+    // A range to the line's end, which Monaco draws text after where an empty one gets none.
+    const range = new monaco.Range(frame.line, 1, frame.line, model.getLineMaxColumn(frame.line));
+    this.current = {
+      model,
+      ids: model.deltaDecorations([], [{
+        range,
+        options: crash ? {
+          isWholeLine: true,
+          className: 'debug-crash-line',
+          glyphMarginClassName: 'debug-crash-arrow',
+          after: { content: `   ✕ ${crashText(crash)}`, inlineClassName: 'debug-crash-label' },
+          hoverMessage: [{ value: `**${crashText(crash)}**` }, { value: t('crashHint') }],
+        } : { isWholeLine: true, className: 'debug-current-line', glyphMarginClassName: 'debug-current-arrow' },
+      }]),
+    };
+  }
+
+  // What the pointer is on while paused: a variable, or a member reached through
+  // . or ->, evaluated once for the value popup, which shows it, and for clangd's
+  // hover, which stands aside. Null where the debugger has no value.
+  valueAt(model: monaco.editor.ITextModel, position: monaco.Position): Promise<HoverValue | null> {
     const frame = this.frame;
     const found = this.state === 'paused' && frame ? expressionAt(model.getLineContent(position.lineNumber), position.column) : null;
     if (!frame || !found) return Promise.resolve(null);
     const key = [this.stops, frame.id, model.uri.toString(), model.getVersionId(), position.lineNumber, found.start, found.expression].join(':');
-    if (this.hovered?.key !== key) this.hovered = { key, value: this.valueOf(found, position.lineNumber, frame.id) };
+    if (this.hovered?.key !== key) this.hovered = { key, value: this.evaluate(found, frame.id) };
     return this.hovered.value;
   }
 
-  private async valueOf(found: NonNullable<ReturnType<typeof expressionAt>>, line: number, frameId: number): Promise<monaco.languages.Hover | null> {
+  private async evaluate(found: NonNullable<ReturnType<typeof expressionAt>>, frameId: number): Promise<HoverValue | null> {
     const result = await this.request<DebugProtocol.EvaluateResponse['body']>('evaluate', {
       expression: found.expression, frameId, context: 'hover',
     }).catch((): null => null);
-    if (!result) return null;
-    const members = result.variablesReference
-      ? (await this.request<DebugProtocol.VariablesResponse['body']>('variables', { variablesReference: result.variablesReference }).catch((): null => null))?.variables ?? []
-      : [];
-    const shown = members.slice(0, 40);
-    // An object's own value is only its address or its members again; its members say more.
-    const plain = members.length > 0 && /(^|\s)@\s*0x[0-9a-f]+$|^\{.*\}$/i.test(result.result.trim());
-    const lines = [
-      `${result.type ? `${result.type} ` : ''}${found.expression}${plain ? '' : ` = ${result.result}`}`,
-      ...shown.map((member) => `  ${member.name} = ${member.value}`),
-      ...(members.length > shown.length ? ['  ...'] : []),
-    ];
+    return result ? { ...found, result } : null;
+  }
+
+  // The value popup's tree, as the Variables view's, its first level open.
+  private async popupFor(model: monaco.editor.ITextModel, position: monaco.Position): Promise<PopupValue | null> {
+    const value = await this.valueAt(model, position);
+    if (!value || this.state !== 'paused') return null;
+    const { result } = value;
     return {
-      range: new monaco.Range(line, found.start, line, found.end),
-      contents: [{ value: `\`\`\`cpp\n${lines.join('\n')}\n\`\`\`` }],
+      range: { startLineNumber: position.lineNumber, startColumn: value.start, endLineNumber: position.lineNumber, endColumn: value.end },
+      content: this.variableNode(value.expression, result.result, result.type ?? '', result.variablesReference, 0, true),
     };
   }
 
@@ -442,6 +510,7 @@ export class Debugger {
   private render(): void {
     const { status, stack, breakpoints } = this.host.views;
     if (this.state !== 'paused') {
+      status.classList.remove('crashed');
       status.textContent = t(({
         idle: 'debugIdle', starting: 'debugStarting', running: 'debugRunning', paused: 'debugPaused',
       } as const)[this.state]);
@@ -521,7 +590,8 @@ export class Debugger {
     label.textContent = name;
     const shown = document.createElement('span');
     shown.className = 'debug-value';
-    shown.textContent = value;
+    shown.textContent = shownValue(value, type, reference > 0);
+    shown.title = value;
     row.append(arrow, label, shown);
     const children = document.createElement('div');
     children.hidden = true;

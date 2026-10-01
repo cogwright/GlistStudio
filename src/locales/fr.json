@@ -661,7 +661,15 @@
     "pausedEntry": "début du programme",
     "macMinimize": "Placer dans le Dock",
     "macZoom": "Réduire/agrandir",
-    "macFront": "Tout ramener au premier plan"
+    "macFront": "Tout ramener au premier plan",
+    "crashMemory": "Plantage: accès mémoire invalide",
+    "crashException": "Exception non interceptée",
+    "crashAssert": "Assertion échouée",
+    "crashAbort": "Plantage: le programme s'est interrompu (abort)",
+    "crashArithmetic": "Plantage: un calcul impossible, comme une division par zéro",
+    "crashInstruction": "Plantage: une instruction impossible à exécuter",
+    "crashSignal": "Plantage",
+    "crashHint": "Le programme s'est arrêté ici parce qu'il a planté. Pointez les noms de cette ligne pour voir leurs valeurs, et la pile d'appels dans Exécution et débogage."
   },
   "platforms": {
     "darwin": {
