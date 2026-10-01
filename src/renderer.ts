@@ -509,7 +509,8 @@ const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'norm
   else {
     const message = document.createElement('span');
     message.className = kind === 'success' ? 'ansi-green' : 'ansi-red';
-    message.append(...formatOutput(`${kind === 'success' ? '✓' : '✕'} ${text}`, newOutputStyle(), openOutputLocation));
+    // The mark on the text's own line, however many line breaks it came with.
+    message.append(...formatOutput(`${kind === 'success' ? '✓' : '✕'} ${text.replace(/^\s*\n|\n\s*$/g, '')}`, newOutputStyle(), openOutputLocation));
     output.append('\n', message, '\n');
   }
   output.scrollTop = output.scrollHeight;
@@ -1050,6 +1051,7 @@ const clangd = new ClangdClient({
   },
   log: (text) => appendOutput(`\n${text}\n`),
   buildNeeded: (needed) => { buildNotice.hidden = !needed; },
+  hoverTaken: (model, position) => debug.hover(model, position).then(Boolean),
   status: (text, busy) => {
     clangdStatus.hidden = !text;
     clangdStatus.classList.toggle('active', busy);

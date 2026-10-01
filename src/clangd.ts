@@ -19,6 +19,8 @@ export interface ClangdHost {
   status(text: string | null, busy: boolean): void;
   // Whether the project has yet to be built once, for clangd to know its files.
   buildNeeded?(needed: boolean): void;
+  // Whether another hover shows something there instead, as the debugger's value while paused.
+  hoverTaken?(model: monaco.editor.ITextModel, position: monaco.Position): Promise<boolean>;
 }
 
 interface Message {
@@ -551,6 +553,7 @@ export class ClangdClient {
 
     languages.registerHoverProvider(language, {
       provideHover: async (model, position, token) => {
+        if (await this.host.hoverTaken?.(model, position)) return null;
         const hover = await this.query<Hover>(model, 'textDocument/hover', { position: fromPosition(position) }, token);
         if (!hover) return null;
         const contents = Array.isArray(hover.contents) ? hover.contents : [hover.contents];
