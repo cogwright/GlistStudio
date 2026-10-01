@@ -492,7 +492,8 @@ type GlistGitAction =
   | { kind: 'add-remote'; name: string; url: string }
   | { kind: 'remove-remote'; name: string }
   | { kind: 'set-remote-url'; name: string; url: string }
-  | { kind: 'stash'; message?: string; untracked: boolean }
+  // Only the paths given, when there are any.
+  | { kind: 'stash'; message?: string; untracked: boolean; paths?: string[] }
   | { kind: 'drop-commit'; commit: string }
   | { kind: 'unstash'; name: string; pop: boolean }
   | { kind: 'drop-stash'; name: string }

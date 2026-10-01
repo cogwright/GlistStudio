@@ -829,7 +829,11 @@ exit 1
       case 'set-remote-url': return steps(repo, [['remote', 'set-url', name(action.name), url(action.url)]]);
       case 'stash': {
         const message = typeof action.message === 'string' ? action.message.trim() : '';
-        return steps(repo, [['stash', 'push', ...(action.untracked ? ['--include-untracked'] : []), ...(message ? ['-m', message] : [])]]);
+        // Only the files asked for, each named as it is: the literal magic per path,
+        // since --literal-pathspecs makes git stash -u leave the new files it saved on disk.
+        const paths = (Array.isArray(action.paths) ? action.paths : []).map((entry) => `:(literal)${toGit(repo, entry)}`);
+        return steps(repo, [['stash', 'push', ...(action.untracked ? ['--include-untracked'] : []), ...(message ? ['-m', message] : []),
+          ...(paths.length > 0 ? ['--', ...paths] : [])]]);
       }
       case 'unstash': {
         const stash = revision(action.name);

@@ -334,7 +334,7 @@ try {
   // The console shows the commands that change the repository.
   assert.ok(consoleLines.some((entry) => entry.kind === 'command' && entry.text.startsWith('git commit -m First')));
 
-  // Dropping a commit not pushed yet.
+  // Stashing chosen files only, new ones too; dropping a commit not pushed yet.
   {
     const sh = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
     const repo = path.join(projects, 'Drops');
@@ -351,6 +351,18 @@ try {
     sh(repo, 'remote', 'add', 'origin', remote);
     sh(repo, 'push', '-q', '-u', 'origin', 'main');
     openRoot = repo;
+
+    put('a.txt', 'a changed\n');
+    put('b.txt', 'b changed\n');
+    put('new.txt', 'new\n');
+    put('other.txt', 'other\n');
+    await run({ kind: 'stash', message: 'two of them', untracked: true, paths: [path.join(repo, 'a.txt'), path.join(repo, 'new.txt')] });
+    assert.equal(sh(repo, 'status', '--porcelain'), 'M b.txt\n?? other.txt');
+    assert.deepEqual(sh(repo, 'stash', 'show', '--include-untracked', '--name-only', 'stash@{0}').split('\n'), ['a.txt', 'new.txt']);
+    assert.match(sh(repo, 'stash', 'list'), /two of them/);
+    sh(repo, 'checkout', '-q', '--', '.');
+    sh(repo, 'clean', '-qf');
+    sh(repo, 'stash', 'drop', '-q');
 
     // Unpublished: the branch's commits no remote has.
     put('c.txt', 'c\n');
