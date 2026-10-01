@@ -95,7 +95,7 @@ export const createGitService = (context: GitContext) => {
 # answer goes to git without passing through the studio.
 case "$1" in *assword*|*assphrase*|*PIN*) hidden="with hidden answer" ;; *) hidden="" ;; esac
 if [ "$SSH_ASKPASS_PROMPT" = confirm ]; then
-  exec /usr/bin/osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "Git" buttons {"Cancel", "OK"} default button "OK"' -e 'end run' "$1" >/dev/null
+  exec /usr/bin/osascript -e 'on run argv' -e 'display dialog (item 1 of argv) with title "Git" buttons {"${say('askCancel')}", "${say('askOk')}"} default button "${say('askOk')}"' -e 'end run' "$1" >/dev/null
 fi
 exec /usr/bin/osascript -e 'on run argv' -e "text returned of (display dialog (item 1 of argv) default answer \\"\\" $hidden with title \\"Git\\" with icon caution)" -e 'end run' "$1"
 `;
@@ -177,7 +177,7 @@ exit 1
       });
       child.once('error', (error) => resolve({ code: 127, stdout: Buffer.alloc(0), stderr: error.message }));
       child.once('close', (code) => {
-        if (options.logged && code !== 0) report({ kind: 'error', text: `exit code ${code ?? 1}` });
+        if (options.logged && code !== 0) report({ kind: 'error', text: '', code: code ?? 1 });
         resolve({ code: code ?? 1, stdout: Buffer.concat(stdout), stderr });
       });
       child.stdin.on('error', () => undefined);
@@ -634,7 +634,7 @@ exit 1
     if (/Could not resolve host|unable to access|Connection timed out|Connection refused|Could not read from remote/i.test(output)) {
       return { success: false, message: `${say('network')}\n${own}`.trim() };
     }
-    return { success: false, message: own || `exit code ${result.code}` };
+    return { success: false, message: own || `${say('exitCode')} ${result.code}` };
   };
 
   const done = (message: string = say('done')): GlistGitResult => ({ success: true, message });
@@ -796,7 +796,7 @@ exit 1
     } else if (local.code !== 0) command = ['checkout', '--detach', target];
     if (!action.smart) return steps(repo, [command]);
     const before = parseStashes(text(await run(['stash', 'list', `--format=${stashFormat}`], { cwd: repo.folder }))).length;
-    const stashed = await steps(repo, [['stash', 'push', '--include-untracked', '-m', 'Glist Studio: before checkout']]);
+    const stashed = await steps(repo, [['stash', 'push', '--include-untracked', '-m', say('stashBeforeCheckout')]]);
     if (!stashed.success) return stashed;
     const after = parseStashes(text(await run(['stash', 'list', `--format=${stashFormat}`], { cwd: repo.folder }))).length;
     const switched = await steps(repo, [command]);

@@ -2,7 +2,7 @@
 import * as monaco from 'monaco-editor/editor/editor.api';
 import type { DebugProtocol } from '@vscode/debugprotocol';
 import { icon } from './icons';
-import { t } from './localization';
+import { t, type TranslationKey } from './localization';
 import { baseName, pathUri, uriPath } from './paths';
 
 export type DebugState = 'idle' | 'starting' | 'running' | 'paused';
@@ -36,6 +36,17 @@ const storageKey = (projectRoot: string): string => `glist-studio-breakpoints:${
 
 // Runs programs under a debug adapter (lldb-dap or GDB) through the glistAPI
 // bridge, and shows breakpoints, the current line, variables and the call stack.
+
+// Why the program paused, in words: the adapters' reasons are English.
+const pauseReasons: Partial<Record<string, TranslationKey>> = {
+  breakpoint: 'pausedBreakpoint', 'function breakpoint': 'pausedBreakpoint', 'data breakpoint': 'pausedBreakpoint',
+  'instruction breakpoint': 'pausedBreakpoint', step: 'pausedStep', pause: 'pausedPause', exception: 'pausedException',
+  entry: 'pausedEntry', goto: 'pausedStep',
+};
+const pauseReason = (body: DebugProtocol.StoppedEvent['body']): string => {
+  const key = pauseReasons[body.reason];
+  return key ? t(key) : body.description ?? body.reason;
+};
 export class Debugger {
   state: DebugState = 'idle';
   // The session's debugger is the GDB Settings installed.
@@ -190,7 +201,7 @@ export class Debugger {
 
   // Ends the session on this side, whatever the adapter still does.
   private finish(): void {
-    this.pending.forEach((request) => request.reject(new Error('Debugging stopped')));
+    this.pending.forEach((request) => request.reject(new Error(t('debugStopped'))));
     this.pending.clear();
     this.eventWaiters.clear();
     this.verified.clear();
@@ -246,7 +257,7 @@ export class Debugger {
         const body = (event as DebugProtocol.StoppedEvent).body;
         this.threadId = body.threadId ?? this.threadId;
         this.setState('paused');
-        this.host.views.status.textContent = `${t('debugPaused')}: ${body.description ?? body.reason}`;
+        this.host.views.status.textContent = `${t('debugPaused')}: ${pauseReason(body)}`;
         await this.loadStack();
         break;
       }

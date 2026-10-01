@@ -56,8 +56,8 @@
       </header>
 
       <main class="workspace">
-        <nav class="activity-bar" aria-label="Main tools">
-          <button class="activity-button active" type="button" title="Explorer" data-view="explorer" aria-pressed="true"><i data-icon="files"></i></button>
+        <nav class="activity-bar" aria-label="Main tools" data-i18n-aria-label="mainTools">
+          <button class="activity-button active" type="button" title="Explorer" data-i18n-title="explorerView" data-view="explorer" aria-pressed="true"><i data-icon="files"></i></button>
           <button class="activity-button" type="button" title="Run and Debug" data-view="debug" data-i18n-title="debugView" aria-pressed="false"><i data-icon="debug-alt"></i></button>
           <button id="commit-activity" class="activity-button" type="button" title="Commit (Ctrl+K)" data-view="commit" data-i18n-title="commitViewTitle" aria-pressed="false" hidden><i data-icon="source-control"></i></button>
           <button id="engine-activity" class="activity-button" type="button" title="Glist Engine" data-view="engine" data-i18n-title="engineView" aria-pressed="false"><i data-icon="package"></i></button>
@@ -365,7 +365,7 @@
                 <fieldset class="settings-section run-settings">
                   <legend data-i18n="runSettings">Run</legend>
                   <label for="run-arguments" data-i18n="runArguments">Program arguments</label>
-                  <input id="run-arguments" type="text" autocomplete="off" spellcheck="false" placeholder="--level 2 &quot;my file.txt&quot;" />
+                  <input id="run-arguments" type="text" autocomplete="off" spellcheck="false" placeholder="--level 2 &quot;my file.txt&quot;" data-i18n-placeholder="runArgumentsExample" />
                   <p id="run-arguments-hint" class="dialog-hint"></p>
                 </fieldset>
                 <fieldset id="debugger-settings" class="settings-section debugger-settings" hidden>

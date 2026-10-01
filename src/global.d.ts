@@ -186,7 +186,7 @@ interface GlistAppMenu {
   items: GlistAppMenuItem[];
 }
 // The system's items in the words of the studio's language.
-type GlistAppMenuWords = Record<'about' | 'settings' | 'services' | 'hide' | 'hideOthers' | 'showAll' | 'quit' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'window', string>;
+type GlistAppMenuWords = Record<'about' | 'settings' | 'services' | 'hide' | 'hideOthers' | 'showAll' | 'quit' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'window' | 'minimize' | 'zoom' | 'front', string>;
 
 interface GlistProjectInfo {
   root: string;
@@ -514,6 +514,8 @@ type GlistGitAction =
 interface GlistGitConsoleEntry {
   kind: 'command' | 'output' | 'error';
   text: string;
+  // A command that ended with this code, which the window puts in words.
+  code?: number;
 }
 type GlistLanguage = import('./languages').Language;
 // The colors the window frame takes from the theme.

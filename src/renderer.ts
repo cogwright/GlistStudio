@@ -14,7 +14,7 @@ import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './a
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
-import { formatOutput, newOutputStyle } from './output-format';
+import { formatOutput, newOutputStyle, outputBanner } from './output-format';
 import { fileIconElement } from './file-icons';
 import { icon, placeIcons, type IconName } from './icons';
 import { Debugger } from './debugger';
@@ -51,7 +51,7 @@ import { EnvironmentSettings } from './environment-settings';
 import { RunArguments } from './run-arguments';
 import { terminalTheme } from './themes';
 import { isLanguage, languages } from './languages';
-import { applyLanguage, getLanguage, t, type TranslationKey } from './localization';
+import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './localization';
 import './index.css';
 
 interface OpenFile {
@@ -319,14 +319,14 @@ scaleSlider.max = String(zoomLevels.length - 1);
 const showZoom = (): void => {
   const index = zoomLevels.findIndex((level) => level === zoomPercentage);
   scaleSlider.value = String(index);
-  scaleSlider.setAttribute('aria-valuetext', `${zoomPercentage}%`);
-  scaleValue.textContent = `${zoomPercentage}%`;
+  scaleSlider.setAttribute('aria-valuetext', percent(zoomPercentage));
+  scaleValue.textContent = percent(zoomPercentage);
   scaleDown.disabled = index === 0;
   scaleUp.disabled = index === zoomLevels.length - 1;
   scaleReset.disabled = zoomPercentage === defaultZoom;
   zoomIndicator.hidden = zoomPercentage === defaultZoom;
   const label = document.createElement('span');
-  label.textContent = `${zoomPercentage}%`;
+  label.textContent = percent(zoomPercentage);
   zoomIndicator.replaceChildren(icon(zoomPercentage > defaultZoom ? 'zoom-in' : 'zoom-out'), label);
 };
 
@@ -354,7 +354,7 @@ const changeZoom = (direction: -1 | 1): void => {
 
 // A drag applies on release: zooming under the pointer would move the slider away from it.
 const sliderZoom = (): number => zoomLevels[Number(scaleSlider.value)] ?? defaultZoom;
-scaleSlider.addEventListener('input', () => { scaleValue.textContent = `${sliderZoom()}%`; });
+scaleSlider.addEventListener('input', () => { scaleValue.textContent = percent(sliderZoom()); });
 scaleSlider.addEventListener('change', () => setZoom(sliderZoom()));
 scaleDown.addEventListener('click', () => changeZoom(-1));
 scaleUp.addEventListener('click', () => changeZoom(1));
@@ -2311,7 +2311,7 @@ const buildProject = async (): Promise<void> => {
   await whileStarting(async () => {
     if (!(await saveProjectFiles())) return;
     showPanel('output');
-    appendOutput('\n── BUILD ────────────────────────────────────────\n');
+    appendOutput(outputBanner(t('outputBuild')));
     buildLog = '';
     const result = await window.glistAPI.buildProject();
     clangd.buildFinished();
@@ -2345,7 +2345,7 @@ const debugProject = async (): Promise<void> => {
     if (!(await saveProjectFiles())) return;
     showView('debug');
     showPanel('output');
-    appendOutput('\n── DEBUG ────────────────────────────────────────\n');
+    appendOutput(outputBanner(t('outputDebug')));
     await debug.start();
     clangd.buildFinished();
     void targetPicker.refresh();
@@ -2453,7 +2453,7 @@ const configureMenus = (): void => {
           shortcut: 'Ctrl+-', disabled: zoomPercentage === zoomLevels[0],
         }),
         item(t('resetZoom'), () => setZoom(defaultZoom), {
-          shortcut: 'Ctrl+0', hint: `${zoomPercentage}%`, disabled: zoomPercentage === defaultZoom,
+          shortcut: 'Ctrl+0', hint: percent(zoomPercentage), disabled: zoomPercentage === defaultZoom,
         }),
         { kind: 'separator' },
         { kind: 'heading', label: t('preferences') },
@@ -2652,6 +2652,7 @@ const configureMenus = (): void => {
     const words: GlistAppMenuWords = {
       about: t('aboutMenu'), settings: `${t('settings')}...`, services: t('macServices'), hide: t('macHide'), hideOthers: t('macHideOthers'),
       showAll: t('macShowAll'), quit: t('macQuit'), cut: t('cut'), copy: t('copy'), paste: t('paste'), selectAll: t('selectAll'), window: t('macWindow'),
+      minimize: t('macMinimize'), zoom: t('macZoom'), front: t('macFront'),
     };
     const native = await window.glistAPI.setAppMenu(menus, words).catch(() => false);
     document.documentElement.classList.toggle('native-menu', native);

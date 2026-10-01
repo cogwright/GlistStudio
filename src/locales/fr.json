@@ -646,7 +646,22 @@
     "searchSymbolsHint": "Tapez le nom d'une classe, d'une fonction ou d'une variable.",
     "searchSymbolsBuild": "Compilez le projet une fois; ses classes et ses fonctions pourront ensuite être recherchées.",
     "searchSymbolsOff": "Les symboles viennent de clangd, qui n'est pas lancé.",
-    "searchNothing": "Aucun résultat."
+    "searchNothing": "Aucun résultat.",
+    "mainTools": "Outils principaux",
+    "explorerView": "Explorateur",
+    "runArgumentsExample": "--level 2 \"mon fichier.txt\"",
+    "remoteUrlExample": "https://github.com/utilisateur/projet.git",
+    "outputBuild": "COMPILATION",
+    "outputDebug": "DÉBOGAGE",
+    "debugStopped": "Débogage arrêté",
+    "pausedBreakpoint": "point d'arrêt",
+    "pausedStep": "pas à pas",
+    "pausedPause": "mis en pause par vous",
+    "pausedException": "une exception a été levée",
+    "pausedEntry": "début du programme",
+    "macMinimize": "Placer dans le Dock",
+    "macZoom": "Réduire/agrandir",
+    "macFront": "Tout ramener au premier plan"
   },
   "platforms": {
     "darwin": {
@@ -723,7 +738,12 @@
     "installerMissing": "Le programme d'installation de Glist Engine n'a pas pu être téléchargé",
     "pathFolderTitle": "Ajouter un dossier au PATH",
     "askpassPrompt": "Le programme d'installation de Glist Engine a besoin de votre mot de passe pour installer les outils qu'il utilise.",
-    "invalidRegex": "Cette expression régulière n'est pas valide."
+    "invalidRegex": "Cette expression régulière n'est pas valide.",
+    "copySuffix": " - Copie",
+    "outputConfigure": "CONFIGURATION",
+    "outputBuildAndRun": "COMPILER ET EXÉCUTER",
+    "agentDownloading": "Téléchargement de {name}",
+    "agentInstallingPackage": "Installation de {name}"
   },
   "git": {
     "noProject": "Ouvrez d'abord un projet.",
@@ -761,19 +781,28 @@
     "patchCommit": "Un patch est en cours d'application: résolvez les conflits, puis choisissez Continuer.",
     "notPatch": "Ce n'est pas un patch.",
     "patchApplied": "Patch appliqué.",
-    "patchCommitted": "Patch appliqué sous forme de commits."
+    "patchCommitted": "Patch appliqué sous forme de commits.",
+    "exitCode": "code de sortie",
+    "stashBeforeCheckout": "Glist Studio: avant de changer de branche",
+    "askCancel": "Annuler",
+    "askOk": "OK"
   },
   "plugins": {
     "badName": "Ce n'est pas un nom de plugin.",
     "notPublished": "{name} n'est pas dans la liste des plugins.",
     "installedAlready": "{name} est déjà dans glistplugins.",
     "noProject": "Ouvrez d'abord un projet.",
-    "noPluginList": "CMakeLists.txt n'a pas de set(PLUGINS ...) auquel l'ajouter."
+    "noPluginList": "CMakeLists.txt n'a pas de set(PLUGINS ...) auquel l'ajouter.",
+    "githubAnswered": "GitHub a répondu {status}",
+    "cloneStopped": "git clone s'est arrêté avec le code {code}"
   },
   "updates": {
     "notFromSource": "{name} n'a pas été installé depuis {source}, et aucun de ses dépôts distants n'est {source}: il n'est donc pas mis à jour depuis là.",
     "otherBranch": "{name} est sur la branche {branch}; les mises à jour concernent {main}.",
     "detached": "{name} est sur un commit plutôt que sur une branche: il n'est donc pas mis à jour.",
-    "conflicts": "Les modifications de {name} sont en conflit avec les nouvelles de {source}."
+    "conflicts": "Les modifications de {name} sont en conflit avec les nouvelles de {source}.",
+    "commandFailed": "git {command} a échoué",
+    "keptBefore": "Glist Studio: gardé avant la mise à jour de {name}",
+    "keptWhile": "Glist Studio: gardé pendant la mise à jour de {name}"
   }
 }

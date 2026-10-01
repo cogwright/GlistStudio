@@ -183,7 +183,11 @@ const run = (file: string, args: string[], options: { cwd?: string; env?: NodeJS
 
 // The current Node.js 24 release for this computer, from nodejs.org, checked
 // against the release's SHA-256 list and unpacked into Glist Studio's folder.
-const installRuntime = async (home: string, report: (text: string) => void): Promise<void> => {
+// What installing says it is doing, with {name} for the file or package.
+export interface AgentProgressWords { downloading: string; installing: string }
+const englishProgress: AgentProgressWords = { downloading: 'Downloading {name}', installing: 'Installing {name}' };
+
+const installRuntime = async (home: string, report: (text: string) => void, words: AgentProgressWords): Promise<void> => {
   if (existsSync(runtimeNode(home)) && existsSync(runtimeNpm(home))) return;
   const release = 'https://nodejs.org/dist/latest-v24.x/';
   const platform = windows ? 'win' : process.platform;
@@ -198,7 +202,7 @@ const installRuntime = async (home: string, report: (text: string) => void): Pro
   const runtimeRoot = path.dirname(runtimeDirectory(home));
   await fs.mkdir(runtimeRoot, { recursive: true });
   const archive = path.join(runtimeRoot, file);
-  report(`Downloading ${file}\n`);
+  report(`${words.downloading.replace('{name}', file)}\n`);
   const response = await fetch(release + file);
   if (!response.ok || !response.body) throw new Error(`nodejs.org: ${response.status}`);
   const hash = createHash('sha256');
@@ -240,13 +244,15 @@ const restoreSpawnHelpers = async (directory: string): Promise<void> => {
 
 // Installs an agent from npm into Glist Studio's folder, with a Node.js of its
 // own. Nothing is written outside that folder: npm's cache is kept there too.
-export const installAgent = async (id: AgentId, places: AgentPlaces, report: (text: string) => void): Promise<void> => {
+export const installAgent = async (
+  id: AgentId, places: AgentPlaces, report: (text: string) => void, words: AgentProgressWords = englishProgress,
+): Promise<void> => {
   const agent = agentDefinitions.find((candidate) => candidate.id === id);
   if (!agent?.npmPackage) throw new Error(`${agent?.name ?? id} cannot be installed from here`);
-  await installRuntime(places.home, report);
+  await installRuntime(places.home, report, words);
   const directory = agentsDirectory(places.home);
   await fs.mkdir(directory, { recursive: true });
-  report(`Installing ${agent.npmPackage}\n`);
+  report(`${words.installing.replace('{name}', agent.npmPackage)}\n`);
   await run(runtimeNode(places.home), [
     runtimeNpm(places.home), 'install', '--prefix', directory, '--no-audit', '--no-fund', '--loglevel=error', `${agent.npmPackage}@latest`,
   ], {

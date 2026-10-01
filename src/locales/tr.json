@@ -646,7 +646,22 @@
     "searchSymbolsHint": "Bir sınıfın, fonksiyonun veya değişkenin adını yazın.",
     "searchSymbolsBuild": "Sınıfları ve fonksiyonları arayabilmek için projeyi bir kez derleyin.",
     "searchSymbolsOff": "Semboller clangd'den gelir ve clangd şu an çalışmıyor.",
-    "searchNothing": "Hiçbir şey bulunamadı."
+    "searchNothing": "Hiçbir şey bulunamadı.",
+    "mainTools": "Ana araçlar",
+    "explorerView": "Gezgin",
+    "runArgumentsExample": "--level 2 \"dosyam.txt\"",
+    "remoteUrlExample": "https://github.com/kullanici/proje.git",
+    "outputBuild": "DERLEME",
+    "outputDebug": "HATA AYIKLAMA",
+    "debugStopped": "Hata ayıklama durduruldu",
+    "pausedBreakpoint": "kesme noktası",
+    "pausedStep": "adım",
+    "pausedPause": "siz duraklattınız",
+    "pausedException": "bir istisna (exception) oluştu",
+    "pausedEntry": "programın başı",
+    "macMinimize": "Küçült",
+    "macZoom": "Büyüt",
+    "macFront": "Tümünü Öne Getir"
   },
   "platforms": {
     "darwin": {
@@ -723,7 +738,12 @@
     "installerMissing": "Glist Engine kurulum programı indirilemedi",
     "pathFolderTitle": "PATH'e klasör ekle",
     "askpassPrompt": "Glist Engine kurulum programı, kullandığı araçları kurabilmek için parolanızı istiyor.",
-    "invalidRegex": "Bu düzenli ifade (regex) geçerli değil."
+    "invalidRegex": "Bu düzenli ifade (regex) geçerli değil.",
+    "copySuffix": " - Kopya",
+    "outputConfigure": "YAPILANDIRMA",
+    "outputBuildAndRun": "DERLE VE ÇALIŞTIR",
+    "agentDownloading": "{name} indiriliyor",
+    "agentInstallingPackage": "{name} kuruluyor"
   },
   "git": {
     "noProject": "Önce bir proje açın.",
@@ -761,19 +781,28 @@
     "patchCommit": "Bir yama uygulanıyor: çakışmaları çözün, sonra Devam Et'i seçin.",
     "notPatch": "Bu bir yama değil.",
     "patchApplied": "Yama uygulandı.",
-    "patchCommitted": "Yama commit'ler olarak uygulandı."
+    "patchCommitted": "Yama commit'ler olarak uygulandı.",
+    "exitCode": "çıkış kodu",
+    "stashBeforeCheckout": "Glist Studio: dal değiştirmeden önce",
+    "askCancel": "İptal",
+    "askOk": "Tamam"
   },
   "plugins": {
     "badName": "Bu geçerli bir eklenti adı değil.",
     "notPublished": "{name} eklenti listesinde bulunmuyor.",
     "installedAlready": "{name} zaten glistplugins içinde kurulu.",
     "noProject": "Önce bir proje açın.",
-    "noPluginList": "CMakeLists.txt içinde eklentinin ekleneceği bir set(PLUGINS ...) tanımı yok."
+    "noPluginList": "CMakeLists.txt içinde eklentinin ekleneceği bir set(PLUGINS ...) tanımı yok.",
+    "githubAnswered": "GitHub {status} yanıtını verdi",
+    "cloneStopped": "git clone {code} koduyla durdu"
   },
   "updates": {
     "notFromSource": "{name}, {source} üzerinden kurulmadı ve uzak depolarından hiçbiri {source} değil; bu nedenle oradan güncellenemez.",
     "otherBranch": "{name}, {branch} dalında bulunuyor; güncellemeler ise {main} dalı içindir.",
     "detached": "{name} bir dal yerine doğrudan bir commit üzerinde bulunuyor (detached), bu yüzden güncellenemez.",
-    "conflicts": "{name} içerisindeki değişiklikler, {source} üzerinden gelen yeni değişikliklerle çakışıyor."
+    "conflicts": "{name} içerisindeki değişiklikler, {source} üzerinden gelen yeni değişikliklerle çakışıyor.",
+    "commandFailed": "git {command} başarısız oldu",
+    "keptBefore": "Glist Studio: {name} güncellenmeden önce saklandı",
+    "keptWhile": "Glist Studio: {name} güncellenirken saklandı"
   }
 }
