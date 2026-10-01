@@ -2091,6 +2091,16 @@ const openProjectWith = async (open: () => Promise<GlistProjectInfo | null>): Pr
   }
 };
 
+// Where a new Glist app's code starts: its canvas, gCanvas.h beside gCanvas.cpp,
+// with the .cpp in front. Nothing opens for a project without them.
+const openCanvas = async (root: string): Promise<void> => {
+  const source = joinPath(root, 'src');
+  const names = new Set((await window.glistAPI.listDirectory(source).catch((): GlistFileEntry[] => [])).map((entry) => entry.name));
+  for (const name of ['gCanvas.h', 'gCanvas.cpp']) {
+    if (names.has(name) && !(await openFile(joinPath(source, name), name))) return;
+  }
+};
+
 // Open Project lists the projects to pick from; Browse opens any other folder.
 const showProjectPicker = setUpProjectPicker({
   dialog: element<HTMLDialogElement>('#open-project-dialog'),
@@ -2125,7 +2135,11 @@ const showGlistInstaller = setUpGlistInstaller({
 }, installTerminal, () => {
   glistInstalled = true;
   glistMissing.hidden = true;
-}, (root) => { void openProjectWith(() => window.glistAPI.openProjectPath(joinPath(joinPath(root, 'myglistapps'), 'GlistApp'))); });
+}, (root) => {
+  const before = activeProject;
+  void openProjectWith(() => window.glistAPI.openProjectPath(joinPath(joinPath(root, 'myglistapps'), 'GlistApp')))
+    .then(() => { if (activeProject && activeProject !== before) void openCanvas(activeProject.root); });
+});
 element<HTMLButtonElement>('#install-glist').addEventListener('click', () => { void showGlistInstaller(); });
 const pickerClone = element<HTMLButtonElement>('#project-picker-clone');
 pickerClone.addEventListener('click', () => {
