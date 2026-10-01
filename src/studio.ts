@@ -125,23 +125,37 @@ const isInside = (root: string, candidate: string): boolean => {
   return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 };
 
-const assertPathInProject = (candidatePath: string): string => {
-  const resolvedCandidate = path.resolve(candidatePath);
-  if (!isInside(path.resolve(requireProjectRoot()), resolvedCandidate)) {
-    throw new Error(msg('outsideProject'));
-  }
-  return resolvedCandidate;
+const isInProject = (candidatePath: string): boolean => isInside(path.resolve(requireProjectRoot()), path.resolve(candidatePath));
+
+// Where files are made, moved and deleted: the project, and the engine and the
+// plugins it names. Neither builds on its own, so their work happens from an app.
+const editableRoots = async (): Promise<string[]> => [
+  path.resolve(requireProjectRoot()),
+  ...(await listDependencies()).filter((dependency) => dependency.exists).map((dependency) => path.resolve(dependency.path)),
+];
+
+// The one of those a path is in, where its links do not lead out of it either.
+const editableRootOf = async (candidatePath: string): Promise<string> => {
+  const safePath = path.resolve(candidatePath);
+  const root = (await editableRoots()).find((folder) => isInside(folder, safePath));
+  if (!root || !isInside(await fs.realpath(root), await fs.realpath(safePath))) throw new Error(msg('outsideProject'));
+  return root;
 };
 
-const assertExistingPathInProject = async (candidatePath: string): Promise<string> => {
-  const safePath = assertPathInProject(candidatePath);
-  const realRoot = await fs.realpath(requireProjectRoot());
-  if (!isInside(realRoot, await fs.realpath(safePath))) throw new Error(msg('outsideProject'));
+const assertEditablePath = async (candidatePath: string): Promise<string> => {
+  await editableRootOf(candidatePath);
+  return path.resolve(candidatePath);
+};
+
+// The project's folder and the engine's and plugins' are not renamed, moved or deleted.
+const assertNotRoot = async (entryPath: string): Promise<string> => {
+  const safePath = await assertEditablePath(entryPath);
+  if (safePath === await editableRootOf(safePath)) throw new Error(msg('rootDelete'));
   return safePath;
 };
 
 const listDirectory = async (directoryPath: string): Promise<FileEntry[]> =>
-  listEntries(await assertExistingPathInProject(directoryPath), directoryPath);
+  listEntries(await assertEditablePath(directoryPath), directoryPath);
 
 const listEntries = async (safeDirectory: string, directoryPath: string): Promise<FileEntry[]> => {
   const entries = await fs.readdir(safeDirectory, { withFileTypes: true });
@@ -166,12 +180,8 @@ const validateEntryName = (name: string): string => {
   return trimmed;
 };
 
-const resolveNewEntryPath = async (directoryPath: string, name: string): Promise<string> => {
-  const safeDirectory = await assertExistingPathInProject(directoryPath);
-  const stats = await fs.stat(safeDirectory);
-  if (!stats.isDirectory()) throw new Error(msg('folderRequired'));
-  return assertPathInProject(path.join(safeDirectory, validateEntryName(name)));
-};
+const resolveNewEntryPath = async (directoryPath: string, name: string): Promise<string> =>
+  path.join(await editableFolder(directoryPath), validateEntryName(name));
 
 const relativeProjectPath = (filePath: string): string =>
   path.relative(requireProjectRoot(), filePath).replace(/\\/g, '/');
@@ -190,9 +200,23 @@ const writeCmakeChange = async (change: Awaited<ReturnType<typeof cmakeChange>>)
   if (change && change.after !== change.before) await fs.writeFile(change.path, change.after, 'utf8');
 };
 
+// The engine's and plugins' CMakeLists.txt are written another way and left as they are.
+const cmakeChangeIn = async (change: CmakeChange | null): Promise<Awaited<ReturnType<typeof cmakeChange>>> =>
+  change ? cmakeChange(change) : null;
+
+// An entry moved across the project's edge leaves or joins its CMakeLists.txt.
+const relocationChange = async (from: string, to: string): Promise<CmakeChange | null> => {
+  if (from === path.join(requireProjectRoot(), 'CMakeLists.txt')) return null;
+  if (isInProject(from) && isInProject(to)) return { kind: 'rename', from: relativeProjectPath(from), to: relativeProjectPath(to) };
+  if (isInProject(from)) return { kind: 'remove', path: relativeProjectPath(from) };
+  if (!isInProject(to)) return null;
+  const inside = (await fs.stat(from)).isDirectory() ? await fs.readdir(from, { recursive: true }) : [''];
+  return { kind: 'add', paths: inside.map((entry) => relativeProjectPath(path.join(to, entry))) };
+};
+
 const createProjectFile = async (directoryPath: string, name: string): Promise<string> => {
   const filePath = await resolveNewEntryPath(directoryPath, name);
-  const change = await cmakeChange({ kind: 'add', paths: [relativeProjectPath(filePath)] });
+  const change = await cmakeChangeIn(isInProject(filePath) ? { kind: 'add', paths: [relativeProjectPath(filePath)] } : null);
   await fs.writeFile(filePath, '', { encoding: 'utf8', flag: 'wx' });
   try { await writeCmakeChange(change); }
   catch (error) { await fs.rm(filePath, { force: true }); throw error; }
@@ -206,11 +230,8 @@ const createProjectDirectory = async (directoryPath: string, name: string): Prom
 };
 
 const deleteProjectEntry = async (entryPath: string): Promise<boolean> => {
-  const safePath = await assertExistingPathInProject(entryPath);
-  if (safePath === path.resolve(requireProjectRoot())) {
-    throw new Error(msg('rootDelete'));
-  }
-  const change = safePath === path.join(requireProjectRoot(), 'CMakeLists.txt')
+  const safePath = await assertNotRoot(entryPath);
+  const change = safePath === path.join(requireProjectRoot(), 'CMakeLists.txt') || !isInProject(safePath)
     ? null : await cmakeChange({ kind: 'remove', path: relativeProjectPath(safePath) });
   await writeCmakeChange(change);
   try { await host.trashItem(safePath); }
@@ -226,14 +247,13 @@ const sameFile = async (left: string, right: string): Promise<boolean> => {
   return leftStats.dev === rightStats.dev && leftStats.ino === rightStats.ino;
 };
 
-// An entry of the project put at another path of it, renamed or moved: the
-// files CMakeLists.txt names follow, and if they cannot, it goes back.
+// An entry put at another path, renamed or moved: the files the project's
+// CMakeLists.txt names follow, and if they cannot, it goes back.
 const relocateProjectEntry = async (oldPath: string, nextPath: string): Promise<string> => {
   if (oldPath === nextPath) return oldPath;
   // On file systems that ignore case, renaming foo.h to Foo.h finds itself.
   if (existsSync(nextPath) && !(await sameFile(oldPath, nextPath))) throw new Error(msg('alreadyExists'));
-  const change = oldPath === path.join(requireProjectRoot(), 'CMakeLists.txt')
-    ? null : await cmakeChange({ kind: 'rename', from: relativeProjectPath(oldPath), to: relativeProjectPath(nextPath) });
+  const change = await cmakeChangeIn(await relocationChange(oldPath, nextPath));
   await fs.rename(oldPath, nextPath);
   if (change) {
     try { await writeCmakeChange(change); }
@@ -243,18 +263,16 @@ const relocateProjectEntry = async (oldPath: string, nextPath: string): Promise<
 };
 
 const renameProjectEntry = async (entryPath: string, newName: string): Promise<string> => {
-  const oldPath = await assertExistingPathInProject(entryPath);
-  if (oldPath === path.resolve(requireProjectRoot())) throw new Error(msg('rootDelete'));
-  return relocateProjectEntry(oldPath, assertPathInProject(path.join(path.dirname(oldPath), validateEntryName(newName))));
+  const oldPath = await assertNotRoot(entryPath);
+  return relocateProjectEntry(oldPath, path.join(path.dirname(oldPath), validateEntryName(newName)));
 };
 
-// Dragged onto another folder of the project in the explorer: moved there, keeping its name.
+// Dragged onto another folder in the explorer: moved there, keeping its name.
 const moveProjectEntry = async (entryPath: string, destinationDirectory: string): Promise<string> => {
-  const oldPath = await assertExistingPathInProject(entryPath);
-  if (oldPath === path.resolve(requireProjectRoot())) throw new Error(msg('rootDelete'));
-  const destination = await projectFolder(destinationDirectory);
+  const oldPath = await assertNotRoot(entryPath);
+  const destination = await editableFolder(destinationDirectory);
   if ((await fs.stat(oldPath)).isDirectory()) assertNotIntoSelf(oldPath, destination, 'moveIntoSelf');
-  return relocateProjectEntry(oldPath, assertPathInProject(path.join(destination, path.basename(oldPath))));
+  return relocateProjectEntry(oldPath, path.join(destination, path.basename(oldPath)));
 };
 
 const createCppClass = async (directoryPath: string, className: string): Promise<{ header: string; source: string }> => {
@@ -262,10 +280,11 @@ const createCppClass = async (directoryPath: string, className: string): Promise
   const header = await resolveNewEntryPath(directoryPath, `${className}.h`);
   const source = await resolveNewEntryPath(directoryPath, `${className}.cpp`);
   if (existsSync(header) || existsSync(source)) throw new Error(msg('alreadyExists'));
-  const change = await cmakeChange({ kind: 'add', paths: [relativeProjectPath(source), relativeProjectPath(header)] });
-  if (!change || change.after === change.before) throw new Error(msg('classSource'));
+  const inProject = isInProject(header);
+  const change = await cmakeChangeIn(inProject ? { kind: 'add', paths: [relativeProjectPath(source), relativeProjectPath(header)] } : null);
+  if (inProject && (!change || change.after === change.before)) throw new Error(msg('classSource'));
   const { headerContent, sourceContent } = renderCppClass(
-    className, relativeProjectPath(header), currentUsername(), new Date(),
+    className, path.relative(await editableRootOf(path.dirname(header)), header).replace(/\\/g, '/'), currentUsername(), new Date(),
   );
   await fs.writeFile(header, headerContent, { flag: 'wx' });
   try {
@@ -274,7 +293,7 @@ const createCppClass = async (directoryPath: string, className: string): Promise
   } catch (error) {
     await fs.rm(header, { force: true });
     await fs.rm(source, { force: true });
-    await fs.writeFile(change.path, change.before, 'utf8');
+    if (change) await fs.writeFile(change.path, change.before, 'utf8');
     throw error;
   }
   return { header, source };
@@ -300,16 +319,16 @@ const assertNotIntoSelf = (source: string, destination: string, refusal: 'copyIn
   }
 };
 
-const projectFolder = async (directoryPath: unknown): Promise<string> => {
+const editableFolder = async (directoryPath: unknown): Promise<string> => {
   if (typeof directoryPath !== 'string') throw new Error(msg('folderRequired'));
-  const folder = await assertExistingPathInProject(directoryPath);
+  const folder = await assertEditablePath(directoryPath);
   if (!(await fs.stat(folder)).isDirectory()) throw new Error(msg('folderRequired'));
   return folder;
 };
 
 const copyProjectEntry = async (entryPath: string, destinationDirectory: string): Promise<string> => {
-  const source = await assertExistingPathInProject(entryPath);
-  const destination = await projectFolder(destinationDirectory);
+  const source = await assertEditablePath(entryPath);
+  const destination = await editableFolder(destinationDirectory);
   const sourceStats = await fs.stat(source);
   if (sourceStats.isDirectory()) assertNotIntoSelf(source, destination);
   const target = freeTarget(destination, path.basename(source), sourceStats.isDirectory());
@@ -320,7 +339,7 @@ const copyProjectEntry = async (entryPath: string, destinationDirectory: string)
 // Files and folders dragged in from the system's file manager, copied into a
 // project folder. They come from anywhere on the computer: the user chose them.
 const importPaths = async (sources: unknown, destinationDirectory: unknown): Promise<string[]> => {
-  const destination = await projectFolder(destinationDirectory);
+  const destination = await editableFolder(destinationDirectory);
   const copied: string[] = [];
   for (const source of Array.isArray(sources) ? sources : []) {
     if (typeof source !== 'string' || !path.isAbsolute(source)) continue;
@@ -337,7 +356,7 @@ const importPaths = async (sources: unknown, destinationDirectory: unknown): Pro
 // dropped, such as sprites/hero.png, and its bytes in base64. A dropped folder
 // whose name is taken is renamed as a whole.
 const importFiles = async (destinationDirectory: unknown, files: unknown): Promise<string[]> => {
-  const destination = await projectFolder(destinationDirectory);
+  const destination = await editableFolder(destinationDirectory);
   const tops = new Map<string, string>();
   for (const file of Array.isArray(files) ? files : []) {
     const { path: place, data } = (file ?? {}) as { path?: unknown; data?: unknown };
@@ -349,7 +368,7 @@ const importFiles = async (destinationDirectory: unknown, files: unknown): Promi
       top = freeTarget(destination, parts[0], parts.length > 1);
       tops.set(parts[0], top);
     }
-    const target = assertPathInProject(path.join(top, ...parts.slice(1)));
+    const target = path.join(top, ...parts.slice(1));
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, Buffer.from(data, 'base64'), { flag: 'wx' });
   }
@@ -357,8 +376,8 @@ const importFiles = async (destinationDirectory: unknown, files: unknown): Promi
 };
 
 const showInSystemExplorer = async (entryPath: string): Promise<void> => {
-  const safePath = await assertExistingPathInProject(entryPath);
-  if (safePath === path.resolve(requireProjectRoot())) await host.openPath(safePath);
+  const safePath = await assertEditablePath(entryPath);
+  if (safePath === await editableRootOf(safePath)) await host.openPath(safePath);
   else host.showItemInFolder(safePath);
 };
 
@@ -372,7 +391,7 @@ const terminals = (directory: string): Array<[string, string[]]> => {
 };
 
 const openCommandPrompt = async (entryPath: string): Promise<void> => {
-  const safePath = await assertExistingPathInProject(entryPath);
+  const safePath = await assertEditablePath(entryPath);
   const directory = (await fs.stat(safePath)).isDirectory() ? safePath : path.dirname(safePath);
   for (const [command, args] of terminals(directory)) {
     const child = spawn(command, args, { cwd: directory, detached: true, stdio: 'ignore', windowsHide: false });
@@ -1058,7 +1077,7 @@ const readTextFile = async (filePath: string): Promise<string> => {
 };
 
 const readProjectFile = async (filePath: string): Promise<string> =>
-  readTextFile(await assertExistingPathInProject(filePath));
+  readTextFile(await assertEditablePath(filePath));
 
 // Go to definition lands in engine and plugin headers, so files anywhere in
 // the Glist workspace (the folder holding GlistEngine) may be read, never written.
@@ -1114,39 +1133,13 @@ const searchText = async (query: unknown): Promise<GlistSearchResult> => {
 const listFiles = async (dependencies: unknown): Promise<GlistFoundFile[]> =>
   filesIn(await searchFoldersFor(dependencies === true), 20000);
 
-// Folders of the engine and plugins, to browse; like their files, never written.
-const listWorkspaceDirectory = async (directoryPath: string): Promise<FileEntry[]> => {
-  const workspaceRoot = findAncestorWith(requireProjectRoot(), path.join('GlistEngine', 'engine'));
-  const realDirectory = await fs.realpath(path.resolve(directoryPath));
-  if (!workspaceRoot || !isInside(await fs.realpath(workspaceRoot), realDirectory)) throw new Error(msg('outsideProject'));
-  return listEntries(realDirectory, directoryPath);
-};
-
-// A file in the engine or a plugin the open project names. Neither builds on its
-// own, so their work happens from an app; other workspace files stay read-only.
-const dependencyFile = async (filePath: string): Promise<string> => {
-  const target = path.resolve(filePath);
-  const directory = path.dirname(target);
-  if (existsSync(directory)) {
-    const real = existsSync(target) ? await fs.realpath(target) : path.join(await fs.realpath(directory), path.basename(target));
-    for (const dependency of await listDependencies()) {
-      if (!dependency.exists) continue;
-      const folder = await fs.realpath(dependency.path);
-      if (real !== folder && isInside(folder, real)) return real;
-    }
-  }
-  throw new Error(msg('outsideProject'));
-};
-
+// Files of the project, the engine and the plugins it names; other files in the
+// Glist folder, such as zbin's, stay read-only.
 const writeProjectFile = async (filePath: string, contents: string): Promise<boolean> => {
-  if (!isInside(path.resolve(requireProjectRoot()), path.resolve(filePath))) {
-    await fs.writeFile(await dependencyFile(filePath), contents, 'utf8');
-    return true;
-  }
   // A file deleted behind the editor's back is written again, into a folder that still exists.
   const target = existsSync(filePath)
-    ? await assertExistingPathInProject(filePath)
-    : path.join(await assertExistingPathInProject(path.dirname(assertPathInProject(filePath))), path.basename(filePath));
+    ? await assertEditablePath(filePath)
+    : path.join(await assertEditablePath(path.dirname(path.resolve(filePath))), path.basename(filePath));
   await fs.writeFile(target, contents, 'utf8');
   return true;
 };
@@ -1567,7 +1560,6 @@ export const studio: Handlers = {
     );
   },
   listDependencies,
-  listWorkspaceDirectory,
   searchText,
   listFiles,
   getProjectsDirectory: projectsDirectory,
