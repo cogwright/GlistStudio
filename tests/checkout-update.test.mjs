@@ -142,9 +142,11 @@ try {
   assert.equal(git(copy, 'stash', 'list'), '', 'the changed file is not left in a stash');
   // Asked to resolve, the conflict stays for the Git tools.
   result = await update('keep', true);
-  assert.deepEqual([result.success, result.conflicts], [false, true]);
+  assert.deepEqual([result.success, result.conflicts, result.kept], [false, true, { stash: 'Glist Studio: kept while updating GlistEngine' }]);
   assert.match(git(copy, 'status'), /rebase in progress/);
   git(copy, 'rebase', '--abort');
+  // The changed file waits in the stash, as the notice says, until it is applied.
+  git(copy, 'stash', 'pop', '-q');
   assert.equal(read('gApp.h'), 'app edited\n');
 
   // A changed file that clashes with the new version: updated, and the file waits in a stash.
@@ -154,11 +156,36 @@ try {
   result = await update('keep');
   assert.deepEqual([result.success, result.how, result.stashClash], [true, 'fast-forward', true], result.message);
   assert.equal(git(copy, 'rev-parse', 'HEAD'), git(copy, 'rev-parse', 'upstream/main'));
-  assert.match(git(copy, 'stash', 'list'), /autostash/);
+  assert.match(git(copy, 'stash', 'list'), /kept while updating GlistEngine/);
+  // Both sides are in the file, marked, as git's own autostash leaves them.
+  assert.match(read('gCore.h'), /<<<<<<<[\s\S]*core 7[\s\S]*core clash[\s\S]*>>>>>>>/);
 
-  // What changes the copy is shown in the Git console, with the folder, and what git said.
+  // A new file of the user's that the new version brings too. Git's own
+  // --autostash leaves new files in place and stops with "Aborting"; here the
+  // update goes on and the user's file waits in a stash.
   git(copy, 'reset', '-q', '--hard', 'upstream/main');
   git(copy, 'stash', 'clear');
+  writeFileSync(path.join(copy, 'gNew.h'), 'new mine\n');
+  publish('gNew.h', 'new theirs\n', 'New header');
+  result = await update();
+  assert.deepEqual(result.confirm, { changed: 1, ahead: 0, keepBy: 'fast-forward' });
+  result = await update('keep');
+  assert.deepEqual([result.success, result.how, result.stashClash], [true, 'fast-forward', true], result.message);
+  assert.equal(read('gNew.h'), 'new theirs\n');
+  assert.match(git(copy, 'stash', 'list'), /kept while updating GlistEngine/);
+  assert.equal(git(copy, 'show', 'stash@{0}^3:gNew.h'), 'new mine');
+
+  // New files the new version does not bring come back where they were, and no stash is left.
+  git(copy, 'stash', 'clear');
+  writeFileSync(path.join(copy, 'notes.txt'), 'my notes\n');
+  writeFileSync(path.join(copy, 'gApp.h'), 'app mine again\n');
+  publish('gCore.h', 'core 8\n', 'Core eight');
+  result = await update('keep');
+  assert.deepEqual([result.success, result.how, result.stashClash], [true, 'fast-forward', undefined], result.message);
+  assert.deepEqual([read('notes.txt'), read('gApp.h'), read('gCore.h')], ['my notes\n', 'app mine again\n', 'core 8\n']);
+  assert.equal(git(copy, 'stash', 'list'), '');
+
+  // What changes the copy is shown in the Git console, with the folder, and what git said.
   const shown = [];
   const logged = createCheckouts({
     git: gitRunner(() => process.env, (entry) => shown.push(entry)), site, isProtected: async () => true, language: () => 'en',
@@ -166,13 +193,18 @@ try {
   publish('gCore.h', 'core 9\n', 'Core nine');
   await logged.inspect(copy, 'GlistEngine/GlistEngine', { fetch: true });
   assert.equal(shown.length, 0, 'a check asks quietly');
-  result = await logged.update(copy, 'GlistEngine', 'GlistEngine/GlistEngine');
+  result = await logged.update(copy, 'GlistEngine', 'GlistEngine/GlistEngine', 'keep');
   assert.equal(result.success, true, result.message);
-  assert.deepEqual(shown.filter((entry) => entry.kind === 'command').map((entry) => entry.text), [
+  const commands = shown.filter((entry) => entry.kind === 'command').map((entry) => entry.text);
+  assert.deepEqual(commands, [
     'git -C GlistEngine fetch --quiet upstream main',
-    'git -C GlistEngine merge --ff-only --autostash refs/remotes/upstream/main',
+    'git -C GlistEngine stash push --include-untracked --message "Glist Studio: kept while updating GlistEngine"',
+    'git -C GlistEngine merge --ff-only refs/remotes/upstream/main',
+    'git -C GlistEngine stash pop',
   ]);
   assert.ok(shown.some((entry) => entry.kind === 'output' && /Fast-forward/.test(entry.text)));
+  git(copy, 'checkout', '-q', '--', '.');
+  git(copy, 'clean', '-q', '-f');
 
   // Where it is not updated: another branch, a commit, no remote that is the source.
   git(copy, 'checkout', '-q', '-f', '-b', 'experiment');

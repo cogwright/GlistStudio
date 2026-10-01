@@ -87,7 +87,13 @@ const report = (target: CheckoutTarget, result: GlistCheckoutResult, hooks: Chec
         { label: fill('updateUseSource', values), run: () => { void change(target, hooks, 'replace').then((next) => report(target, next, hooks, false)); } },
         ...(hooks.gitTools() ? [{
           label: t('updateResolve'),
-          run: () => { void change(target, hooks, 'keep', true).then(() => hooks.showConflicts()); },
+          run: () => {
+            void change(target, hooks, 'keep', true).then((left) => {
+              // The changed files wait in a stash until the conflicts are resolved.
+              if (left.kept?.stash) notify({ text: fill('updateKeptStash', { stash: left.kept.stash }) });
+              hooks.showConflicts();
+            });
+          },
         }] : []),
         ...showConsole,
       ],

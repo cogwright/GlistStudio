@@ -193,23 +193,38 @@ export const createCheckouts = (context: CheckoutContext) => {
       return { success: true, message: name, how: 'replace', kept };
     }
     const how = ahead === 0 ? 'fast-forward' : keepBy;
-    const args = how === 'fast-forward' ? ['merge', '--ff-only', '--autostash', target]
-      : how === 'rebase' ? ['rebase', '--autostash', target]
-        : ['merge', '--no-edit', '--autostash', target];
+    // Changed files, new ones too, are put aside first and put back after. Git's
+    // own --autostash leaves new files where they are, and stops with "Aborting"
+    // when the new version brings a file of the same name.
+    let stash = '';
+    if (changed > 0) {
+      stash = `Glist Studio: kept while updating ${name}`;
+      const stashed = await change(['stash', 'push', '--include-untracked', '--message', stash]);
+      if (stashed.code !== 0) return failed(gitMessage(stashed, 'git stash failed'));
+    }
+    // A file that clashes with the new version keeps both, marked, as git's
+    // own does, and the stash stays, so nothing of the user's is lost.
+    const putBack = async (): Promise<boolean> => !stash || (await change(['stash', 'pop'])).code === 0;
+    const args = how === 'fast-forward' ? ['merge', '--ff-only', target]
+      : how === 'rebase' ? ['rebase', target]
+        : ['merge', '--no-edit', target];
     const result = await change(args);
     if (result.code !== 0) {
       const unmerged = lines(await git(['diff', '--name-only', '--diff-filter=U'], folder)).length > 0;
       const gitPath = async (name: string): Promise<string> => path.resolve(folder, (await git(['rev-parse', '--git-path', name], folder)).stdout.trim());
       const stopped = existsSync(await gitPath('rebase-merge')) || existsSync(await gitPath('rebase-apply')) || existsSync(await gitPath('MERGE_HEAD'));
       if (unmerged || stopped) {
+        // Left for the Git tools; the changed files wait in the stash until then.
+        if (options.resolve) return { success: false, message: say('conflicts', { name, source }), conflicts: true, how, ...(stash ? { kept: { stash } } : {}) };
         // Taken back, the copy is as it was, the changed files too.
-        if (!options.resolve) await change([how === 'rebase' ? 'rebase' : 'merge', '--abort']);
+        await change([how === 'rebase' ? 'rebase' : 'merge', '--abort']);
+        await putBack();
         return { success: false, message: say('conflicts', { name, source }), conflicts: true, how };
       }
+      await putBack();
       return failed(gitMessage(result, `git ${args[0]} failed`));
     }
-    // Put back, the changed files clashed with the new version; git keeps them in a stash.
-    const stashClash = /Applying autostash resulted in conflicts|Your changes are safe in the stash/i.test(`${result.stdout}\n${result.stderr}`);
+    const stashClash = !(await putBack());
     return { success: true, message: name, how, ...(stashClash ? { stashClash: true } : {}) };
   };
 
