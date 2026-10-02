@@ -24,6 +24,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   importFiles: 'project:import-files',
   showInExplorer: 'project:show-in-explorer',
   readFile: 'project:read-file',
+  readImage: 'project:read-image',
   readWorkspaceFile: 'project:read-workspace-file',
   codeStyle: 'project:code-style',
   listDependencies: 'project:dependencies',
