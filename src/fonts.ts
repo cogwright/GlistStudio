@@ -1,5 +1,6 @@
 // eslint-disable-next-line import/no-unresolved
 import * as monaco from 'monaco-editor/editor/editor.api';
+import { isMac } from './shortcuts';
 
 // Fonts for code (editor, output, debugger values) and for the interface.
 // Names that are not installed fall back to the defaults after them.
@@ -12,16 +13,18 @@ export interface FontSettings {
 }
 
 const storageKey = 'glist-studio-fonts';
-const codeFallback = "'Cascadia Code', 'SF Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace";
-const interfaceFallback = "'Segoe UI', system-ui, sans-serif";
+// A Mac's own fonts there, and Inter and JetBrains Mono everywhere else, which
+// come with the studio (index.css), so Windows and Linux look alike.
+const codeFallback = isMac ? "'SF Mono', Menlo, monospace" : "'JetBrains Mono', monospace";
+const interfaceFallback = isMac ? 'system-ui, sans-serif' : 'Inter, sans-serif';
 const defaults: FontSettings = { code: '', codeSize: 14, ligatures: false, interface: '' };
 
 export const codeFontSuggestions = [
-  'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Source Code Pro', 'SF Mono', 'Menlo', 'Monaco', 'Consolas',
+  'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Source Code Pro', 'SF Mono', 'Menlo', 'Monaco', 'Consolas',
   'Ubuntu Mono', 'DejaVu Sans Mono', 'Courier New',
 ];
 export const interfaceFontSuggestions = [
-  'Segoe UI', 'SF Pro Text', 'Helvetica Neue', 'Inter', 'Roboto', 'Noto Sans', 'Ubuntu', 'Cantarell', 'Arial',
+  'Inter', 'Segoe UI', 'SF Pro Text', 'Helvetica Neue', 'Roboto', 'Noto Sans', 'Ubuntu', 'Cantarell', 'Arial',
 ];
 
 export const loadFonts = (): FontSettings => {
@@ -49,6 +52,10 @@ export const codeFontStack = (fonts: FontSettings): string => stack(fonts.code, 
 export const panelFontSize = (fonts: FontSettings): number => Math.max(10, fonts.codeSize - 2);
 
 const fontListeners: Array<(fonts: FontSettings) => void> = [];
+
+// The fonts that come with the studio load once something shows them, after
+// Monaco has measured the code font with another; it measures again then.
+document.fonts.addEventListener('loadingdone', () => monaco.editor.remeasureFonts());
 
 // For parts that set their font in code rather than CSS, such as the terminal.
 export const onFontsChange = (listener: (fonts: FontSettings) => void): void => {
@@ -92,6 +99,12 @@ export const setUpFontSettings = (controls: FontControls): void => {
     return option;
   });
   controls.codeList.replaceChildren(...options(codeFontSuggestions));
+  // What an empty field means here.
+  controls.code.placeholder = isMac ? 'Menlo' : 'JetBrains Mono';
+  if (!isMac) {
+    controls.interface.removeAttribute('data-i18n-placeholder');
+    controls.interface.placeholder = 'Inter';
+  }
   controls.interfaceList.replaceChildren(...options(interfaceFontSuggestions));
   controls.code.value = fonts.code;
   controls.codeSize.value = String(fonts.codeSize);

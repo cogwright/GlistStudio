@@ -90,4 +90,4 @@ Node.js access is disabled in the interface; files and processes are reached onl
 
 ## License
 
-Apache License 2.0, see `LICENSE`. The icons are from Codicons and Seti, see `THIRD_PARTY_NOTICES.md`.
+Apache License 2.0, see `LICENSE`. The icons are from Codicons and Seti, and the fonts on Windows and Linux are Inter and JetBrains Mono, see `THIRD_PARTY_NOTICES.md`.

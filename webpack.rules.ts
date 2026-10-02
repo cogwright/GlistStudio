@@ -29,7 +29,7 @@ export const rules: Required<ModuleOptions>['rules'] = [
     },
   },
   {
-    test: /\.(ico|png|svg|woff)$/i,
+    test: /\.(ico|png|svg|woff2?)$/i,
     exclude: /[/\\]@vscode[/\\]codicons[/\\]/,
     type: 'asset/resource',
   },
