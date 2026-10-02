@@ -6,7 +6,7 @@ import http from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  assetFor, download, installMacApp, isNewer, latestTag, newestTag, releaseAt, replaceAppImage, stageMacApp,
+  assetFor, download, feedTags, installMacApp, isNewer, latestTag, newerRelease, releaseAt, replaceAppImage, stageMacApp,
 } from '../src/update-release.ts';
 
 // Updating from GitHub releases, against a local server that answers as
@@ -53,13 +53,16 @@ const server = http.createServer((request, response) => {
     response.writeHead(302, { Location: latest ? `/owner/repo/releases/tag/${latest}` : '/owner/repo/releases' });
     response.end();
   } else if (request.url === '/owner/repo/releases.atom') {
-    // Newest first, as GitHub lists them: previews and releases alike.
+    // Previews and releases alike, and v0.0.6, whose release is still a draft.
     response.writeHead(200, { 'Content-Type': 'application/atom+xml' });
-    response.end(['v0.0.5-dev.2', 'v0.0.5-dev.12', 'v0.0.4', 'v0.0.5-dev.1'].map((tag) =>
+    response.end(['v0.0.6', 'v0.0.5-dev.2', 'v0.0.5-dev.12', 'v0.0.4', 'v0.0.5-dev.1', 'v0.0.5-dev.12'].map((tag) =>
       `<entry><link rel="alternate" type="text/html" href="${base}/owner/repo/releases/tag/${tag}"/></entry>`).join(''));
   } else if (request.url.startsWith('/owner/repo/releases')) {
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end(request.method === 'HEAD' ? undefined : '<html></html>');
+  } else if (request.url === '/api/repos/owner/repo/releases/tags/v0.0.5-dev.12') {
+    response.writeHead(200, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ tag_name: 'v0.0.5-dev.12', html_url: `${base}/owner/repo/releases/tag/v0.0.5-dev.12`, assets: [] }));
   } else if (request.url === '/api/repos/owner/repo/releases/tags/v0.0.3') {
     response.writeHead(200, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({
@@ -85,7 +88,13 @@ const source = { site: base, api: `${base}/api`, repository: 'owner/repo' };
 
 try {
   assert.equal(await latestTag(source), 'v0.0.3');
-  assert.equal(await newestTag(source), 'v0.0.5-dev.12', 'the newest by version, previews included');
+  assert.deepEqual(await feedTags(source), ['v0.0.6', 'v0.0.5-dev.12', 'v0.0.5-dev.2', 'v0.0.5-dev.1', 'v0.0.4'], 'newest first, previews included');
+  // A draft's tag in the feed is passed over for the newest release that can be downloaded.
+  assert.equal(await releaseAt(source, 'v0.0.6'), null, 'a draft is not shown');
+  assert.equal((await newerRelease(source, '0.0.4', true))?.version, '0.0.5-dev.12');
+  assert.equal((await newerRelease(source, '0.0.2', false))?.version, '0.0.3', 'without previews, the latest published release');
+  assert.equal(await newerRelease(source, '0.0.3', false), null, 'up to date');
+  assert.equal(await newerRelease(source, '0.0.5-dev.12', true), null, 'nothing newer than this but the draft');
   latest = '';
   assert.equal(await latestTag(source), null, 'no published release yet');
   latest = 'v0.0.3';

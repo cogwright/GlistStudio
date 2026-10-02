@@ -86,19 +86,22 @@ export const latestTag = async (source: ReleaseSource): Promise<string | null> =
   return tag ? decodeURIComponent(tag) : null;
 };
 
-// The newest release, previews included, from the repository's releases feed:
-// like /releases/latest it is not rate limited the way the API is.
-export const newestTag = async (source: ReleaseSource): Promise<string | null> => {
+// Releases, previews included, from the repository's releases feed, newest
+// first: like /releases/latest it is not rate limited the way the API is.
+export const feedTags = async (source: ReleaseSource): Promise<string[]> => {
   const response = await fetch(`${source.site}/${source.repository}/releases.atom`, { headers: { 'User-Agent': userAgent } });
   if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
   const tags = [...(await response.text()).matchAll(/\/releases\/tag\/([^"<>\s/?#]+)/g)].map((match) => decodeURIComponent(match[1]));
-  return tags.reduce<string | null>((best, tag) => (!best || isNewer(tag, best) ? tag : best), null);
+  return [...new Set(tags)].sort((left, right) => (isNewer(left, right) ? -1 : isNewer(right, left) ? 1 : 0));
 };
 
-export const releaseAt = async (source: ReleaseSource, tag: string): Promise<Release> => {
+// A release as the API shows it, or null for one it does not show to everyone:
+// a draft, which a version tag's build makes before someone publishes it.
+export const releaseAt = async (source: ReleaseSource, tag: string): Promise<Release | null> => {
   const response = await fetch(`${source.api}/repos/${source.repository}/releases/tags/${encodeURIComponent(tag)}`, {
     headers: { Accept: 'application/vnd.github+json', 'User-Agent': userAgent },
   });
+  if (response.status === 404) return null;
   if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
   const release = await response.json() as {
     tag_name: string;
@@ -112,6 +115,18 @@ export const releaseAt = async (source: ReleaseSource, tag: string): Promise<Rel
       name: asset.name, url: asset.browser_download_url, digest: asset.digest ?? undefined, size: asset.size,
     })),
   };
+};
+
+// The newest release after this version that can be downloaded: the latest
+// published one, or with previews the newest in the feed. The feed lists a
+// draft's tag too, which leads nowhere yet, so the next newest is taken instead.
+export const newerRelease = async (source: ReleaseSource, current: string, previews: boolean): Promise<Release | null> => {
+  const tags = previews ? await feedTags(source) : [await latestTag(source)];
+  for (const tag of tags.filter((each): each is string => Boolean(each) && isNewer(each as string, current)).slice(0, 5)) {
+    const release = await releaseAt(source, tag);
+    if (release) return release;
+  }
+  return null;
 };
 
 // The installer this computer takes, as the release workflow names them: the
