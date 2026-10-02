@@ -124,9 +124,10 @@ button:focus-visible { outline: 1px solid var(--ui-accent); outline-offset: -1px
   -webkit-app-region: drag;
 }
 
-/* Room for the window buttons Electron draws over the title bar. */
-html[data-window-controls="left"] .topbar { padding-left: 78px; }
-html[data-window-controls="right"] .topbar { padding-right: 138px; }
+/* Room for the window buttons Electron draws over the title bar. They keep their
+   size when the page is zoomed, so the room is the same on screen at any zoom. */
+html[data-window-controls="left"] .topbar { padding-left: calc(78px / var(--window-zoom, 1)); }
+html[data-window-controls="right"] .topbar { padding-right: calc(138px / var(--window-zoom, 1)); }
 
 .titlebar-left, .menubar, .toolbar-actions {
   display: flex;
