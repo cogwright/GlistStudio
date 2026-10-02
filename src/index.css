@@ -69,10 +69,10 @@
 /* The interface is not text to select, as in other IDEs: dragging across buttons,
    tabs, lists or line numbers selects nothing. What is worth copying opts back in:
    what is typed, the output and Git console, commit details, the About list, the
-   debugger's values, notices and error messages, and paths. */
+   debugger's values, notices and error messages, paths, and plugins' READMEs. */
 body { -webkit-user-select: none; user-select: none; }
 input, textarea, [contenteditable="true"], .output, .log-details, .about-list dd, .debug-status, .debug-value,
-.notice-text, .notice-detail, .dialog-error, .engine-facts dd, .path-folder, .glist-install-location, .monaco-hover {
+.notice-text, .notice-detail, .dialog-error, .engine-facts dd, .path-folder, .glist-install-location, .monaco-hover, .readme-view {
   -webkit-user-select: text;
   user-select: text;
 }
@@ -852,6 +852,28 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .editor-tab.diff .file-icon svg.icon { width: 14px; height: 14px; }
 .diff-view { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--ui-bg); }
 .diff-view[hidden] { display: none; }
+/* A plugin's README: GitHub's layout, in the theme's colours. */
+.readme-view { position: absolute; inset: 0; overflow: auto; padding: 24px 32px 48px; color: var(--ui-fg); background: var(--ui-bg); }
+.readme-view[hidden] { display: none; }
+.readme-status { color: var(--ui-fg-muted); }
+.readme-body { max-width: 860px; margin: 0 auto; font-size: 14px; line-height: 1.6; overflow-wrap: break-word; }
+.readme-body h1, .readme-body h2 { padding-bottom: 6px; border-bottom: 1px solid var(--ui-border); }
+.readme-body h1, .readme-body h2, .readme-body h3, .readme-body h4 { margin: 24px 0 12px; color: var(--ui-fg-strong); font-weight: 600; line-height: 1.25; }
+.readme-body h1 { font-size: 26px; }
+.readme-body h2 { font-size: 21px; }
+.readme-body h3 { font-size: 17px; }
+.readme-body > :first-child { margin-top: 0; }
+.readme-body p, .readme-body ul, .readme-body ol, .readme-body table, .readme-body pre, .readme-body blockquote { margin: 0 0 14px; }
+.readme-body a { color: var(--ui-accent); text-decoration: none; cursor: pointer; }
+.readme-body a:hover { text-decoration: underline; }
+.readme-body img { max-width: 100%; }
+.readme-body code { padding: 2px 5px; border-radius: 4px; background: var(--ui-inset); font-family: var(--font-code); font-size: 12.5px; }
+.readme-body pre { padding: 12px 14px; overflow: auto; border-radius: 6px; background: var(--ui-inset); }
+.readme-body pre code { padding: 0; background: none; }
+.readme-body blockquote { padding: 0 14px; border-left: 3px solid var(--ui-border-strong); color: var(--ui-fg-muted); }
+.readme-body table { border-collapse: collapse; }
+.readme-body th, .readme-body td { padding: 6px 12px; border: 1px solid var(--ui-border); }
+.readme-body hr { height: 1px; border: 0; background: var(--ui-border); }
 .diff-toolbar { display: flex; height: 30px; flex: 0 0 auto; align-items: center; gap: 8px; padding: 0 8px 0 14px; border-bottom: 1px solid var(--ui-border); color: var(--ui-fg-muted); background: var(--ui-chrome); font-size: 11px; }
 .diff-toolbar > svg.icon { width: 14px; height: 14px; }
 .diff-label { min-width: 0; overflow: hidden; color: var(--ui-fg); text-overflow: ellipsis; white-space: nowrap; }
@@ -1011,7 +1033,9 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .plugins-loading svg.icon { width: 14px; height: 14px; flex: 0 0 auto; animation: plugins-turn 1s linear infinite; }
 @keyframes plugins-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .plugins-loading svg.icon { animation: none; } }
-.plugin-row { padding: 8px 12px; border-bottom: 1px solid var(--ui-border); }
+.plugin-row { padding: 8px 12px; border-bottom: 1px solid var(--ui-border); cursor: pointer; }
+.plugin-row:hover { background: var(--ui-hover); }
+.plugin-row:focus-visible { outline: 1px solid var(--ui-accent); outline-offset: -1px; }
 .plugin-header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .plugin-name { min-width: 0; flex: 1 1 100px; overflow: hidden; color: var(--ui-fg-strong); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .plugin-actions { display: flex; flex: none; gap: 6px; margin-left: auto; }

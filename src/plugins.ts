@@ -17,9 +17,11 @@ export interface PluginContext {
   // The open project's CMakeLists.txt, or null.
   projectCmake(): string | null;
   environment(): NodeJS.ProcessEnv;
-  // GitHub's API, or a test server; and where GlistPlugins' repositories are cloned from.
+  // GitHub's API, or a test server; where GlistPlugins' repositories are cloned
+  // from; and where their files are read from, raw.githubusercontent.com.
   api?: string;
   site?: string;
+  raw?: string;
   language(): Language;
   // Tests list their own; see extraRepositories and hiddenPlugins.
   extras?: string[];
@@ -40,6 +42,8 @@ const extraRepositories = ['aitial/OpenWhiz'];
 // studio installs a debugger of its own.
 const hiddenPlugins = ['gipDebug'];
 const listFor = 6 * 60 * 60 * 1000;
+// A README larger than this is not shown.
+const readmeLimit = 2 * 1024 * 1024;
 
 // owner: GlistPlugins, or the owner of one listed from elsewhere, as GitHub spells it.
 interface Repository { name: string; description: string; url: string; defaultBranch: string; owner: string; extra: boolean }
@@ -54,6 +58,7 @@ export const createPluginService = (context: PluginContext) => {
   const hidden = new Set((context.hidden ?? hiddenPlugins).map((name) => name.toLowerCase()));
   const api = context.api ?? 'https://api.github.com';
   const site = context.site ?? 'https://github.com';
+  const raw = context.raw ?? 'https://raw.githubusercontent.com';
   let listed: { at: number; repositories: Repository[] } | null = null;
   const git = gitRunner(context.environment, context.report, context.language);
   const checkouts = createCheckouts({
@@ -194,5 +199,39 @@ export const createPluginService = (context: PluginContext) => {
     return { success: true, message: name };
   };
 
-  return { listPlugins, checkPluginUpdates, installPlugin, updatePlugin, usePlugin };
+  // A plugin's README for its page: the installed copy's own, or else the one
+  // GitHub shows for its repository, asked once a session. When GitHub's API
+  // will not answer, as when its hourly limit is used up, its README.md comes
+  // from raw.githubusercontent.com instead. Its relative links lead to the
+  // repository on GitHub, at its default branch.
+  const readmes = new Map<string, GlistPluginReadme>();
+  const pluginReadme = async (name: unknown): Promise<GlistPluginReadme> => {
+    if (!validName(name)) throw new Error(say('badName'));
+    const known = (await repositories(false).catch((): Repository[] => [])).find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+    const folder = (await fs.readdir(pluginsFolder()).catch((): string[] => [])).find((entry) => entry.toLowerCase() === name.toLowerCase());
+    const repository = known ? `${known.owner}/${known.name}` : `${organization}/${folder ?? name}`;
+    const page = `https://github.com/${repository}/blob/${known?.defaultBranch ?? 'HEAD'}/`;
+    const files = folder ? await fs.readdir(path.join(pluginsFolder(), folder)).catch((): string[] => []) : [];
+    const local = files.filter((file) => /^readme(\.(md|markdown|txt))?$/i.test(file)).sort((a, b) => Number(!/\.md$/i.test(a)) - Number(!/\.md$/i.test(b)))[0];
+    if (folder && local) {
+      const file = path.join(pluginsFolder(), folder, local);
+      if ((await fs.stat(file)).size > readmeLimit) throw new Error(say('readmeTooLarge'));
+      return { text: await fs.readFile(file, 'utf8'), page };
+    }
+    const cached = readmes.get(repository.toLowerCase());
+    if (cached) return cached;
+    const get = (address: string, accept: string): Promise<Response> => fetch(address, {
+      headers: { Accept: accept, 'User-Agent': 'Glist Studio' }, signal: AbortSignal.timeout(15000),
+    });
+    let response = await get(`${api}/repos/${repository}/readme`, 'application/vnd.github.raw');
+    if (!response.ok && response.status !== 404) response = await get(`${raw}/${repository}/HEAD/README.md`, 'text/plain');
+    if (!response.ok && response.status !== 404) throw new Error(say('githubAnswered', { status: String(response.status) }));
+    const text = response.ok ? await response.text() : '';
+    if (text.length > readmeLimit) throw new Error(say('readmeTooLarge'));
+    const readme = { text, page };
+    readmes.set(repository.toLowerCase(), readme);
+    return readme;
+  };
+
+  return { listPlugins, checkPluginUpdates, installPlugin, updatePlugin, usePlugin, pluginReadme };
 };

@@ -53,6 +53,7 @@ import { RunArguments } from './run-arguments';
 import { terminalTheme } from './themes';
 import { isLanguage, languages } from './languages';
 import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './localization';
+import { renderReadmePage, type ReadmePage } from './readme-page';
 import './index.css';
 
 interface OpenFile {
@@ -88,7 +89,18 @@ interface DiffTab {
   message: string;
 }
 
-type EditorTab = OpenFile | DiffTab;
+// A plugin's README, opened from the Plugins view, in a tab of its own.
+interface ReadmeTab {
+  kind: 'readme';
+  // The tab's key: readme:<name>.
+  path: string;
+  name: string;
+  page: ReadmePage;
+  // Goes up when the README arrives, so a side showing the tab draws it again.
+  version: number;
+}
+
+type EditorTab = OpenFile | DiffTab | ReadmeTab;
 
 const element = <T extends HTMLElement>(selector: string): T => {
   const found = document.querySelector<T>(selector);
@@ -462,6 +474,9 @@ interface GroupView {
   host: HTMLElement;
   editor: monaco.editor.IStandaloneCodeEditor;
   diff: DiffPane;
+  // Where a README tab is drawn, and which one it holds.
+  page: HTMLElement;
+  pageShown: { key: string; version: number; render: { dispose(): void } } | null;
   // Where a dragged tab would go.
   overlay: HTMLElement;
   // The tab shown, and where each of its tabs was scrolled to and its cursor.
@@ -475,6 +490,13 @@ const dropOverlay = (stage: HTMLElement): HTMLElement => {
   stage.append(overlay);
   return overlay;
 };
+const readmeView = (stage: HTMLElement): HTMLElement => {
+  const page = document.createElement('div');
+  page.className = 'readme-view';
+  page.hidden = true;
+  stage.append(page);
+  return page;
+};
 const groupViews: GroupView[] = [{
   element: tabsHost.parentElement as HTMLElement,
   tabsHost,
@@ -482,6 +504,8 @@ const groupViews: GroupView[] = [{
   host: editorHost,
   editor,
   diff: diffPane(element('#diff-view')),
+  page: readmeView(editorHost.parentElement as HTMLElement),
+  pageShown: null,
   overlay: dropOverlay(editorHost.parentElement as HTMLElement),
   shown: null,
   viewStates: new Map(),
@@ -524,9 +548,11 @@ const noticePath = (target: string): string => (activeProject && isWithin(target
 const noticeDone = (key: TranslationKey, target: string): void =>
   notify({ text: `${t(key)}: ${baseName(target)}`, detail: noticePath(target), kind: 'success' });
 // Electron wraps an error from the main process in words about IPC; the error itself is enough.
+const remoteError = (error: unknown): string =>
+  (error instanceof Error ? error.message : String(error)).replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
 const noticeFailed = (key: TranslationKey, error: unknown, name?: string): void => notify({
   text: name ? `${t(key)}: ${name}` : t(key),
-  detail: (error instanceof Error ? error.message : String(error)).replace(/^Error invoking remote method '[^']*': (?:Error: )?/, ''),
+  detail: remoteError(error),
   kind: 'error',
 });
 
@@ -576,9 +602,18 @@ const updateButtons = (): void => {
   deleteEntryButton.disabled = !selectedEntry || isRootFolder(selectedEntry.path);
 };
 
+// Draws a README tab in a side, again only once it changed; without one, hides it.
+const showReadmeTab = (view: GroupView, tab?: ReadmeTab): void => {
+  view.page.hidden = !tab;
+  if (!tab || (view.pageShown?.key === tab.path && view.pageShown.version === tab.version)) return;
+  view.pageShown?.render.dispose();
+  view.pageShown = { key: tab.path, version: tab.version, render: renderReadmePage(view.page, tab.page) };
+  view.page.scrollTop = 0;
+};
+
 // Shows each side's tab in front: a file in the side's editor, where it was
-// scrolled to last there, a diff in the diff view, and the welcome screen once
-// no tab is left.
+// scrolled to last there, a diff in the diff view, a README in its page, and
+// the welcome screen once no tab is left.
 const showGroups = (): void => {
   const split = layout.groups.length > 1;
   if (split) secondGroupView();
@@ -599,10 +634,18 @@ const showGroups = (): void => {
       view.host.classList.remove('visible');
       view.diff.editor?.setModel(null);
       view.diff.view.hidden = true;
+      showReadmeTab(view);
       if (index === 0) welcome.hidden = false;
       return;
     }
     if (index === 0) welcome.hidden = true;
+    if (tab.kind === 'readme') {
+      view.host.classList.remove('visible');
+      view.diff.view.hidden = true;
+      showReadmeTab(view, tab);
+      return;
+    }
+    showReadmeTab(view);
     if (tab.kind === 'diff') {
       view.host.classList.remove('visible');
       showDiffTab(view, tab);
@@ -632,6 +675,7 @@ const activateFile = (filePath: string, group = layout.focused): void => {
 };
 
 const disposeTab = (tab: EditorTab): void => {
+  if (tab.kind === 'readme') return;
   if (tab.kind === 'file') { tab.model.dispose(); return; }
   groupViews.forEach((view) => { if (view.diff.editor?.getModel()?.modified === tab.modified) view.diff.editor.setModel(null); });
   tab.original.dispose();
@@ -690,6 +734,7 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   tab.classList.toggle('read-only', file.kind === 'file' && file.readOnly);
   tab.classList.toggle('diff', file.kind === 'diff');
   if (file.kind === 'diff') tab.title = `${file.file}\n${file.leftLabel} / ${file.rightLabel}`;
+  else if (file.kind === 'readme') tab.title = `${file.name} README`;
   else tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
   const label = document.createElement('span');
   label.className = 'tab-label';
@@ -704,10 +749,10 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   close.append(icon('close'));
   close.addEventListener('click', (event) => { event.stopPropagation(); closeFile(file.path, group); });
   let kind = fileIconElement(file.name);
-  if (file.kind === 'diff') {
+  if (file.kind !== 'file') {
     kind = document.createElement('span');
-    kind.className = 'file-icon diff';
-    kind.append(icon('diff'));
+    kind.className = `file-icon ${file.kind === 'diff' ? 'diff' : 'dependency'}`;
+    kind.append(icon(file.kind === 'diff' ? 'diff' : 'extensions'));
   }
   tab.append(kind, label, dirty, close);
   tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path, group); });
@@ -811,6 +856,7 @@ const pluginsView = new PluginsView(
   {
     hasProject: () => Boolean(activeProject),
     projectChanged: () => { void learnDependencies(); void loadProjectTree(); void git.refresh(); },
+    showReadme: (plugin) => openReadme(plugin),
     updates: checkoutHooks,
   },
 );
@@ -1274,6 +1320,21 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
   else renderTabs();
 };
 
+// A plugin's README in a tab of its own, asked for when the tab first opens.
+const openReadme = (plugin: GlistPlugin): void => {
+  const key = `readme:${plugin.name}`;
+  if (!openFiles.has(key)) {
+    const tab: ReadmeTab = { kind: 'readme', path: key, name: plugin.name, page: { name: plugin.name }, version: 0 };
+    openFiles.set(key, tab);
+    layout.add(key);
+    void window.glistAPI.pluginReadme(plugin.name)
+      .then((readme) => { tab.page = { name: plugin.name, readme }; })
+      .catch((error: unknown) => { tab.page = { name: plugin.name, error: remoteError(error) }; })
+      .finally(() => { tab.version += 1; showGroups(); });
+  }
+  activateFile(key);
+};
+
 // A file against its last commit.
 const openWorkingDiff = (filePath: string): Promise<void> => {
   const change = git.changeOf(filePath);
@@ -1726,6 +1787,8 @@ const secondGroupView = (): GroupView => {
     host,
     editor: monaco.editor.create(host, codeEditorOptions),
     diff: diffPane(diffView),
+    page: readmeView(stage),
+    pageShown: null,
     overlay: dropOverlay(stage),
     shown: null,
     viewStates: new Map(),

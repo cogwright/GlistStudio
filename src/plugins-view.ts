@@ -7,12 +7,15 @@ import { notify } from './notifications';
 // glistplugins with one click, the installed ones to add to the project, and
 // updates for those whose remotes include where they are published, as the
 // engine's (checkout-updates.ts). Updates are also checked in the background
-// and offered in a message, which runs the same steps.
+// and offered in a message, which runs the same steps. Clicking a plugin shows
+// its README.
 
 export interface PluginsHooks {
   hasProject(): boolean;
   // A plugin was added to or taken out of the project, or installed.
   projectChanged(): void;
+  // Opens its README in a tab.
+  showReadme(plugin: GlistPlugin): void;
   updates: CheckoutUpdateHooks;
 }
 
@@ -158,6 +161,18 @@ export class PluginsView {
   private row(plugin: GlistPlugin, gitFound: boolean): HTMLElement {
     const row = document.createElement('div');
     row.className = 'plugin-row';
+    // Anywhere but its buttons, a click or Enter shows its README.
+    row.tabIndex = 0;
+    row.title = t('readmeShow');
+    row.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('.plugin-action')) return;
+      this.hooks.showReadme(plugin);
+    });
+    row.addEventListener('keydown', (event) => {
+      if (event.target !== row || (event.key !== 'Enter' && event.key !== ' ')) return;
+      event.preventDefault();
+      this.hooks.showReadme(plugin);
+    });
     const busy = this.busy.has(plugin.name);
     const button = (iconName: IconName, label: string, title: string, className: string, run: () => void): HTMLButtonElement => {
       const node = document.createElement('button');
