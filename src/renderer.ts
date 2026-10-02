@@ -1327,12 +1327,12 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
 const openReadme = (plugin: GlistPlugin): void => {
   const key = `readme:${plugin.name}`;
   if (!openFiles.has(key)) {
-    const tab: ReadmeTab = { kind: 'readme', path: key, name: plugin.name, page: { name: plugin.name }, version: 0 };
+    const tab: ReadmeTab = { kind: 'readme', path: key, name: plugin.name, page: { name: plugin.name, url: plugin.url }, version: 0 };
     openFiles.set(key, tab);
     layout.add(key);
     void window.glistAPI.pluginReadme(plugin.name)
-      .then((readme) => { tab.page = { name: plugin.name, readme }; })
-      .catch((error: unknown) => { tab.page = { name: plugin.name, error: remoteError(error) }; })
+      .then((readme) => { tab.page = { ...tab.page, readme }; })
+      .catch((error: unknown) => { tab.page = { ...tab.page, error: remoteError(error) }; })
       .finally(() => { tab.version += 1; showGroups(); });
   }
   activateFile(key);

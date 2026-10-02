@@ -856,6 +856,10 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .readme-view { position: absolute; inset: 0; overflow: auto; padding: 24px 32px 48px; color: var(--ui-fg); background: var(--ui-bg); }
 .readme-view[hidden] { display: none; }
 .readme-status { color: var(--ui-fg-muted); }
+/* Sticky offsets count from inside the page's padding, so -24px holds it at the very top. */
+.readme-toolbar { position: sticky; z-index: 1; top: -24px; display: flex; justify-content: flex-end; margin: -24px -32px 16px; padding: 8px 16px; border-bottom: 1px solid var(--ui-border); background: var(--ui-bg); }
+.readme-github { display: inline-flex; height: 26px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
+.readme-github:hover { background: var(--ui-hover-strong); }
 .readme-body { max-width: 860px; margin: 0 auto; font-size: 14px; line-height: 1.6; overflow-wrap: break-word; }
 .readme-body h1, .readme-body h2 { padding-bottom: 6px; border-bottom: 1px solid var(--ui-border); }
 .readme-body h1, .readme-body h2, .readme-body h3, .readme-body h4 { margin: 24px 0 12px; color: var(--ui-fg-strong); font-weight: 600; line-height: 1.25; }

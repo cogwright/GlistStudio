@@ -34,6 +34,7 @@ import sync from '@vscode/codicons/src/icons/sync.svg';
 import copy from '@vscode/codicons/src/icons/copy.svg';
 import diff from '@vscode/codicons/src/icons/diff.svg';
 import discard from '@vscode/codicons/src/icons/discard.svg';
+import github from '@vscode/codicons/src/icons/github.svg';
 import gitBranch from '@vscode/codicons/src/icons/git-branch.svg';
 import gitCompare from '@vscode/codicons/src/icons/git-compare.svg';
 import gitMerge from '@vscode/codicons/src/icons/git-merge.svg';
@@ -106,6 +107,7 @@ const icons = {
   files,
   folder,
   'folder-opened': folderOpened,
+  github,
   'git-branch': gitBranch,
   'git-compare': gitCompare,
   'git-merge': gitMerge,
