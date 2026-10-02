@@ -213,9 +213,10 @@ const createWindow = (): void => {
     runtimeMessages.push(detailMessage ?? message);
   });
   createdWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
-  // Only commit pages on GitHub, from Settings > About, open, and in the browser.
+  // Web pages and mail addresses open in the browser and the mail program, never
+  // in a window here: commit pages from Settings > About, and a plugin's README's links.
   createdWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/commit\/[0-9a-f]{40}$/.test(url)) void shell.openExternal(url);
+    if (/^(https?:\/\/|mailto:)/i.test(url)) void shell.openExternal(url);
     return { action: 'deny' };
   });
   // The renderer blocks unloading while tabs are unsaved; Electron would then

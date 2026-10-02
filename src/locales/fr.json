@@ -412,6 +412,10 @@
     "pluginsNeedGit": "Installer et mettre à jour des plugins demande Git. Installez-le depuis git-scm.com.",
     "pluginsListFailed": "GlistPlugins est injoignable",
     "pluginsLoading": "Chargement des plugins...",
+    "readmeShow": "Afficher son README",
+    "readmeLoading": "Chargement du README...",
+    "readmeNone": "{name} n'a pas de README.",
+    "readmeFailed": "Le README n'a pas pu être chargé",
     "pluginsChecking": "Recherche de mises à jour...",
     "createRepository": "Créer un dépôt Git",
     "gitNoProject": "Ouvrez un projet pour voir ses modifications.",
@@ -809,6 +813,7 @@
   },
   "plugins": {
     "badName": "Ce n'est pas un nom de plugin.",
+    "readmeTooLarge": "Ce README est trop volumineux pour être affiché.",
     "notPublished": "{name} n'est pas dans la liste des plugins.",
     "installedAlready": "{name} est déjà dans glistplugins.",
     "noProject": "Ouvrez d'abord un projet.",

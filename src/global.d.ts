@@ -15,6 +15,14 @@ declare module '@vscode/codicons/src/icons/*.svg' {
   export default markup;
 }
 
+// Monaco's Markdown renderer (see readme-page.ts), as far as the studio uses it.
+declare module 'monaco-editor/base/browser/markdownRenderer.js' {
+  export function renderMarkdown(
+    markdown: { value: string; isTrusted?: boolean; supportHtml?: boolean; baseUri?: import('monaco-editor/editor/editor.api').UriComponents },
+    options?: { actionHandler?: (link: string) => void },
+  ): { element: HTMLElement; dispose(): void };
+}
+
 // The engine or a plugin an app is built with. A plugin the app names may be
 // missing from glistplugins.
 // What the editor takes from a .clang-format: tabs or spaces, the indent and
@@ -160,6 +168,13 @@ interface GlistPluginList {
   gitFound: boolean;
   // Why GlistPlugins' list could not be read.
   error?: string;
+}
+
+// A plugin's README, as Markdown, empty when it has none; page is its folder on
+// GitHub, which its relative links and images lead to.
+interface GlistPluginReadme {
+  text: string;
+  page: string;
 }
 
 interface GlistPluginResult {
@@ -620,6 +635,7 @@ interface Window {
     engineCheckout(refresh?: boolean): Promise<GlistEngineCheckout>;
     updateEngine(choice?: GlistUpdateChoice, resolve?: boolean): Promise<GlistCheckoutResult>;
     usePlugin(name: string, use: boolean): Promise<GlistPluginResult>;
+    pluginReadme(name: string): Promise<GlistPluginReadme>;
     updateState(): Promise<GlistUpdateState>;
     // Previews: prereleases too.
     checkForUpdates(previews?: boolean): Promise<GlistUpdateState>;

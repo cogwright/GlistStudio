@@ -147,6 +147,47 @@ try {
   git(plugin, 'checkout', '-q', '-b', 'experiment');
   assert.match((await service.updatePlugin('gipDemo')).message, /on the branch experiment; updates are for main/);
   assert.match((await service.updatePlugin('gipMine')).message, /not installed from GlistPlugins/);
+
+  // A plugin's README, for its page: links lead to its repository at its default branch.
+  assert.deepEqual(await service.pluginReadme('gipDemo'), { text: '', page: 'https://github.com/GlistPlugins/gipDemo/blob/main/' });
+  // The installed copy's own, README.md first; else GitHub's, asked once; when the API refuses,
+  // as when its hourly limit is used up, README.md from raw.githubusercontent.com; none is empty.
+  const readmeRequests = [];
+  const github = http.createServer((request, response) => {
+    if (request.url.includes('readme') || request.url.startsWith('/raw/')) readmeRequests.push(`${request.url} ${request.headers.accept}`);
+    const answers = {
+      '/repos/GlistPlugins/gipShown/readme': [200, '# gipShown\n'],
+      '/repos/GlistPlugins/gipLimited/readme': [403, '{}'],
+      '/raw/GlistPlugins/gipLimited/HEAD/README.md': [200, '# From raw\n'],
+    };
+    const [status, body] = answers[request.url] ?? [404, '{}'];
+    response.writeHead(status);
+    response.end(body);
+  });
+  await new Promise((resolve) => { github.listen(0, '127.0.0.1', resolve); });
+  const at = `http://127.0.0.1:${github.address().port}`;
+  const readmes = createPluginService({
+    workspace: () => workspace, projectCmake: () => null, environment: () => ({ ...process.env }),
+    api: at, raw: `${at}/raw`, site, extras: [], language: () => 'en',
+  });
+  try {
+    writeFileSync(path.join(workspace, 'glistplugins', 'gipMine', 'readme.markdown'), 'not this one');
+    writeFileSync(path.join(workspace, 'glistplugins', 'gipMine', 'README.md'), '# Mine\n');
+    assert.deepEqual(await readmes.pluginReadme('GIPMINE'), { text: '# Mine\n', page: 'https://github.com/GlistPlugins/gipMine/blob/HEAD/' });
+    assert.equal((await readmes.pluginReadme('gipShown')).text, '# gipShown\n');
+    assert.equal((await readmes.pluginReadme('gipShown')).text, '# gipShown\n');
+    assert.equal((await readmes.pluginReadme('gipLimited')).text, '# From raw\n');
+    assert.equal((await readmes.pluginReadme('gipNone')).text, '');
+    assert.deepEqual(readmeRequests, [
+      '/repos/GlistPlugins/gipShown/readme application/vnd.github.raw',
+      '/repos/GlistPlugins/gipLimited/readme application/vnd.github.raw',
+      '/raw/GlistPlugins/gipLimited/HEAD/README.md text/plain',
+      '/repos/GlistPlugins/gipNone/readme application/vnd.github.raw',
+    ], 'none from GitHub for an installed one, and each asked once');
+    await assert.rejects(readmes.pluginReadme('../gipMine'), /not a plugin name/);
+  } finally {
+    github.close();
+  }
 } finally {
   server.close();
   rmSync(root, { recursive: true, force: true });
