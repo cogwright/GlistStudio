@@ -1,5 +1,6 @@
 import { updateCheckout, type CheckoutTarget, type CheckoutUpdateHooks } from './checkout-updates';
 import { icon } from './icons';
+import { stateLine, type StatePart } from './plugins-view';
 import { t, type TranslationKey } from './localization';
 import { fullTime, relativeTime } from './time';
 
@@ -122,20 +123,17 @@ export class EngineView {
     fact(t('engineSource'), state.remote ? fill('engineSourceRemote', { source, remote: state.remote }) : fill('engineNoSource', { source }));
     fact(t('aboutFolder'), state.location);
 
-    // Where it stands: new commits there, and work of the user's own here.
-    const standing: string[] = [];
-    if (state.fetchError) standing.push(fill('engineFetchFailed', { source, error: state.fetchError }));
+    // Where it stands, colored as the Plugins view's: new commits there, and work of the user's own here.
+    const standing: StatePart[] = [];
+    if (state.fetchError) standing.push({ text: fill('engineFetchFailed', { source, error: state.fetchError }), kind: 'notice' });
     else if (state.remote && state.branch && state.defaultBranch && state.branch !== state.defaultBranch) {
-      standing.push(fill('engineOtherBranch', { branch: state.branch, main: state.defaultBranch }));
-    } else if ((state.behind ?? 0) > 0) standing.push(t('pluginBehind').replace('{count}', String(state.behind)).replace('{source}', source));
-    else if (state.remote) standing.push(fill('engineUpToDate', { source }));
+      standing.push({ text: fill('engineOtherBranch', { branch: state.branch, main: state.defaultBranch }), kind: 'notice' });
+    } else if ((state.behind ?? 0) > 0) standing.push({ text: t('pluginBehind').replace('{count}', String(state.behind)).replace('{source}', source), kind: 'update' });
+    else if (state.remote) standing.push({ text: fill('engineUpToDate', { source }) });
     const count = (one: TranslationKey, many: TranslationKey, value: number): string => (value === 1 ? t(one) : fill(many, { count: String(value) }));
-    if ((state.ahead ?? 0) > 0) standing.push(count('updateWorkCommit', 'updateWorkCommits', state.ahead ?? 0));
-    if ((state.changed ?? 0) > 0) standing.push(count('updateWorkFile', 'updateWorkFiles', state.changed ?? 0));
-    const status = Object.assign(document.createElement('div'), {
-      className: `plugin-state${this.updatable() ? ' update' : ''}`, textContent: standing.join(' · '),
-    });
-    card.append(header, list, status);
+    if ((state.ahead ?? 0) > 0) standing.push({ text: count('updateWorkCommit', 'updateWorkCommits', state.ahead ?? 0), kind: 'notice' });
+    if ((state.changed ?? 0) > 0) standing.push({ text: count('updateWorkFile', 'updateWorkFiles', state.changed ?? 0), kind: 'notice' });
+    card.append(header, list, stateLine(standing));
 
     if ((state.incoming?.length ?? 0) > 0) {
       const heading = Object.assign(document.createElement('div'), { className: 'plugins-heading', textContent: fill('engineIncoming', { source }) });

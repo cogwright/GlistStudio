@@ -19,6 +19,23 @@ export interface PluginsHooks {
   updates: CheckoutUpdateHooks;
 }
 
+// Where a copy of a plugin or the engine stands, in colors apart from its
+// description: new commits to bring in, and a copy that is not as published,
+// which is not updated; other parts plain.
+export type StatePart = { text: string; kind?: 'update' | 'notice' | 'source' };
+export const stateLine = (parts: StatePart[]): HTMLElement => {
+  const line = document.createElement('div');
+  line.className = 'plugin-state';
+  parts.forEach((part, index) => {
+    if (index > 0) line.append(' · ');
+    const text = document.createElement('span');
+    if (part.kind) text.className = `state-${part.kind}`;
+    text.textContent = part.text;
+    line.append(text);
+  });
+  return line;
+};
+
 // A plugin as something to update.
 export const pluginTarget = ({ name, source = 'GlistPlugins' }: GlistPlugin): CheckoutTarget => ({
   name,
@@ -242,28 +259,15 @@ export class PluginsView {
       row.append(description);
     }
     const parts = this.state(plugin);
-    if (parts.length > 0) {
-      const line = document.createElement('div');
-      line.className = 'plugin-state';
-      parts.forEach((part, index) => {
-        if (index > 0) line.append(' · ');
-        const text = document.createElement('span');
-        text.className = `state-${part.kind}`;
-        text.textContent = part.text;
-        line.append(text);
-      });
-      row.append(line);
-    }
+    if (parts.length > 0) row.append(stateLine(parts));
     return row;
   }
 
-  // One line on where an installed plugin stands, or where one listed from
-  // elsewhere comes from, in colors apart from its description: new commits to
-  // bring in, and a copy that is not as published, which is not updated.
-  private state(plugin: GlistPlugin): Array<{ text: string; kind: 'update' | 'notice' | 'source' }> {
+  // Where an installed plugin stands, or where one listed from elsewhere comes from.
+  private state(plugin: GlistPlugin): StatePart[] {
     const source = plugin.source ?? 'GlistPlugins';
     if (!plugin.installed) return source.includes('/') ? [{ text: t('pluginFrom').replace('{source}', source), kind: 'source' }] : [];
-    const parts: Array<{ text: string; kind: 'update' | 'notice' }> = [];
+    const parts: StatePart[] = [];
     if (!plugin.official) parts.push({ text: t('pluginNotOfficial').replace('{source}', source), kind: 'notice' });
     else if (plugin.branch !== plugin.defaultBranch) parts.push({ text: t('pluginOtherBranch').replace('{branch}', plugin.branch ?? 'HEAD'), kind: 'notice' });
     else if ((plugin.behind ?? 0) > 0) parts.push({ text: t('pluginBehind').replace('{count}', String(plugin.behind)).replace('{source}', source), kind: 'update' });
