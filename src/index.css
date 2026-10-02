@@ -766,6 +766,7 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .agent-select[hidden], .output-tab[hidden] { display: none; }
 .dialog-error { min-height: 14px; margin: 10px 0 0; color: var(--ui-danger); font-size: 11px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.confirm-message { margin: 0; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-line; }
 .dialog-actions button { display: inline-flex; height: 28px; min-width: 72px; align-items: center; justify-content: center; padding: 0 12px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .dialog-actions button:hover { background: var(--ui-hover-strong); }
 .dialog-actions button.primary { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }

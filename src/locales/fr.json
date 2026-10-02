@@ -76,6 +76,7 @@
     "terminalRestartHint": "Appuyez sur une touche pour en démarrer un nouveau.",
     "initialOutput": "Glist Studio est prêt. Ouvrez un projet pour commencer.",
     "cancel": "Annuler",
+    "ok": "OK",
     "create": "Créer",
     "close": "Fermer",
     "template": "Modèle",

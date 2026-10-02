@@ -3,6 +3,7 @@ import { fileIconElement } from './file-icons';
 import { stateLetter, stateText, type GitClient } from './git-client';
 import { formDialog } from './git-dialogs';
 import { icon } from './icons';
+import { confirmDialog } from './confirm-dialog';
 import { t, type TranslationKey } from './localization';
 import { copyPatch, savePatch } from './patches';
 import { notify } from './notifications';
@@ -407,7 +408,7 @@ export class CommitView {
   }
 
   private async deleteAllUnversioned(changes: GlistGitChange[]): Promise<void> {
-    if (!window.confirm(t('confirmDeleteNewFiles').replace('{count}', String(changes.length)))) return;
+    if (!(await confirmDialog(t('confirmDeleteNewFiles').replace('{count}', String(changes.length))))) return;
     for (const change of changes) await this.hooks.deleteFile(change.path);
     await this.client.refresh();
   }
@@ -539,19 +540,19 @@ export class CommitView {
   }
 
   private async deleteUnversioned(change: GlistGitChange): Promise<void> {
-    if (!window.confirm(`“${baseName(change.path)}”: ${t('confirmDeleteFile')}`)) return;
+    if (!(await confirmDialog(`“${baseName(change.path)}”: ${t('confirmDeleteFile')}`))) return;
     await this.hooks.deleteFile(change.path);
     await this.client.refresh();
   }
 
-  private confirmRollback(changes: GlistGitChange[]): boolean {
-    return window.confirm(changes.length === 1
+  private confirmRollback(changes: GlistGitChange[]): Promise<boolean> {
+    return confirmDialog(changes.length === 1
       ? t('confirmRollbackOne').replace('{name}', baseName(changes[0].path))
       : t('confirmRollback').replace('{count}', String(changes.length)));
   }
 
   private async rollback(changes: GlistGitChange[], root?: string): Promise<void> {
-    if (changes.length === 0 || !this.confirmRollback(changes)) return;
+    if (changes.length === 0 || !(await this.confirmRollback(changes))) return;
     await this.client.run({ kind: 'rollback', paths: changes.map((change) => change.path) }, { root });
   }
 

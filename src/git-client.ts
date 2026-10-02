@@ -1,5 +1,6 @@
 import { defaultProtection } from './git-protection';
 import { notify, type NoticeAction } from './notifications';
+import { confirmDialog } from './confirm-dialog';
 import { t, type TranslationKey } from './localization';
 
 // Git in the renderer: whether it is turned on, the repository's status, and
@@ -177,7 +178,7 @@ export class GitClient {
 
   async run(action: GlistGitAction, options: RunOptions = {}): Promise<GlistGitResult> {
     const shared = options.root === undefined ? null : this.repositoryAt(options.root);
-    if (shared && sharedChanges.has(action.kind) && !window.confirm(t('confirmShared').replace('{name}', shared.name))) {
+    if (shared && sharedChanges.has(action.kind) && !(await confirmDialog(t('confirmShared').replace('{name}', shared.name)))) {
       return { success: false, message: '' };
     }
     if (!(await this.hooks.saveAll())) return { success: false, message: t('saveFailed') };
