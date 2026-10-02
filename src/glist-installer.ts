@@ -1,3 +1,4 @@
+import { confirmDialog } from './confirm-dialog';
 import { t } from './localization';
 import type { StudioTerminal } from './terminal';
 
@@ -94,9 +95,10 @@ export const setUpGlistInstaller = (
     controls.dialog.close();
     openApp(root);
   });
-  controls.close.addEventListener('click', () => {
+  controls.close.addEventListener('click', async () => {
     if (state === 'running') {
-      if (!window.confirm(t('confirmStopInstall'))) return;
+      // It may have finished while the question was open.
+      if (!(await confirmDialog(t('confirmStopInstall'))) || state !== 'running') return;
       terminal.stop();
       failure = t('installStopped');
       show('failed');

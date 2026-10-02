@@ -4,6 +4,7 @@ import { stateLetter, stateText, type GitClient } from './git-client';
 import { formDialog } from './git-dialogs';
 import { graphRows, type GraphRow } from './git-graph';
 import { icon, type IconName } from './icons';
+import { confirmDialog } from './confirm-dialog';
 import { t, translate, type TranslationKey } from './localization';
 import { baseName } from './paths';
 import { applyPatchFiles, applyPatchFromClipboard, copyPatch, savePatch } from './patches';
@@ -462,8 +463,8 @@ class LogView {
       ...(this.unpublished.has(commit.hash) && commit.parents.length === 1 ? [{
         label: t('dropCommit'),
         danger: true,
-        run: () => {
-          if (window.confirm(t('confirmDropCommit').replace('{subject}', commit.subject))) run({ kind: 'drop-commit', commit: commit.hash }, t('commitDropped'));
+        run: async () => {
+          if (await confirmDialog(t('confirmDropCommit').replace('{subject}', commit.subject))) run({ kind: 'drop-commit', commit: commit.hash }, t('commitDropped'));
         },
       }] : []),
     ];
@@ -488,7 +489,7 @@ class LogView {
     });
     if (!values) return;
     const mode = values.mode === 'soft' || values.mode === 'hard' ? values.mode : 'mixed';
-    if (mode === 'hard' && !window.confirm(t('confirmResetHard'))) return;
+    if (mode === 'hard' && !(await confirmDialog(t('confirmResetHard')))) return;
     await this.client.run({ kind: 'reset', commit: commit.hash, mode }, { root: this.place.root });
     await this.load();
   }
@@ -612,7 +613,7 @@ class BranchesView {
       entries.push({
         label: t('deleteBranch'),
         danger: true,
-        run: () => { if (window.confirm(t('confirmDeleteTag').replace('{name}', name))) void run({ kind: 'delete-tag', name }); },
+        run: async () => { if (await confirmDialog(t('confirmDeleteTag').replace('{name}', name))) void run({ kind: 'delete-tag', name }); },
       });
     } else {
       entries.push({
@@ -627,10 +628,10 @@ class BranchesView {
 
   private async deleteBranch(remote: boolean, name: string): Promise<void> {
     const question = remote ? 'confirmDeleteRemoteBranch' : 'confirmDeleteBranch';
-    if (!window.confirm(t(question).replace('{name}', name))) return;
+    if (!(await confirmDialog(t(question).replace('{name}', name)))) return;
     const { root } = this.place;
     const result = await this.client.run({ kind: 'delete-branch', name, remote }, { root, quiet: (outcome) => Boolean(outcome.notMerged) });
-    if (result.notMerged && window.confirm(t('confirmForceDelete').replace('{name}', name))) {
+    if (result.notMerged && await confirmDialog(t('confirmForceDelete').replace('{name}', name))) {
       await this.client.run({ kind: 'delete-branch', name, remote, force: true }, { root });
     }
     await this.load();
@@ -675,8 +676,8 @@ class RemotesView {
         {
           label: t('removeRemote'),
           danger: true,
-          run: () => {
-            if (window.confirm(t('confirmRemoveRemote').replace('{name}', remote.name))) {
+          run: async () => {
+            if (await confirmDialog(t('confirmRemoveRemote').replace('{name}', remote.name))) {
               void this.client.run({ kind: 'remove-remote', name: remote.name }, { root: this.place.root }).then(() => this.load());
             }
           },
@@ -823,7 +824,7 @@ class StashesView {
   }
 
   private async drop(stash: GlistGitStash): Promise<void> {
-    if (!window.confirm(t('confirmDropStash').replace('{name}', stash.message))) return;
+    if (!(await confirmDialog(t('confirmDropStash').replace('{name}', stash.message)))) return;
     await this.client.run({ kind: 'drop-stash', name: stash.name }, { root: this.place.root });
     await this.load();
   }

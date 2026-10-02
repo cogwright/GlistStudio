@@ -76,6 +76,7 @@
     "terminalRestartHint": "Yenisini başlatmak için herhangi bir tuşa basın.",
     "initialOutput": "Glist Studio hazır. Başlamak için bir proje açın.",
     "cancel": "İptal",
+    "ok": "Tamam",
     "create": "Oluştur",
     "close": "Kapat",
     "template": "Şablon",

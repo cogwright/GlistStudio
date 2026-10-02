@@ -52,6 +52,7 @@ import { EnvironmentSettings } from './environment-settings';
 import { RunArguments } from './run-arguments';
 import { terminalTheme } from './themes';
 import { isLanguage, languages } from './languages';
+import { confirmDialog } from './confirm-dialog';
 import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './localization';
 import { renderImagePage, type ImagePage } from './image-page';
 import { imageType } from './images';
@@ -712,10 +713,10 @@ const forgetDocument = (tab: EditorTab): void => {
 
 // Closes one tab; the file closes with its last tab, asking first about
 // unsaved changes.
-const closeFile = (filePath: string, group = layout.focused): void => {
+const closeFile = async (filePath: string, group = layout.focused): Promise<void> => {
   const file = openFiles.get(filePath);
   if (!file) return;
-  if (layout.groupsWith(filePath).length <= 1 && isDirty(file) && !window.confirm(`${file.name} ${t('confirmClose')}`)) return;
+  if (layout.groupsWith(filePath).length <= 1 && isDirty(file) && !(await confirmDialog(`${file.name} ${t('confirmClose')}`))) return;
   const wasInFront = layout.groups[group]?.active === filePath;
   layout.close(filePath, group);
   showGroups();
@@ -1396,9 +1397,9 @@ const wireDiffPane = (view: GroupView): void => {
     focusGroup(groupViews.indexOf(view));
     void revealLocation(pathUri(tab.file), { lineNumber: line, column: 1 });
   });
-  pane.rollback.addEventListener('click', () => {
+  pane.rollback.addEventListener('click', async () => {
     const tab = shownDiff(view);
-    if (!tab || !window.confirm(t('confirmRollbackOne').replace('{name}', tab.name))) return;
+    if (!tab || !(await confirmDialog(t('confirmRollbackOne').replace('{name}', tab.name)))) return;
     void git.run({ kind: 'rollback', paths: [tab.file] }, { root: git.rootOf(tab.file) });
   });
 };
@@ -1545,7 +1546,7 @@ const updateDependencies = async (): Promise<void> => {
   const targets: CheckoutTarget[] = git.dependencies.map((repository) => (repository.kind === 'engine'
     ? engineTarget
     : pluginTarget(listed?.plugins.find((plugin) => plugin.name === repository.name) ?? { name: repository.name, description: '', url: '', installed: true })));
-  if (targets.length === 0 || !window.confirm(t('confirmUpdateDependencies').replace('{names}', targets.map((target) => target.name).join(', ')))) return;
+  if (targets.length === 0 || !(await confirmDialog(t('confirmUpdateDependencies').replace('{names}', targets.map((target) => target.name).join(', '))))) return;
   const upToDate: string[] = [];
   for (const target of targets) {
     if ((await updateCheckout(target, checkoutHooks, true)).upToDate) upToDate.push(target.name);
@@ -1581,7 +1582,7 @@ const newBranch = async (start?: string, label?: string, root?: string): Promise
 };
 
 const cloneProject = async (): Promise<void> => {
-  if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
+  if (hasDirtyFiles() && !(await confirmDialog(t('confirmProjectSwitch')))) return;
   const location = await window.glistAPI.getProjectsDirectory();
   const root = await cloneDialog(location, (update) => window.glistAPI.onGitConsole((entry) => {
     const line = entry.kind === 'output' ? entry.text.split(/[\r\n]/).map((part) => part.trim()).filter(Boolean).pop() : null;
@@ -1960,8 +1961,8 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
       gitItems.push(item('showHistory', () => showGitHistory(entry.path)));
     }
     if (change && change.state !== 'untracked' && change.state !== 'conflict') {
-      gitItems.push(item('rollback', () => {
-        if (window.confirm(t('confirmRollbackOne').replace('{name}', entry.name))) void git.run({ kind: 'rollback', paths: [entry.path] });
+      gitItems.push(item('rollback', async () => {
+        if (await confirmDialog(t('confirmRollbackOne').replace('{name}', entry.name))) void git.run({ kind: 'rollback', paths: [entry.path] });
       }));
     }
     if (change?.state === 'untracked' || (entry.isDirectory && !git.isIgnored(entry.path))) {
@@ -2402,9 +2403,9 @@ const deleteSelectedEntries = async (): Promise<void> => {
   const description = entries.length === 1
     ? `“${entries[0].name}”: ${t(entries[0].isDirectory ? 'confirmDeleteFolder' : 'confirmDeleteFile')}`
     : t('confirmDeleteItems').replace('{count}', String(entries.length));
-  if (!window.confirm(description)) return;
+  if (!(await confirmDialog(description))) return;
   if ([...openFiles.values()].some((file) => entries.some((entry) => isWithin(file.path, entry.path)) && isDirty(file))
-    && !window.confirm(t('confirmDirtyDelete'))) return;
+    && !(await confirmDialog(t('confirmDirtyDelete')))) return;
   const deleted: GlistFileEntry[] = [];
   try {
     const cmakePath = activeProject ? joinPath(activeProject.root, 'CMakeLists.txt') : null;
@@ -2545,7 +2546,7 @@ void window.glistAPI.glistStatus().then((status) => {
 }).catch((): undefined => undefined);
 
 const chooseProject = async (): Promise<void> => {
-  if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
+  if (hasDirtyFiles() && !(await confirmDialog(t('confirmProjectSwitch')))) return;
   await showProjectPicker();
 };
 
@@ -2835,8 +2836,8 @@ const configureMenus = (): void => {
       item(t('showDiff'), () => { if (file) void openWorkingDiff(file.path); }, { disabled: !tracked }),
       item(t('showHistory'), () => { if (file) showGitHistory(file.path); }, { disabled: !tracked }),
       item(t(gitEditor.isBlaming() ? 'hideAnnotate' : 'annotate'), () => { void gitEditor.toggleBlame(); }, { disabled: !tracked }),
-      item(`${t('rollback')}...`, () => {
-        if (file && window.confirm(t('confirmRollbackOne').replace('{name}', file.name))) {
+      item(`${t('rollback')}...`, async () => {
+        if (file && await confirmDialog(t('confirmRollbackOne').replace('{name}', file.name))) {
           void git.run({ kind: 'rollback', paths: [file.path] }, { root: git.rootOf(file.path) });
         }
       }, { disabled: !change || change.state === 'untracked' || change.state === 'conflict' }),
@@ -3148,7 +3149,7 @@ setUpThemePicker({
 element<HTMLButtonElement>('#project-cancel').addEventListener('click', () => projectDialog.close());
 element<HTMLFormElement>('#new-project-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (hasDirtyFiles() && !window.confirm(t('confirmProjectSwitch'))) return;
+  if (hasDirtyFiles() && !(await confirmDialog(t('confirmProjectSwitch')))) return;
   const name = element<HTMLInputElement>('#project-name-input').value.trim();
   const template = element<HTMLSelectElement>('#project-template').value as GlistTemplate;
   const errorHost = element<HTMLElement>('#project-dialog-error');
