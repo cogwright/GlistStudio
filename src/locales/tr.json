@@ -417,6 +417,7 @@
     "pluginsListFailed": "GlistPlugins'e ulaşılamadı",
     "pluginsLoading": "Eklentiler yükleniyor...",
     "readmeShow": "README'sini göster",
+    "readmeOnGithub": "GitHub'da aç",
     "readmeLoading": "README yükleniyor...",
     "readmeNone": "{name} için bir README yok.",
     "readmeFailed": "README yüklenemedi",

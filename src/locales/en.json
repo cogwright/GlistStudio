@@ -417,6 +417,7 @@
     "pluginsListFailed": "GlistPlugins could not be reached",
     "pluginsLoading": "Loading plugins...",
     "readmeShow": "Show its README",
+    "readmeOnGithub": "Open on GitHub",
     "readmeLoading": "Loading the README...",
     "readmeNone": "{name} has no README.",
     "readmeFailed": "The README could not be loaded",

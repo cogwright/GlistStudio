@@ -5,6 +5,7 @@ import { Uri } from 'monaco-editor/editor/editor.api';
 // part of Monaco's public API, so a new monaco-editor may move it.
 // eslint-disable-next-line import/no-unresolved
 import { renderMarkdown } from 'monaco-editor/base/browser/markdownRenderer.js';
+import { icon } from './icons';
 import { t } from './localization';
 
 // A plugin's README in a tab of its own, opened from the Plugins view. It comes
@@ -14,6 +15,8 @@ import { t } from './localization';
 
 export interface ReadmePage {
   name: string;
+  // Its page on GitHub, for one GitHub lists; empty otherwise.
+  url: string;
   readme?: GlistPluginReadme;
   error?: string;
 }
@@ -21,12 +24,26 @@ export interface ReadmePage {
 // A /blob/ address is GitHub's page about a file; the file itself is on raw.githubusercontent.com.
 const blobPage = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/blob\//;
 
+// Above the README, staying in sight while it scrolls: its page on GitHub, in the browser.
+const toolbar = (page: ReadmePage): HTMLElement[] => {
+  if (!/^https:\/\/github\.com\//.test(page.url)) return [];
+  const bar = document.createElement('div');
+  bar.className = 'readme-toolbar';
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'readme-github';
+  open.append(icon('github'), Object.assign(document.createElement('span'), { textContent: t('readmeOnGithub') }));
+  open.addEventListener('click', () => { window.open(`${page.url}#readme`, '_blank', 'noopener'); });
+  bar.append(open);
+  return [bar];
+};
+
 export const renderReadmePage = (target: HTMLElement, page: ReadmePage): { dispose(): void } => {
   const line = (text: string): { dispose(): void } => {
     const paragraph = document.createElement('p');
     paragraph.className = 'readme-status';
     paragraph.textContent = text;
-    target.replaceChildren(paragraph);
+    target.replaceChildren(...toolbar(page), paragraph);
     return { dispose: () => undefined };
   };
   if (page.error) return line(`${t('readmeFailed')}: ${page.error}`);
@@ -41,6 +58,6 @@ export const renderReadmePage = (target: HTMLElement, page: ReadmePage): { dispo
     if (blobPage.test(source)) image.setAttribute('src', source.replace(blobPage, 'https://raw.githubusercontent.com/$1/'));
   });
   rendered.element.className = 'readme-body';
-  target.replaceChildren(rendered.element);
+  target.replaceChildren(...toolbar(page), rendered.element);
   return rendered;
 };

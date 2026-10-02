@@ -417,6 +417,7 @@
     "pluginsListFailed": "GlistPlugins est injoignable",
     "pluginsLoading": "Chargement des plugins...",
     "readmeShow": "Afficher son README",
+    "readmeOnGithub": "Ouvrir sur GitHub",
     "readmeLoading": "Chargement du README...",
     "readmeNone": "{name} n'a pas de README.",
     "readmeFailed": "Le README n'a pas pu être chargé",
