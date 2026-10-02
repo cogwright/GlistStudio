@@ -28,9 +28,11 @@
     "paste": "Paste",
     "showIn": "Show in",
     "systemExplorer": "System Explorer",
-    "commandPrompt": "CMD",
+    "integratedTerminal": "Integrated Terminal",
     "copied": "Copied",
+    "copiedItems": "{count} items copied",
     "pasted": "Pasted",
+    "pastedItems": "{count} items pasted",
     "copiedInto": "Copied into {folder}",
     "copyFailed": "Could not copy item",
     "showFailed": "Could not open location",
@@ -215,6 +217,7 @@
     "classCreated": "C++ class created",
     "projectCreated": "Project created",
     "movedToTrash": "Moved to Recycle Bin",
+    "movedItemsToTrash": "{count} items moved to Recycle Bin",
     "renamed": "Renamed",
     "renamedTo": "{from} is now {to}",
     "goToError": "Go to Error",
@@ -234,6 +237,7 @@
     "confirmClose": "has unsaved changes. Close anyway?",
     "confirmDeleteFile": "Move this file to the Recycle Bin?",
     "confirmDeleteFolder": "Move this folder and all its contents to the Recycle Bin?",
+    "confirmDeleteItems": "Move {count} selected items to the Recycle Bin?",
     "confirmDirtyDelete": "Unsaved changes in this item will be lost. Continue?",
     "classLocation": "Select a folder for the C++ class.",
     "open": "Open",
@@ -684,6 +688,7 @@
     "codeStyleHint": "Glist Engine's style is how the engine itself is written: tabs 4 wide, braces on the same line, and if( without a space. It is Glist Studio's own and is never put into a project. The project's .clang-format is the nearest one in a file's folder or a folder above it, with Glist Engine's style where there is none. The editor indents in the style chosen, and marks where lines should end when it has a limit.",
     "reformatOff": "Code formatting is off: Settings > Code Formatting chooses a style.",
     "movedInto": "{name} moved into {folder}",
+    "movedItemsInto": "{count} items moved into {folder}",
     "moveFailed": "Could not move item"
   },
   "platforms": {
@@ -691,19 +696,23 @@
       "delete": "Move to Trash",
       "deleteTitle": "Move Selected Item to Trash",
       "movedToTrash": "Moved to Trash",
+      "movedItemsToTrash": "{count} items moved to Trash",
       "confirmDeleteFile": "Move this file to the Trash?",
       "confirmDeleteFolder": "Move this folder and all its contents to the Trash?",
+      "confirmDeleteItems": "Move {count} selected items to the Trash?",
       "systemExplorer": "Finder",
-      "commandPrompt": "Terminal"
+      "integratedTerminal": "Integrated Terminal"
     },
     "linux": {
       "delete": "Move to Trash",
       "deleteTitle": "Move Selected Item to Trash",
       "movedToTrash": "Moved to Trash",
+      "movedItemsToTrash": "{count} items moved to Trash",
       "confirmDeleteFile": "Move this file to the Trash?",
       "confirmDeleteFolder": "Move this folder and all its contents to the Trash?",
+      "confirmDeleteItems": "Move {count} selected items to the Trash?",
       "systemExplorer": "File Manager",
-      "commandPrompt": "Terminal"
+      "integratedTerminal": "Integrated Terminal"
     }
   },
   "studio": {

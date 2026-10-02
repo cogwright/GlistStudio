@@ -5,6 +5,7 @@ export const isLinux = /Linux/.test(navigator.platform);
 // Reformat File's keys, as Format Document's in other editors.
 export const reformatShortcut = isLinux ? 'Ctrl+Shift+I' : 'Shift+Alt+F';
 
-export const primaryKey = (event: KeyboardEvent): boolean => (isMac ? event.metaKey : event.ctrlKey);
+export const primaryKey = (event: Pick<KeyboardEvent, 'metaKey' | 'ctrlKey'>): boolean =>
+  (isMac ? event.metaKey : event.ctrlKey);
 
 export const shortcutLabel = (text: string): string => (isMac ? text.replace(/\bCtrl\b/g, 'Cmd') : text);

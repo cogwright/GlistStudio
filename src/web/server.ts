@@ -71,7 +71,6 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
   const handlers: Handlers = {
     ...studio,
     openProject: (projectRoot: string) => openProjectAt(projectRoot),
-    openCommandPrompt: unavailable,
     setTheme: () => undefined,
   };
 

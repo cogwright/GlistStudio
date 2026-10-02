@@ -20,8 +20,11 @@ export class StudioTerminal {
   private opened = false;
   private running = false;
   private starting: Promise<void> | null = null;
+  // Invalidates a startup when its project, agent, or requested folder changes.
+  private context = 0;
   private fontSize = 12;
   private scale = 1;
+  private directory?: string;
   // The agent the agent session runs.
   private agent?: GlistAgentId;
 
@@ -62,6 +65,26 @@ export class StudioTerminal {
     this.terminal.focus();
   }
 
+  // Opens a fresh shell at an Explorer entry: inside a folder, or beside a file.
+  async openAt(entryPath: string): Promise<void> {
+    const context = this.context;
+    // If the terminal was just shown, let that startup finish before replacing it.
+    if (this.starting) await this.starting;
+    // The project may have changed while that startup was finishing.
+    if (context !== this.context) return;
+    if (!this.opened) {
+      this.terminal.open(this.host);
+      this.opened = true;
+    }
+    this.fitToHost();
+    this.running = false;
+    this.terminal.reset();
+    this.terminal.focus();
+    this.directory = entryPath;
+    this.context += 1;
+    await this.start(entryPath);
+  }
+
   // Starts the program afresh, for a terminal that does not start on its own.
   run(): Promise<void> {
     this.show();
@@ -69,7 +92,7 @@ export class StudioTerminal {
     return this.start();
   }
 
-  // Ends the shell and starts a new one, in the project open now.
+  // Ends the shell and starts a new one in the same working directory.
   async restart(): Promise<void> {
     this.running = false;
     this.terminal.reset();
@@ -79,17 +102,23 @@ export class StudioTerminal {
 
   // A shell that was started keeps up with the open project.
   projectChanged(): void {
-    if (this.running) void this.restart();
+    const active = this.running || Boolean(this.starting);
+    const context = ++this.context;
+    this.directory = undefined;
+    if (active) void this.restartAfterStarting(context);
   }
 
   // Runs another agent; a running one is ended first.
   setAgent(agent: GlistAgentId | undefined): void {
     if (agent === this.agent) return;
+    const active = this.running || Boolean(this.starting);
+    const context = ++this.context;
     this.agent = agent;
-    if (this.running) void this.restart();
+    if (active) void this.restartAfterStarting(context);
   }
 
   stop(): void {
+    this.context += 1;
     this.running = false;
     void window.glistAPI.stopTerminal(this.session);
   }
@@ -116,14 +145,34 @@ export class StudioTerminal {
     this.fitToHost();
   }
 
-  private async start(): Promise<void> {
+  private async start(directory = this.directory): Promise<void> {
     if (this.starting) return this.starting;
-    this.starting = (async () => {
-      const result = await window.glistAPI.startTerminal(this.session, this.terminal.cols, this.terminal.rows, this.agent);
+    const context = this.context;
+    const startup = (async () => {
+      const result = await window.glistAPI.startTerminal(
+        this.session, this.terminal.cols, this.terminal.rows, directory, this.agent,
+      );
+      if (context !== this.context) {
+        if (result.success) await window.glistAPI.stopTerminal(this.session);
+        return;
+      }
       this.running = result.success;
       if (!result.success) this.terminal.write(`\x1b[31m${result.message}\x1b[0m\r\n`);
     })();
-    try { await this.starting; } finally { this.starting = null; }
+    const tracked = startup.finally(() => { if (this.starting === tracked) this.starting = null; });
+    this.starting = tracked;
+    return tracked;
+  }
+
+  // A context change during an IPC startup waits for it to be cancelled, then
+  // starts exactly once with the latest project, folder, and agent.
+  private async restartAfterStarting(context: number): Promise<void> {
+    if (this.starting) await this.starting.catch((): undefined => undefined);
+    if (context !== this.context) return;
+    this.running = false;
+    this.terminal.reset();
+    this.terminal.focus();
+    await this.start();
   }
 
   // Fits the terminal to its panel, which has no size while hidden.

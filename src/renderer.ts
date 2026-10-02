@@ -162,7 +162,10 @@ element<HTMLImageElement>('#welcome-icon').src = appIconUrl;
 
 let activeProject: GlistProjectInfo | null = null;
 let selectedEntry: GlistFileEntry | null = null;
-let copiedEntryPath: string | null = null;
+const selectedEntries = new Map<string, GlistFileEntry>();
+let selectionAnchor: HTMLButtonElement | null = null;
+const treeRowEntries = new WeakMap<HTMLButtonElement, GlistFileEntry>();
+let copiedEntryPaths: string[] = [];
 let isBuildRunning = false;
 let isRunRunning = false;
 // Build or Run was pressed and the backend has not taken it over yet.
@@ -599,7 +602,7 @@ const updateButtons = (): void => {
   refreshButton.disabled = !hasProject;
   newFileButton.disabled = !hasProject;
   newFolderButton.disabled = !hasProject;
-  deleteEntryButton.disabled = !selectedEntry || isRootFolder(selectedEntry.path);
+  deleteEntryButton.disabled = ![...selectedEntries.values()].some((entry) => !isRootFolder(entry.path));
 };
 
 // Draws a README tab in a side, again only once it changed; without one, hides it.
@@ -1828,30 +1831,97 @@ const tabMenu = (key: string, group: number): MenuEntry[] => {
   ];
 };
 
-const selectTreeEntry = (entry: GlistFileEntry, row: HTMLButtonElement): void => {
+const resetTreeSelection = (): void => {
+  selectedEntries.clear();
   fileTree.querySelectorAll('.tree-row.selected').forEach((selectedRow) => {
     selectedRow.classList.remove('selected');
   });
-  row.classList.add('selected');
-  selectedEntry = entry;
+};
+
+const selectTreeEntry = (entry: GlistFileEntry, row: HTMLButtonElement, event?: MouseEvent): void => {
+  const additive = Boolean(event && primaryKey(event));
+  if (event?.shiftKey && selectionAnchor) {
+    const rows = [...fileTree.querySelectorAll<HTMLButtonElement>('.tree-row[data-path]')]
+      .filter((candidate) => candidate.offsetParent !== null);
+    const [from, to] = [rows.indexOf(selectionAnchor), rows.indexOf(row)];
+    if (from >= 0 && to >= 0) {
+      if (!additive) resetTreeSelection();
+      rows.slice(Math.min(from, to), Math.max(from, to) + 1).forEach((candidate) => {
+        const candidateEntry = treeRowEntries.get(candidate);
+        if (!candidateEntry) return;
+        selectedEntries.set(candidateEntry.path, candidateEntry);
+        candidate.classList.add('selected');
+      });
+    } else {
+      resetTreeSelection();
+      selectedEntries.set(entry.path, entry);
+      row.classList.add('selected');
+      selectionAnchor = row;
+    }
+    selectedEntry = entry;
+  } else if (additive) {
+    if (selectedEntries.has(entry.path)) {
+      selectedEntries.delete(entry.path);
+      row.classList.remove('selected');
+      if (selectedEntry?.path === entry.path) selectedEntry = [...selectedEntries.values()].at(-1) ?? null;
+    } else {
+      selectedEntries.set(entry.path, entry);
+      row.classList.add('selected');
+      selectedEntry = entry;
+    }
+    selectionAnchor = row;
+  } else {
+    resetTreeSelection();
+    selectedEntries.set(entry.path, entry);
+    row.classList.add('selected');
+    selectedEntry = entry;
+    selectionAnchor = row;
+  }
   updateButtons();
 };
 
 const clearTreeSelection = (): void => {
+  resetTreeSelection();
   selectedEntry = null;
-  fileTree.querySelectorAll('.tree-row.selected').forEach((row) => row.classList.remove('selected'));
+  selectionAnchor = null;
   updateButtons();
 };
+
+const selectedTreeEntries = (): GlistFileEntry[] => [...selectedEntries.values()];
+const selectAllVisibleTreeEntries = (): void => {
+  resetTreeSelection();
+  const rows = [...fileTree.querySelectorAll<HTMLButtonElement>('.tree-row[data-path]')]
+    .filter((row) => row.offsetParent !== null);
+  rows.forEach((row) => {
+    const entry = treeRowEntries.get(row);
+    if (!entry) return;
+    selectedEntries.set(entry.path, entry);
+    row.classList.add('selected');
+  });
+  selectedEntry = rows.length > 0 ? treeRowEntries.get(rows[rows.length - 1]) ?? null : null;
+  selectionAnchor = rows[0] ?? null;
+  updateButtons();
+};
+const topLevelEntries = (entries: GlistFileEntry[]): GlistFileEntry[] => entries.filter((entry) =>
+  !entries.some((parent) => parent.path !== entry.path && parent.isDirectory && isWithin(entry.path, parent.path)));
+const deletableTreeEntries = (): GlistFileEntry[] =>
+  topLevelEntries(selectedTreeEntries().filter((entry) => !isRootFolder(entry.path)));
 
 const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLButtonElement): void => {
   event.preventDefault();
   event.stopPropagation();
-  if (entry && row) { selectTreeEntry(entry, row); row.focus({ preventScroll: true }); }
+  if (entry && row) {
+    if (!selectedEntries.has(entry.path)) selectTreeEntry(entry, row);
+    else { selectedEntry = entry; updateButtons(); }
+    row.focus({ preventScroll: true });
+  }
   if (!activeProject) return;
+  const selection = selectedTreeEntries();
+  const single = selection.length === 1;
   const item = (key: TranslationKey, run: () => void, danger = false): MenuEntry => ({ label: t(key), run, danger });
   const gitItems: MenuEntry[] = [];
   // The engine and plugins are repositories of their own, which these do not reach.
-  if (git.repository && entry && isProjectPath(entry.path)) {
+  if (single && git.repository && entry && isProjectPath(entry.path)) {
     const change = git.changeOf(entry.path);
     if (!entry.isDirectory && change?.state !== 'untracked') {
       gitItems.push(item('showDiff', () => { void openWorkingDiff(entry.path); }));
@@ -1869,11 +1939,12 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
   showMenu(event, [
     { label: t('newMenu'), children: [item('newFile', createFile), item('newFolder', createFolder), item('newCppClass', createClass)] },
     'separator',
-    ...(entry ? [item('copy', copySelectedEntry)] : []),
-    ...(copiedEntryPath ? [item('paste', pasteCopiedEntry)] : []),
-    ...(entry && !isRootFolder(entry.path) ? [item('rename', renameSelectedEntry), item('delete', deleteSelectedEntry, true)] : []),
+    ...(selection.length > 0 ? [item('copy', copySelectedEntries)] : []),
+    ...(copiedEntryPaths.length > 0 ? [item('paste', pasteCopiedEntries)] : []),
+    ...(single && entry && !isRootFolder(entry.path) ? [item('rename', renameSelectedEntry)] : []),
+    ...(deletableTreeEntries().length > 0 ? [item('delete', deleteSelectedEntries, true)] : []),
     'separator',
-    { label: t('showIn'), children: [item('systemExplorer', showInExplorer), item('commandPrompt', openCommandPrompt)] },
+    { label: t('showIn'), children: [item('systemExplorer', showInExplorer), item('integratedTerminal', openIntegratedTerminal)] },
     ...(gitItems.length > 0 ? [{ label: t('menuGit'), children: gitItems }] : []),
   ]);
 };
@@ -1905,8 +1976,9 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
   container.append(row);
   row.dataset.path = entry.path;
   if (entry.isDirectory) row.dataset.directory = 'true';
+  treeRowEntries.set(row, entry);
   decorateTreeRow(row);
-  const select = (): void => selectTreeEntry(entry, row);
+  const select = (event?: MouseEvent): void => selectTreeEntry(entry, row, event);
   row.addEventListener('contextmenu', (event) => showContextMenu(event, entry, row));
 
   if (entry.isDirectory) {
@@ -2041,7 +2113,12 @@ const loadProjectTree = async (): Promise<void> => {
   }
   const dependencies = await dependencySection(activeProject.root);
   if (dependencies) rows.push(dependencies);
-  if (generation === treeGeneration) fileTree.replaceChildren(...rows);
+  if (generation === treeGeneration) {
+    // A user can still click the old rows while the asynchronous reload is in
+    // progress. Clear that late selection before those rows leave the DOM.
+    clearTreeSelection();
+    fileTree.replaceChildren(...rows);
+  }
 };
 
 // The plugins come from CMakeLists.txt, so saving it may change them.
@@ -2133,27 +2210,43 @@ const createClass = async (): Promise<void> => {
   }
 };
 
-const copySelectedEntry = (): void => {
-  if (!selectedEntry) return;
-  copiedEntryPath = selectedEntry.path;
-  noticeDone('copied', selectedEntry.path);
+const copySelectedEntries = (): void => {
+  const entries = topLevelEntries(selectedTreeEntries());
+  if (entries.length === 0) return;
+  copiedEntryPaths = entries.map((entry) => entry.path);
+  if (entries.length === 1) noticeDone('copied', entries[0].path);
+  else notify({
+    text: t('copiedItems').replace('{count}', String(entries.length)),
+    detail: entries.map((entry) => noticePath(entry.path)).join('\n'),
+    kind: 'success',
+  });
 };
 
-const pasteCopiedEntry = async (): Promise<void> => {
+const pasteCopiedEntries = async (): Promise<void> => {
   let directory = directoryForNewEntry();
-  if (!copiedEntryPath || !directory) return;
-  if (directory.toLowerCase() === copiedEntryPath.toLowerCase()) {
-    directory = copiedEntryPath.replace(/[\\/][^\\/]+$/, '') || activeProject?.root || directory;
+  if (copiedEntryPaths.length === 0 || !directory) return;
+  const copiedHere = copiedEntryPaths.find((entryPath) => isWithin(directory, entryPath) && isWithin(entryPath, directory));
+  if (copiedHere) {
+    directory = copiedHere.replace(/[\\/][^\\/]+$/, '') || activeProject?.root || directory;
   }
+  const pastedPaths: string[] = [];
   try {
     for (const file of fileTabs()) {
-      if (isWithin(file.path, copiedEntryPath) && isDirty(file)) await saveFile(file);
+      if (copiedEntryPaths.some((entryPath) => isWithin(file.path, entryPath)) && isDirty(file)) await saveFile(file);
     }
-    const copiedPath = await window.glistAPI.copyEntry(copiedEntryPath, directory);
+    for (const entryPath of copiedEntryPaths) {
+      pastedPaths.push(await window.glistAPI.copyEntry(entryPath, directory));
+    }
     if (activeProject && directory !== activeProject.root) expandedDirectories.add(directory);
     await loadProjectTree();
-    noticeDone('pasted', copiedPath);
+    if (pastedPaths.length === 1) noticeDone('pasted', pastedPaths[0]);
+    else notify({
+      text: t('pastedItems').replace('{count}', String(pastedPaths.length)),
+      detail: pastedPaths.map(noticePath).join('\n'),
+      kind: 'success',
+    });
   } catch (error) {
+    await loadProjectTree();
     noticeFailed('copyFailed', error);
   }
 };
@@ -2165,10 +2258,12 @@ const showInExplorer = async (): Promise<void> => {
   catch (error) { noticeFailed('showFailed', error); }
 };
 
-const openCommandPrompt = async (): Promise<void> => {
+const openIntegratedTerminal = async (): Promise<void> => {
   const target = selectedEntry?.path ?? activeProject?.root;
   if (!target) return;
-  try { await window.glistAPI.openCommandPrompt(target); }
+  const opening = studioTerminal.openAt(target);
+  showPanel('terminal');
+  try { await opening; }
   catch (error) { noticeFailed('showFailed', error); }
 };
 
@@ -2205,7 +2300,7 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
 };
 
 // Renames or moves an entry: changed files in it are saved first, and open
-// tabs, a copied path and open folders in it follow it to its new path.
+// tabs, copied paths and open folders in it follow it to its new path.
 const relocateEntry = async (entryPath: string, change: () => Promise<string>): Promise<string> => {
   await saveOpenCmake();
   for (const file of fileTabs()) {
@@ -2214,7 +2309,8 @@ const relocateEntry = async (entryPath: string, change: () => Promise<string>): 
   const nextPath = await change();
   const moved = (inside: string): string => `${nextPath}${inside.slice(entryPath.length)}`;
   relocateOpenFiles(entryPath, nextPath);
-  if (copiedEntryPath && isWithin(copiedEntryPath, entryPath)) copiedEntryPath = moved(copiedEntryPath);
+  copiedEntryPaths = copiedEntryPaths.map((copiedPath) =>
+    (isWithin(copiedPath, entryPath) ? moved(copiedPath) : copiedPath));
   [...expandedDirectories].filter((folder) => isWithin(folder, entryPath)).forEach((folder) => {
     expandedDirectories.delete(folder);
     expandedDirectories.add(moved(folder));
@@ -2224,7 +2320,7 @@ const relocateEntry = async (entryPath: string, change: () => Promise<string>): 
 };
 
 const renameSelectedEntry = async (): Promise<void> => {
-  if (!selectedEntry) return;
+  if (!selectedEntry || selectedEntries.size !== 1) return;
   const entry = selectedEntry;
   const newName = await requestName('rename', 'newName', entry.name);
   if (!newName || newName === entry.name) return;
@@ -2237,34 +2333,57 @@ const renameSelectedEntry = async (): Promise<void> => {
   }
 };
 
-// A file or folder dragged onto another folder, moved there.
-const moveEntry = async (entryPath: string, folder: string): Promise<void> => {
+// Files and folders dragged onto another folder, moved there together.
+const moveEntries = async (entryPaths: string[], folder: string): Promise<void> => {
+  const moving = entryPaths.filter((entryPath) => entryPath.replace(/[\\/][^\\/]+$/, '') !== folder);
+  if (moving.length === 0) return;
+  const movedPaths: string[] = [];
   try {
-    const nextPath = await relocateEntry(entryPath, () => window.glistAPI.moveEntry(entryPath, folder));
+    for (const entryPath of moving) {
+      movedPaths.push(await relocateEntry(entryPath, () => window.glistAPI.moveEntry(entryPath, folder)));
+    }
     if (activeProject && folder !== activeProject.root) expandedDirectories.add(folder);
     await loadProjectTree();
-    notify({ text: t('movedInto').replace('{name}', baseName(nextPath)).replace('{folder}', baseName(folder)), detail: noticePath(nextPath), kind: 'success' });
+    const text = movedPaths.length === 1
+      ? t('movedInto').replace('{name}', baseName(movedPaths[0])).replace('{folder}', baseName(folder))
+      : t('movedItemsInto').replace('{count}', String(movedPaths.length)).replace('{folder}', baseName(folder));
+    notify({ text, detail: movedPaths.map(noticePath).join('\n'), kind: 'success' });
   } catch (error) {
+    await loadProjectTree();
     noticeFailed('moveFailed', error);
   }
 };
 
-const deleteSelectedEntry = async (): Promise<void> => {
-  if (!selectedEntry) return;
-  const entry = selectedEntry;
-  const description = `“${entry.name}”: ${t(entry.isDirectory ? 'confirmDeleteFolder' : 'confirmDeleteFile')}`;
+const deleteSelectedEntries = async (): Promise<void> => {
+  const entries = deletableTreeEntries();
+  if (entries.length === 0) return;
+  const description = entries.length === 1
+    ? `“${entries[0].name}”: ${t(entries[0].isDirectory ? 'confirmDeleteFolder' : 'confirmDeleteFile')}`
+    : t('confirmDeleteItems').replace('{count}', String(entries.length));
   if (!window.confirm(description)) return;
-  if ([...openFiles.values()].some((file) => isWithin(file.path, entry.path) && isDirty(file))
+  if ([...openFiles.values()].some((file) => entries.some((entry) => isWithin(file.path, entry.path)) && isDirty(file))
     && !window.confirm(t('confirmDirtyDelete'))) return;
+  const deleted: GlistFileEntry[] = [];
   try {
-    if (activeProject && !isWithin(entry.path, joinPath(activeProject.root, 'CMakeLists.txt'))) await saveOpenCmake();
-    await window.glistAPI.deleteEntry(entry.path);
-    if (copiedEntryPath && isWithin(copiedEntryPath, entry.path)) copiedEntryPath = null;
-    closeFilesUnderEntry(entry.path);
+    const cmakePath = activeProject ? joinPath(activeProject.root, 'CMakeLists.txt') : null;
+    if (cmakePath && !entries.some((entry) => isWithin(cmakePath, entry.path))) await saveOpenCmake();
+    for (const entry of entries) {
+      await window.glistAPI.deleteEntry(entry.path);
+      deleted.push(entry);
+      copiedEntryPaths = copiedEntryPaths.filter((copiedPath) => !isWithin(copiedPath, entry.path));
+      closeFilesUnderEntry(entry.path);
+    }
     await reloadOpenCmake();
     await loadProjectTree();
-    noticeDone('movedToTrash', entry.path);
+    if (deleted.length === 1) noticeDone('movedToTrash', deleted[0].path);
+    else notify({
+      text: t('movedItemsToTrash').replace('{count}', String(deleted.length)),
+      detail: deleted.map((entry) => noticePath(entry.path)).join('\n'),
+      kind: 'success',
+    });
   } catch (error) {
+    await reloadOpenCmake().catch((): undefined => undefined);
+    await loadProjectTree();
     noticeFailed('deleteFailed', error);
   }
 };
@@ -2292,7 +2411,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   await debug.stop();
   disposeOpenFiles(); activeProject = selected;
   selectedEntry = null;
-  copiedEntryPath = null;
+  copiedEntryPaths = [];
   expandedDirectories.clear();
   projectRootLabel.textContent = selected.name.toUpperCase();
   document.title = `${selected.name} - Glist Studio`;
@@ -2886,7 +3005,7 @@ runButton.addEventListener('click', runProject);
 stopButton.addEventListener('click', stopProject);
 newFileButton.addEventListener('click', createFile);
 newFolderButton.addEventListener('click', createFolder);
-deleteEntryButton.addEventListener('click', deleteSelectedEntry);
+deleteEntryButton.addEventListener('click', deleteSelectedEntries);
 refreshButton.addEventListener('click', loadProjectTree);
 clearOutputButton.addEventListener('click', () => {
   const panelTerminal = terminalFor(panelView);
@@ -3013,14 +3132,14 @@ fileTree.addEventListener('contextmenu', (event) => {
 // folder, or the project's when dropped below the list. Electron says where the
 // files are, so they are copied from there; a browser gives only their contents,
 // which are sent instead.
-const externalDrag = (event: DragEvent): boolean => !draggedTab && !draggedEntry && Boolean(event.dataTransfer?.types.includes('Files'));
+const externalDrag = (event: DragEvent): boolean => !draggedTab && !draggedEntries && Boolean(event.dataTransfer?.types.includes('Files'));
 // A file or folder being dragged within the explorer, which moves it: not into
 // itself, nor into the folder it is already in.
-let draggedEntry: string | null = null;
+let draggedEntries: string[] | null = null;
 const moveTarget = (event: DragEvent): string | null => {
-  const folder = draggedEntry ? dropFolderAt(event) : null;
-  if (!draggedEntry || !folder || isWithin(folder, draggedEntry)) return null;
-  return folder === draggedEntry.replace(/[\\/][^\\/]+$/, '') ? null : folder;
+  const folder = draggedEntries ? dropFolderAt(event) : null;
+  if (!draggedEntries || !folder || draggedEntries.some((entry) => isWithin(folder, entry))) return null;
+  return draggedEntries.some((entry) => folder !== entry.replace(/[\\/][^\\/]+$/, '')) ? folder : null;
 };
 const dropFolderAt = (event: DragEvent): string | null => {
   if (!activeProject) return null;
@@ -3087,16 +3206,22 @@ const importDropped = async (dropped: Array<{ entry: FileSystemEntry | null; fil
 fileTree.addEventListener('dragstart', (event) => {
   const row = event.target instanceof Element ? event.target.closest<HTMLElement>('.tree-row[draggable="true"]') : null;
   if (!row?.dataset.path || !event.dataTransfer) return;
-  draggedEntry = row.dataset.path;
+  if (!selectedEntries.has(row.dataset.path)) {
+    const entry = treeRowEntries.get(row as HTMLButtonElement);
+    if (!entry) return;
+    selectTreeEntry(entry, row as HTMLButtonElement);
+  }
+  draggedEntries = deletableTreeEntries().map((entry) => entry.path);
+  if (draggedEntries.length === 0) { draggedEntries = null; return; }
   event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData('text/plain', draggedEntry);
+  event.dataTransfer.setData('text/plain', draggedEntries.join('\n'));
 });
 fileTree.addEventListener('dragend', () => {
-  draggedEntry = null;
+  draggedEntries = null;
   markDropFolder(null);
 });
 fileTree.addEventListener('dragover', (event) => {
-  if (draggedEntry) {
+  if (draggedEntries) {
     const folder = moveTarget(event);
     markDropFolder(folder);
     if (!folder || !event.dataTransfer) return;
@@ -3115,13 +3240,14 @@ fileTree.addEventListener('dragleave', (event) => {
   if (!fileTree.contains(event.relatedTarget as Node | null)) markDropFolder(null);
 });
 fileTree.addEventListener('drop', (event) => {
-  if (draggedEntry) {
-    const [entry, folder] = [draggedEntry, moveTarget(event)];
-    draggedEntry = null;
+  if (draggedEntries) {
+    const entries = [...draggedEntries];
+    const folder = moveTarget(event);
+    draggedEntries = null;
     markDropFolder(null);
     if (!folder) return;
     event.preventDefault();
-    void moveEntry(entry, folder);
+    void moveEntries(entries, folder);
     return;
   }
   if (!externalDrag(event) || !event.dataTransfer) return;
@@ -3151,8 +3277,9 @@ window.addEventListener('keydown', (event) => {
 
 window.addEventListener('keydown', (event) => {
   if (inputDialog.open || projectDialog.open || settingsDialog.open) return;
-  if (primaryKey(event) && event.key.toLowerCase() === 'c' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntry(); }
-  else if (primaryKey(event) && event.key.toLowerCase() === 'v' && copiedEntryPath && fileTree.contains(document.activeElement)) { event.preventDefault(); pasteCopiedEntry(); }
+  if (primaryKey(event) && event.key.toLowerCase() === 'a' && fileTree.contains(document.activeElement)) { event.preventDefault(); selectAllVisibleTreeEntries(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'c' && selectedEntries.size > 0 && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntries(); }
+  else if (primaryKey(event) && event.key.toLowerCase() === 'v' && copiedEntryPaths.length > 0 && fileTree.contains(document.activeElement)) { event.preventDefault(); pasteCopiedEntries(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 's') { event.preventDefault(); saveActiveFile(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 'o') { event.preventDefault(); chooseProject(); }
   else if (primaryKey(event) && event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); buildProject(); }
@@ -3170,8 +3297,8 @@ window.addEventListener('keydown', (event) => {
   else if (event.key === 'F10') { event.preventDefault(); debug.stepOver(); }
   else if (event.shiftKey && event.key === 'F11') { event.preventDefault(); debug.stepOut(); }
   else if (event.key === 'F11') { event.preventDefault(); debug.stepInto(); }
-  else if (event.key === 'F2' && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); renameSelectedEntry(); }
-  else if ((event.key === 'Delete' || (isMac && event.metaKey && event.key === 'Backspace')) && selectedEntry && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntry(); }
+  else if (event.key === 'F2' && selectedEntries.size === 1 && fileTree.contains(document.activeElement)) { event.preventDefault(); renameSelectedEntry(); }
+  else if ((event.key === 'Delete' || (isMac && event.metaKey && event.key === 'Backspace')) && selectedEntries.size > 0 && fileTree.contains(document.activeElement)) { event.preventDefault(); deleteSelectedEntries(); }
 });
 // A mouse wheel notch is one zoom step; a trackpad pinch arrives as many small
 // Ctrl+wheel events and has to add up to one first.

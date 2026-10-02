@@ -28,9 +28,11 @@
     "paste": "Yapıştır",
     "showIn": "Şurada Göster",
     "systemExplorer": "Sistem Gezgini",
-    "commandPrompt": "Komut İstemi",
+    "integratedTerminal": "Yerleşik Terminal",
     "copied": "Kopyalandı",
+    "copiedItems": "{count} öğe kopyalandı",
     "pasted": "Yapıştırıldı",
+    "pastedItems": "{count} öğe yapıştırıldı",
     "copiedInto": "{folder} klasörüne kopyalandı",
     "copyFailed": "Öğe kopyalanamadı",
     "showFailed": "Konum açılamadı",
@@ -215,6 +217,7 @@
     "classCreated": "C++ sınıfı oluşturuldu",
     "projectCreated": "Proje oluşturuldu",
     "movedToTrash": "Geri Dönüşüm Kutusu'na taşındı",
+    "movedItemsToTrash": "{count} öğe Geri Dönüşüm Kutusu'na taşındı",
     "renamed": "Yeniden adlandırıldı",
     "renamedTo": "{from} artık {to}",
     "goToError": "Hataya Git",
@@ -234,6 +237,7 @@
     "confirmClose": "kaydedilmedi. Yine de kapatılsın mı?",
     "confirmDeleteFile": "Bu dosya Geri Dönüşüm Kutusu'na taşınsın mı?",
     "confirmDeleteFolder": "Bu klasör ve içindekiler Geri Dönüşüm Kutusu'na taşınsın mı?",
+    "confirmDeleteItems": "Seçili {count} öğe Geri Dönüşüm Kutusu'na taşınsın mı?",
     "confirmDirtyDelete": "Bu öğedeki kaydedilmemiş değişiklikler kaybolacak. Devam edilsin mi?",
     "classLocation": "C++ sınıfı için bir klasör seçin.",
     "open": "Aç",
@@ -684,6 +688,7 @@
     "codeStyleHint": "Glist Engine stili, motorun kendi kodunun yazıldığı biçimdir: 4 genişliğinde sekmeler, aynı satırda süslü parantezler ve boşluksuz if(. Glist Studio'nun kendisinindir ve hiçbir zaman bir projeye eklenmez. Projenin .clang-format dosyası, dosyanın klasöründeki veya üst klasörlerindeki en yakın dosyadır; olmadığı yerde Glist Engine stili kullanılır. Düzenleyici seçilen stile göre girinti yapar ve bir sınır varsa satırların nerede bitmesi gerektiğini gösterir.",
     "reformatOff": "Kod biçimlendirme kapalı: Ayarlar > Kod Biçimlendirme'den bir stil seçin.",
     "movedInto": "{name}, {folder} klasörüne taşındı",
+    "movedItemsInto": "{count} öğe {folder} klasörüne taşındı",
     "moveFailed": "Öğe taşınamadı"
   },
   "platforms": {
@@ -691,19 +696,23 @@
       "delete": "Çöp Sepeti'ne Taşı",
       "deleteTitle": "Seçili Öğeyi Çöp Sepeti'ne Taşı",
       "movedToTrash": "Çöp Sepeti'ne taşındı",
+      "movedItemsToTrash": "{count} öğe Çöp Sepeti'ne taşındı",
       "confirmDeleteFile": "Bu dosya Çöp Sepeti'ne taşınsın mı?",
       "confirmDeleteFolder": "Bu klasör ve içindekiler Çöp Sepeti'ne taşınsın mı?",
+      "confirmDeleteItems": "Seçili {count} öğe Çöp Sepeti'ne taşınsın mı?",
       "systemExplorer": "Finder",
-      "commandPrompt": "Terminal"
+      "integratedTerminal": "Yerleşik Terminal"
     },
     "linux": {
       "delete": "Çöp Kutusu'na Taşı",
       "deleteTitle": "Seçili Öğeyi Çöp Kutusu'na Taşı",
       "movedToTrash": "Çöp Kutusu'na taşındı",
+      "movedItemsToTrash": "{count} öğe Çöp Kutusu'na taşındı",
       "confirmDeleteFile": "Bu dosya Çöp Kutusu'na taşınsın mı?",
       "confirmDeleteFolder": "Bu klasör ve içindekiler Çöp Kutusu'na taşınsın mı?",
+      "confirmDeleteItems": "Seçili {count} öğe Çöp Kutusu'na taşınsın mı?",
       "systemExplorer": "Dosya Yöneticisi",
-      "commandPrompt": "Terminal"
+      "integratedTerminal": "Yerleşik Terminal"
     }
   },
   "studio": {

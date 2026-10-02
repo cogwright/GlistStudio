@@ -381,29 +381,6 @@ const showInSystemExplorer = async (entryPath: string): Promise<void> => {
   else host.showItemInFolder(safePath);
 };
 
-// Linux has no single terminal; $TERMINAL is how tiling setups name theirs.
-const terminals = (directory: string): Array<[string, string[]]> => {
-  if (process.platform === 'win32') return [['cmd.exe', ['/K']]];
-  if (process.platform === 'darwin') return [['open', ['-a', 'Terminal', directory]]];
-  return [process.env.TERMINAL, 'x-terminal-emulator', 'gnome-terminal', 'konsole', 'kitty', 'alacritty', 'foot', 'xterm']
-    .filter((command): command is string => Boolean(command))
-    .map((command): [string, string[]] => [command, []]);
-};
-
-const openCommandPrompt = async (entryPath: string): Promise<void> => {
-  const safePath = await assertEditablePath(entryPath);
-  const directory = (await fs.stat(safePath)).isDirectory() ? safePath : path.dirname(safePath);
-  for (const [command, args] of terminals(directory)) {
-    const child = spawn(command, args, { cwd: directory, detached: true, stdio: 'ignore', windowsHide: false });
-    const started = await new Promise<boolean>((resolve) => {
-      child.once('spawn', () => resolve(true));
-      child.once('error', () => resolve(false));
-    });
-    if (started) { child.unref(); return; }
-  }
-  throw new Error(msg('terminalMissing'));
-};
-
 const createProjectFromTemplate = async (
   templateName: ProjectTemplate,
   projectName: string,
@@ -1338,11 +1315,21 @@ const installerProgram = async (): Promise<{ file: string; args: string[] }> => 
     : { file: '/bin/bash', args: [script] };
 };
 
-const startTerminal = async (session: unknown, columns: number, rows: number, agent?: unknown): Promise<ProcessResult> => {
+const startTerminal = async (
+  session: unknown, columns: number, rows: number, requestedDirectory?: unknown, agent?: unknown,
+): Promise<ProcessResult> => {
   const name = sessionName(session);
   if (!name) return { success: false, message: msg('terminalFailed') };
   stopTerminal(name);
   let directory = terminalDirectory();
+  if (name === 'shell' && typeof requestedDirectory === 'string') {
+    try {
+      const safePath = await assertEditablePath(requestedDirectory);
+      directory = (await fs.stat(safePath)).isDirectory() ? safePath : path.dirname(safePath);
+    } catch (error) {
+      return { success: false, message: `${msg('terminalFailed')}: ${error instanceof Error ? error.message : String(error)}` };
+    }
+  }
   const env: NodeJS.ProcessEnv = {
     ...processEnvironment(resolveToolchain(directory)), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'GlistStudio',
   };
@@ -1548,7 +1535,6 @@ export const studio: Handlers = {
   importPaths,
   importFiles,
   showInExplorer: showInSystemExplorer,
-  openCommandPrompt,
   readFile: readProjectFile,
   readWorkspaceFile,
   // Only style files are read, wherever the file is: clang-format looks as far up.

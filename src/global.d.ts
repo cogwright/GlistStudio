@@ -568,7 +568,6 @@ interface Window {
     // The same by content, from a browser: each file's place in what was dropped and its bytes in base64.
     importFiles(destinationDirectory: string, files: Array<{ path: string; data: string }>): Promise<string[]>;
     showInExplorer(entryPath: string): Promise<void>;
-    openCommandPrompt(entryPath: string): Promise<void>;
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
     // The .clang-format a C or C++ file follows, or null.
@@ -615,7 +614,9 @@ interface Window {
     debuggerStatus(): Promise<GlistDebuggerStatus>;
     // Again: removes the installed one first.
     installDebugger(again?: boolean): Promise<GlistProcessResult>;
-    startTerminal(session: GlistTerminalSession, columns: number, rows: number, agent?: GlistAgentId): Promise<GlistProcessResult>;
+    startTerminal(
+      session: GlistTerminalSession, columns: number, rows: number, directory?: string, agent?: GlistAgentId,
+    ): Promise<GlistProcessResult>;
     writeTerminal(session: GlistTerminalSession, data: string): Promise<void>;
     resizeTerminal(session: GlistTerminalSession, columns: number, rows: number): Promise<void>;
     stopTerminal(session: GlistTerminalSession): Promise<void>;

@@ -23,7 +23,6 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   importPaths: 'project:import-paths',
   importFiles: 'project:import-files',
   showInExplorer: 'project:show-in-explorer',
-  openCommandPrompt: 'project:open-command-prompt',
   readFile: 'project:read-file',
   readWorkspaceFile: 'project:read-workspace-file',
   codeStyle: 'project:code-style',
