@@ -687,7 +687,7 @@
     "codeStyleGlist": "Style de Glist Engine",
     "codeStyleProject": "Le .clang-format du projet",
     "codeStyleNone": "Aucun",
-    "codeStyleHint": "Le style de Glist Engine est celui du code du moteur: tabulations de 4, accolades sur la même ligne, et if( sans espace. Il appartient à Glist Studio et n'est jamais ajouté à un projet. Le .clang-format du projet est le plus proche dans le dossier d'un fichier ou un dossier parent, avec le style de Glist Engine là où il n'y en a pas. L'éditeur indente dans le style choisi, et marque où les lignes doivent s'arrêter s'il y a une limite.",
+    "codeStyleHint": "Le style de Glist Engine est celui du code du moteur. Les projets sans .clang-format l'utilisent aussi.",
     "reformatOff": "La mise en forme du code est désactivée: Paramètres > Mise en forme du code permet de choisir un style.",
     "movedInto": "{name} déplacé dans {folder}",
     "movedItemsInto": "{count} éléments déplacés dans {folder}",
