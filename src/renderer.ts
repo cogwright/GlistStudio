@@ -779,8 +779,10 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   tab.append(kind, label, dirty, close);
   tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path, group); });
   // A middle click closes the tab, as in a browser. Pressing the middle button
-  // would otherwise start the page scrolling on Windows and Linux.
+  // would otherwise start the page scrolling on Windows and Linux, and letting
+  // it go would paste Linux's selected text into the editor that has the keys.
   tab.addEventListener('mousedown', (event) => { if (event.button === 1) event.preventDefault(); });
+  tab.addEventListener('mouseup', (event) => { if (event.button === 1) event.preventDefault(); });
   tab.addEventListener('auxclick', (event) => {
     if (event.button !== 1) return;
     event.preventDefault();
