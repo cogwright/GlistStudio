@@ -148,16 +148,21 @@ export class StudioTerminal {
   private async start(directory = this.directory): Promise<void> {
     if (this.starting) return this.starting;
     const context = this.context;
+    this.fitToHost();
+    const { cols, rows } = this.terminal;
     const startup = (async () => {
-      const result = await window.glistAPI.startTerminal(
-        this.session, this.terminal.cols, this.terminal.rows, directory, this.agent,
-      );
+      const result = await window.glistAPI.startTerminal(this.session, cols, rows, directory, this.agent);
       if (context !== this.context) {
         if (result.success) await window.glistAPI.stopTerminal(this.session);
         return;
       }
       this.running = result.success;
       if (!result.success) this.terminal.write(`\x1b[31m${result.message}\x1b[0m\r\n`);
+      // Sized while it started, as when the panel opens with it, which onResize
+      // could not pass on yet: the program gets the size it is drawn at.
+      else if (this.terminal.cols !== cols || this.terminal.rows !== rows) {
+        void window.glistAPI.resizeTerminal(this.session, this.terminal.cols, this.terminal.rows);
+      }
     })();
     const tracked = startup.finally(() => { if (this.starting === tracked) this.starting = null; });
     this.starting = tracked;
