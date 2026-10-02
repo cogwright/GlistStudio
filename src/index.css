@@ -71,6 +71,9 @@
    what is typed, the output and Git console, commit details, the About list, the
    debugger's values, notices and error messages, paths, and plugins' READMEs. */
 body { -webkit-user-select: none; user-select: none; }
+/* A modal dialog is in the top layer, where Chromium does not carry this over
+   from the page, so Settings and the other dialogs say it again. */
+dialog { -webkit-user-select: none; user-select: none; }
 input, textarea, [contenteditable="true"], .output, .log-details, .about-list dd, .debug-status, .debug-value,
 .notice-text, .notice-detail, .dialog-error, .engine-facts dd, .path-folder, .glist-install-location, .monaco-hover, .readme-view {
   -webkit-user-select: text;
