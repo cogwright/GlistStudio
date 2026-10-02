@@ -19,6 +19,7 @@ import { createCheckouts, githubForks, gitRunner } from './checkout-update';
 import { isLanguage, languages, type Language, type Words } from './languages';
 import { errorOutput, outputBanner } from './output-format';
 import { createPluginService } from './plugins';
+import { imageType } from './images';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 import { queryPattern } from './text-search';
 import { toolLanguage } from './tool-language';
@@ -1058,11 +1059,23 @@ const readProjectFile = async (filePath: string): Promise<string> =>
 
 // Go to definition lands in engine and plugin headers, so files anywhere in
 // the Glist workspace (the folder holding GlistEngine) may be read, never written.
-const readWorkspaceFile = async (filePath: string): Promise<string> => {
+const workspacePath = async (filePath: string): Promise<string> => {
   const workspaceRoot = findAncestorWith(requireProjectRoot(), path.join('GlistEngine', 'engine'));
   const realFile = await fs.realpath(path.resolve(filePath));
   if (!workspaceRoot || !isInside(await fs.realpath(workspaceRoot), realFile)) throw new Error(msg('outsideProject'));
-  return readTextFile(realFile);
+  return realFile;
+};
+const readWorkspaceFile = async (filePath: string): Promise<string> => readTextFile(await workspacePath(filePath));
+
+// An image for its tab, in base64: one of the project's, or one anywhere in the
+// Glist workspace, as files are read.
+const readImage = async (filePath: string): Promise<GlistImageFile> => {
+  const type = imageType(filePath);
+  const safePath = await assertEditablePath(filePath).catch(() => workspacePath(filePath));
+  const stats = await fs.stat(safePath);
+  if (!type || !stats.isFile()) throw new Error(msg('fileRequired'));
+  if (stats.size > 50 * 1024 * 1024) throw new Error(msg('imageTooLarge'));
+  return { data: (await fs.readFile(safePath)).toString('base64'), type, size: stats.size };
 };
 
 // What an app is built with, for the explorer: the engine, and the plugins its
@@ -1537,6 +1550,7 @@ export const studio: Handlers = {
   showInExplorer: showInSystemExplorer,
   readFile: readProjectFile,
   readWorkspaceFile,
+  readImage,
   // Only style files are read, wherever the file is: clang-format looks as far up.
   // Glist Engine's style unless Settings says the project's, or none.
   codeStyle: (filePath: unknown, mode: unknown) => {

@@ -53,6 +53,8 @@ import { RunArguments } from './run-arguments';
 import { terminalTheme } from './themes';
 import { isLanguage, languages } from './languages';
 import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './localization';
+import { renderImagePage, type ImagePage } from './image-page';
+import { imageType } from './images';
 import { renderReadmePage, type ReadmePage } from './readme-page';
 import './index.css';
 
@@ -100,7 +102,21 @@ interface ReadmeTab {
   version: number;
 }
 
-type EditorTab = OpenFile | DiffTab | ReadmeTab;
+// An image file, shown as a picture rather than as text.
+interface ImageTab {
+  kind: 'image';
+  // The tab's key: the file's path.
+  path: string;
+  name: string;
+  page: ImagePage;
+  // Goes up when the image arrives, so a side showing the tab draws it again.
+  version: number;
+}
+
+// Tabs drawn in a side's page rather than in its editor.
+type PageTab = ReadmeTab | ImageTab;
+
+type EditorTab = OpenFile | DiffTab | PageTab;
 
 const element = <T extends HTMLElement>(selector: string): T => {
   const found = document.querySelector<T>(selector);
@@ -477,7 +493,7 @@ interface GroupView {
   host: HTMLElement;
   editor: monaco.editor.IStandaloneCodeEditor;
   diff: DiffPane;
-  // Where a README tab is drawn, and which one it holds.
+  // Where a README or an image tab is drawn, and which one it holds.
   page: HTMLElement;
   pageShown: { key: string; version: number; render: { dispose(): void } } | null;
   // Where a dragged tab would go.
@@ -605,18 +621,19 @@ const updateButtons = (): void => {
   deleteEntryButton.disabled = ![...selectedEntries.values()].some((entry) => !isRootFolder(entry.path));
 };
 
-// Draws a README tab in a side, again only once it changed; without one, hides it.
-const showReadmeTab = (view: GroupView, tab?: ReadmeTab): void => {
+// Draws a README or an image tab in a side, again only once it changed; without one, hides it.
+const showPageTab = (view: GroupView, tab?: PageTab): void => {
   view.page.hidden = !tab;
   if (!tab || (view.pageShown?.key === tab.path && view.pageShown.version === tab.version)) return;
   view.pageShown?.render.dispose();
-  view.pageShown = { key: tab.path, version: tab.version, render: renderReadmePage(view.page, tab.page) };
+  const render = tab.kind === 'readme' ? renderReadmePage(view.page, tab.page) : renderImagePage(view.page, tab.page);
+  view.pageShown = { key: tab.path, version: tab.version, render };
   view.page.scrollTop = 0;
 };
 
 // Shows each side's tab in front: a file in the side's editor, where it was
-// scrolled to last there, a diff in the diff view, a README in its page, and
-// the welcome screen once no tab is left.
+// scrolled to last there, a diff in the diff view, a README or an image in its
+// page, and the welcome screen once no tab is left.
 const showGroups = (): void => {
   const split = layout.groups.length > 1;
   if (split) secondGroupView();
@@ -637,18 +654,18 @@ const showGroups = (): void => {
       view.host.classList.remove('visible');
       view.diff.editor?.setModel(null);
       view.diff.view.hidden = true;
-      showReadmeTab(view);
+      showPageTab(view);
       if (index === 0) welcome.hidden = false;
       return;
     }
     if (index === 0) welcome.hidden = true;
-    if (tab.kind === 'readme') {
+    if (tab.kind === 'readme' || tab.kind === 'image') {
       view.host.classList.remove('visible');
       view.diff.view.hidden = true;
-      showReadmeTab(view, tab);
+      showPageTab(view, tab);
       return;
     }
-    showReadmeTab(view);
+    showPageTab(view);
     if (tab.kind === 'diff') {
       view.host.classList.remove('visible');
       showDiffTab(view, tab);
@@ -678,7 +695,7 @@ const activateFile = (filePath: string, group = layout.focused): void => {
 };
 
 const disposeTab = (tab: EditorTab): void => {
-  if (tab.kind === 'readme') return;
+  if (tab.kind === 'readme' || tab.kind === 'image') return;
   if (tab.kind === 'file') { tab.model.dispose(); return; }
   groupViews.forEach((view) => { if (view.diff.editor?.getModel()?.modified === tab.modified) view.diff.editor.setModel(null); });
   tab.original.dispose();
@@ -738,6 +755,7 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   tab.classList.toggle('diff', file.kind === 'diff');
   if (file.kind === 'diff') tab.title = `${file.file}\n${file.leftLabel} / ${file.rightLabel}`;
   else if (file.kind === 'readme') tab.title = `${file.name} README`;
+  else if (file.kind === 'image') tab.title = file.path;
   else tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
   const label = document.createElement('span');
   label.className = 'tab-label';
@@ -752,7 +770,7 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   close.append(icon('close'));
   close.addEventListener('click', (event) => { event.stopPropagation(); closeFile(file.path, group); });
   let kind = fileIconElement(file.name);
-  if (file.kind !== 'file') {
+  if (file.kind === 'diff' || file.kind === 'readme') {
     kind = document.createElement('span');
     kind.className = `file-icon ${file.kind === 'diff' ? 'diff' : 'dependency'}`;
     kind.append(icon(file.kind === 'diff' ? 'diff' : 'extensions'));
@@ -1100,6 +1118,7 @@ const saveFile = async (file: OpenFile, format = true): Promise<void> => {
 let navigation = 0;
 
 const openFile = async (filePath: string, name: string): Promise<boolean> => {
+  if (imageType(filePath)) { openImage(filePath); return true; }
   navigation += 1;
   const ticket = navigation;
   try {
@@ -1324,18 +1343,28 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
 };
 
 // A plugin's README in a tab of its own, asked for when the tab first opens.
-const openReadme = (plugin: GlistPlugin): void => {
-  const key = `readme:${plugin.name}`;
-  if (!openFiles.has(key)) {
-    const tab: ReadmeTab = { kind: 'readme', path: key, name: plugin.name, page: { name: plugin.name, url: plugin.url }, version: 0 };
-    openFiles.set(key, tab);
-    layout.add(key);
-    void window.glistAPI.pluginReadme(plugin.name)
-      .then((readme) => { tab.page = { ...tab.page, readme }; })
-      .catch((error: unknown) => { tab.page = { ...tab.page, error: remoteError(error) }; })
+const openReadme = (plugin: GlistPlugin): void => openPageTab<ReadmeTab>(
+  { kind: 'readme', path: `readme:${plugin.name}`, name: plugin.name, page: { name: plugin.name, url: plugin.url }, version: 0 },
+  async (tab) => { tab.page.readme = await window.glistAPI.pluginReadme(plugin.name); },
+);
+
+// An image file as a picture, in a tab of its own.
+const openImage = (filePath: string): void => openPageTab<ImageTab>(
+  { kind: 'image', path: filePath, name: baseName(filePath), page: { name: baseName(filePath) }, version: 0 },
+  async (tab) => { tab.page.image = await window.glistAPI.readImage(filePath); },
+);
+
+// A README's or an image's tab, brought to the front; what it shows is asked
+// for when it first opens, and drawn when it arrives.
+const openPageTab = <T extends PageTab>(tab: T, load: (tab: T) => Promise<void>): void => {
+  if (!openFiles.has(tab.path)) {
+    openFiles.set(tab.path, tab);
+    layout.add(tab.path);
+    void load(tab)
+      .catch((error: unknown) => { tab.page.error = remoteError(error); })
       .finally(() => { tab.version += 1; showGroups(); });
   }
-  activateFile(key);
+  activateFile(tab.path);
 };
 
 // A file against its last commit.
@@ -2268,7 +2297,7 @@ const openIntegratedTerminal = async (): Promise<void> => {
 };
 
 const closeFilesUnderEntry = (entryPath: string): void => {
-  const closing = fileTabs().filter((file) => isWithin(file.path, entryPath));
+  const closing = [...openFiles.values()].filter((tab) => (tab.kind === 'file' || tab.kind === 'image') && isWithin(tab.path, entryPath));
   layout.remove((key) => closing.some((file) => file.path === key));
   showGroups();
   closing.forEach(forgetDocument);
@@ -2294,6 +2323,16 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
       if (view.shown === file.path) view.shown = nextPath;
     });
     file.model.dispose();
+  });
+  // An image's tab keeps its place, under the new path.
+  [...openFiles.values()].filter((tab): tab is ImageTab => tab.kind === 'image' && isWithin(tab.path, oldPath)).forEach((tab) => {
+    const nextPath = `${newPath}${tab.path.slice(oldPath.length)}`;
+    openFiles.delete(tab.path);
+    layout.rename(tab.path, nextPath);
+    groupViews.forEach((view) => { if (view.shown === tab.path) view.shown = nextPath; });
+    Object.assign(tab, { path: nextPath, name: baseName(nextPath) });
+    tab.page.name = tab.name;
+    openFiles.set(nextPath, tab);
   });
   showGroups();
   renderTabs();

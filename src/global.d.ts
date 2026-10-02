@@ -172,6 +172,13 @@ interface GlistPluginList {
 
 // A plugin's README, as Markdown, empty when it has none; page is its folder on
 // GitHub, which its relative links and images lead to.
+// An image file, its bytes in base64, for its tab.
+interface GlistImageFile {
+  data: string;
+  type: string;
+  size: number;
+}
+
 interface GlistPluginReadme {
   text: string;
   page: string;
@@ -570,6 +577,7 @@ interface Window {
     showInExplorer(entryPath: string): Promise<void>;
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
+    readImage(filePath: string): Promise<GlistImageFile>;
     // The .clang-format a C or C++ file follows, or null.
     codeStyle(filePath: string, mode?: GlistCodeStyleMode): Promise<GlistCodeStyle | null>;
     listDependencies(): Promise<GlistDependency[]>;

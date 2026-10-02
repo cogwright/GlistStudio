@@ -856,6 +856,13 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .readme-view { position: absolute; inset: 0; overflow: auto; padding: 24px 32px 48px; color: var(--ui-fg); background: var(--ui-bg); }
 .readme-view[hidden] { display: none; }
 .readme-status { color: var(--ui-fg-muted); }
+/* An image file: fitted to the tab, or at its own size after a click, on a
+   checkerboard where it is see-through, with its size beneath. */
+.image-stage { position: absolute; inset: 0 0 28px; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 16px; }
+.image-picture { max-width: 100%; max-height: 100%; object-fit: contain; background: repeating-conic-gradient(#8884 0 25%, transparent 0 50%) 0 0 / 16px 16px; cursor: zoom-in; }
+.image-stage.actual { align-items: flex-start; justify-content: flex-start; }
+.image-stage.actual .image-picture { max-width: none; max-height: none; margin: auto; cursor: zoom-out; }
+.image-facts { position: absolute; right: 0; bottom: 0; left: 0; height: 28px; border-top: 1px solid var(--ui-border); color: var(--ui-fg-muted); font-size: 12px; line-height: 28px; text-align: center; }
 /* Sticky offsets count from inside the page's padding, so -24px holds it at the very top. */
 .readme-toolbar { position: sticky; z-index: 1; top: -24px; display: flex; justify-content: flex-end; margin: -24px -32px 16px; padding: 8px 16px; border-bottom: 1px solid var(--ui-border); background: var(--ui-bg); }
 .readme-github { display: inline-flex; height: 26px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
