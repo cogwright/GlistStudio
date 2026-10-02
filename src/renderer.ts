@@ -2809,7 +2809,9 @@ const configureMenus = (): void => {
       hint: branch.current ? t('currentBranch') : [branch.ahead ? `↑${branch.ahead}` : '', branch.behind ? `↓${branch.behind}` : ''].join(' ').trim(),
     });
     const local = branches.filter((branch) => !branch.remote).sort((left, right) => Number(right.current) - Number(left.current));
-    const remote = branches.filter((branch) => branch.remote).slice(0, 12);
+    // The twelve remote ones with the latest commits, still in name order.
+    const recent = new Set(branches.filter((branch) => branch.remote).sort((left, right) => right.date - left.date).slice(0, 12));
+    const remote = branches.filter((branch) => recent.has(branch));
     // Each of the engine and plugins with its branch, opening it in the Git tab.
     const dependencyItem = (dependency: GlistGitRepository): MenuAction => item(dependency.name, () => {
       showPanel('git');

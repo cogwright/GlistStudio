@@ -625,14 +625,14 @@ exit 1
 
   const branches = async (root?: unknown): Promise<GlistGitBranch[]> => {
     const repo = await repository(root);
-    const result = await run(['for-each-ref', `--format=${branchFormat}`, '--sort=-committerdate', 'refs/heads', 'refs/remotes'],
+    const result = await run(['for-each-ref', `--format=${branchFormat}`, 'refs/heads', 'refs/remotes'],
       { cwd: repo.folder, env: { LC_ALL: 'C' } });
     return result.code === 0 ? parseBranches(text(result)) : [];
   };
 
   const tags = async (root?: unknown): Promise<GlistGitTag[]> => {
     const repo = await repository(root);
-    const result = await run(['for-each-ref', `--format=${tagFormat}`, '--sort=-creatordate', 'refs/tags'], { cwd: repo.folder });
+    const result = await run(['for-each-ref', `--format=${tagFormat}`, 'refs/tags'], { cwd: repo.folder });
     return result.code === 0 ? parseTags(text(result)) : [];
   };
 

@@ -152,6 +152,10 @@ export interface GitBranch {
   subject: string;
 }
 
+// Branches and tags by name, as people look for them: numbers in a name by
+// their value, so a-9 comes before a-10, and a remote's branches side by side.
+const byName = new Intl.Collator('en', { numeric: true }).compare;
+
 // %(upstream:track) is translated, so this runs with LC_ALL=C.
 export const branchFormat = '%(refname)%1f%(refname:short)%1f%(objectname:short)%1f%(upstream:short)%1f%(upstream:track)%1f%(HEAD)%1f%(committerdate:unix)%1f%(subject)%1e';
 
@@ -175,7 +179,9 @@ export const parseBranches = (output: string): GitBranch[] => output.split('\x1e
     };
   })
   // A remote's HEAD is an alias of one of its branches.
-  .filter((branch) => !branch.ref.endsWith('/HEAD'));
+  .filter((branch) => !branch.ref.endsWith('/HEAD'))
+  // The local ones first.
+  .sort((left, right) => Number(left.remote) - Number(right.remote) || byName(left.name, right.name));
 
 export interface GitTag {
   name: string;
@@ -194,7 +200,8 @@ export const parseTags = (output: string): GitTag[] => output.split('\x1e')
   .map((record) => {
     const [name, commit, date, subject] = record.split('\x1f');
     return { name, commit, date: Number(date), subject };
-  });
+  })
+  .sort((left, right) => byName(left.name, right.name));
 
 export interface GitRemote {
   name: string;
