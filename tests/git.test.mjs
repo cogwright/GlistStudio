@@ -86,6 +86,19 @@ try {
   assert.deepEqual(tags.map((tag) => [tag.name, tag.commit]), [['light', feature], ['v1', feature]]);
   assert.equal(tags[1].subject, 'Version one');
 
+  // By name: the local ones first, each remote's side by side, numbers by their value.
+  const record = (ref, name, date) => `${[ref, name, 'abc1234', '', '', '', String(date), 'Subject'].join('\x1f')}\x1e\n`;
+  const named = parseBranches([
+    record('refs/remotes/upstream/main', 'upstream/main', 5), record('refs/heads/a-32', 'a-32', 1),
+    record('refs/remotes/origin/main', 'origin/main', 3), record('refs/heads/a-4', 'a-4', 9),
+    record('refs/remotes/origin/a-10', 'origin/a-10', 2), record('refs/heads/zeta', 'zeta', 7),
+    record('refs/remotes/upstream/a-2', 'upstream/a-2', 8), record('refs/remotes/origin/a-9', 'origin/a-9', 4),
+  ].join(''));
+  assert.deepEqual(named.map((branch) => branch.name),
+    ['a-4', 'a-32', 'zeta', 'origin/a-9', 'origin/a-10', 'origin/main', 'upstream/a-2', 'upstream/main']);
+  const versions = parseTags(['v1.10', 'v1.9', 'v2.0', 'v1.2'].map((name) => `${[name, 'abc1234', '1', ''].join('\x1f')}\x1e\n`).join(''));
+  assert.deepEqual(versions.map((tag) => tag.name), ['v1.2', 'v1.9', 'v1.10', 'v2.0']);
+
   // A remote that main tracks, one commit behind.
   git('init', '-q', '--bare', path.join(root, 'remote.git'));
   git('remote', 'add', 'origin', path.join(root, 'remote.git'));
