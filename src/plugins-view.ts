@@ -19,6 +19,23 @@ export interface PluginsHooks {
   updates: CheckoutUpdateHooks;
 }
 
+// Where a copy of a plugin or the engine stands, in colors apart from its
+// description: new commits to bring in, and a copy that is not as published,
+// which is not updated; other parts plain.
+export type StatePart = { text: string; kind?: 'update' | 'notice' | 'source' };
+export const stateLine = (parts: StatePart[]): HTMLElement => {
+  const line = document.createElement('div');
+  line.className = 'plugin-state';
+  parts.forEach((part, index) => {
+    if (index > 0) line.append(' · ');
+    const text = document.createElement('span');
+    if (part.kind) text.className = `state-${part.kind}`;
+    text.textContent = part.text;
+    line.append(text);
+  });
+  return line;
+};
+
 // A plugin as something to update.
 export const pluginTarget = ({ name, source = 'GlistPlugins' }: GlistPlugin): CheckoutTarget => ({
   name,
@@ -241,25 +258,20 @@ export class PluginsView {
       description.title = plugin.description;
       row.append(description);
     }
-    const state = this.state(plugin);
-    if (state) {
-      const line = document.createElement('div');
-      line.className = `plugin-state${updatable ? ' update' : ''}`;
-      line.textContent = state;
-      row.append(line);
-    }
+    const parts = this.state(plugin);
+    if (parts.length > 0) row.append(stateLine(parts));
     return row;
   }
 
-  // One line on where an installed plugin stands, or where one listed from elsewhere comes from.
-  private state(plugin: GlistPlugin): string {
+  // Where an installed plugin stands, or where one listed from elsewhere comes from.
+  private state(plugin: GlistPlugin): StatePart[] {
     const source = plugin.source ?? 'GlistPlugins';
-    if (!plugin.installed) return source.includes('/') ? t('pluginFrom').replace('{source}', source) : '';
-    const parts: string[] = [];
-    if (!plugin.official) parts.push(t('pluginNotOfficial').replace('{source}', source));
-    else if (plugin.branch !== plugin.defaultBranch) parts.push(t('pluginOtherBranch').replace('{branch}', plugin.branch ?? 'HEAD'));
-    else if ((plugin.behind ?? 0) > 0) parts.push(t('pluginBehind').replace('{count}', String(plugin.behind)).replace('{source}', source));
-    if ((plugin.changed ?? 0) > 0 || (plugin.ahead ?? 0) > 0) parts.push(t('pluginChanged'));
-    return parts.join(' · ');
+    if (!plugin.installed) return source.includes('/') ? [{ text: t('pluginFrom').replace('{source}', source), kind: 'source' }] : [];
+    const parts: StatePart[] = [];
+    if (!plugin.official) parts.push({ text: t('pluginNotOfficial').replace('{source}', source), kind: 'notice' });
+    else if (plugin.branch !== plugin.defaultBranch) parts.push({ text: t('pluginOtherBranch').replace('{branch}', plugin.branch ?? 'HEAD'), kind: 'notice' });
+    else if ((plugin.behind ?? 0) > 0) parts.push({ text: t('pluginBehind').replace('{count}', String(plugin.behind)).replace('{source}', source), kind: 'update' });
+    if ((plugin.changed ?? 0) > 0 || (plugin.ahead ?? 0) > 0) parts.push({ text: t('pluginChanged'), kind: 'notice' });
+    return parts;
   }
 }

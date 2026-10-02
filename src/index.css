@@ -1042,7 +1042,9 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .plugin-actions:empty { display: none; }
 .plugin-description { display: -webkit-box; margin-top: 2px; overflow: hidden; color: var(--ui-fg-muted); font-size: 11px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .plugin-state { margin-top: 3px; color: var(--ui-fg-muted); font-size: 11px; }
-.plugin-state.update { color: var(--ui-accent); }
+.plugin-state .state-update { color: var(--ui-accent); }
+.plugin-state .state-notice { color: var(--ui-warning); }
+.plugin-state .state-source { font-style: italic; }
 /* The Engine view: the engine's facts, where it stands, and GlistEngine's new commits. */
 .engine-card { padding: 10px 12px; }
 /* No engine yet: the message, and Install under it, inside the same margins. */
