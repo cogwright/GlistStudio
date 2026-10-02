@@ -3,7 +3,7 @@ import path from 'node:path';
 import { app, shell } from 'electron';
 import { studioHome } from './studio';
 import {
-  assetFor, download, installMacApp, isNewer, latestTag, newestTag, releaseAt, replaceAppImage, runWindowsSetup, stageMacApp,
+  assetFor, download, installMacApp, newerRelease, replaceAppImage, runWindowsSetup, stageMacApp,
 } from './update-release';
 
 // Glist Studio updating itself from its published GitHub releases. A newer
@@ -60,13 +60,12 @@ const check = async (previews: boolean): Promise<GlistUpdateState> => {
   if (staged) return publish({ state: 'ready', version: staged.version });
   publish({ state: 'checking' });
   try {
-    const tag = previews ? await newestTag(source) : await latestTag(source);
-    if (!tag || !isNewer(tag, app.getVersion())) {
+    const release = await newerRelease(source, app.getVersion(), previews);
+    if (!release) {
       // What an earlier version downloaded has been installed, or is no longer the latest.
       await fs.rm(updatesFolder(), { recursive: true, force: true });
       return publish({ state: 'up-to-date' });
     }
-    const release = await releaseAt(source, tag);
     const asset = assetFor(release.assets, process.platform, process.arch);
     const place = placeToInstall();
     if (!asset || !place) return publish({ state: 'available', version: release.version, page: release.page });
