@@ -172,6 +172,11 @@ interface GlistPluginList {
 
 // A plugin's README, as Markdown, empty when it has none; page is its folder on
 // GitHub, which its relative links and images lead to.
+// What Electron takes before it starts (Settings > General), kept in startup.json.
+interface GlistStartupSettings {
+  hardwareAcceleration: boolean;
+}
+
 // An image file, its bytes in base64, for its tab.
 interface GlistImageFile {
   data: string;
@@ -645,6 +650,9 @@ interface Window {
     updateEngine(choice?: GlistUpdateChoice, resolve?: boolean): Promise<GlistCheckoutResult>;
     usePlugin(name: string, use: boolean): Promise<GlistPluginResult>;
     pluginReadme(name: string): Promise<GlistPluginReadme>;
+    // Hardware acceleration and the like, saved and as this run started; null in the browser build.
+    startupSettings(): Promise<{ saved: GlistStartupSettings; running: GlistStartupSettings } | null>;
+    setStartupSettings(settings: GlistStartupSettings): Promise<GlistStartupSettings>;
     updateState(): Promise<GlistUpdateState>;
     // Previews: prereleases too.
     checkForUpdates(previews?: boolean): Promise<GlistUpdateState>;
