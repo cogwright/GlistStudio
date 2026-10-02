@@ -357,6 +357,7 @@ const setZoom = (percentage: number): void => {
   zoomPercentage = closest;
   try { window.localStorage.setItem('glist-studio-zoom', String(closest)); } catch { /* Storage may be unavailable. */ }
   void window.glistAPI.setZoomFactor(closest / 100);
+  document.documentElement.style.setProperty('--window-zoom', String(closest / 100));
   scheduleMenuSync();
   studioTerminal.setScale(pageZoom());
   showZoom();

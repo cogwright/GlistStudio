@@ -137,6 +137,15 @@ const setAppMenu = (sender: Electron.WebContents, menus: GlistAppMenu[], words: 
   return true;
 };
 
+// The title bar is 35px of the page, so it grows and shrinks with the zoom on
+// screen, while the window's own buttons do not: Windows' are made as tall as
+// the bar, and a Mac's are kept in its middle, where y 10 puts them at 100%.
+const titleBarHeight = (zoom: number): number => Math.round(35 * zoom);
+const fitWindowControls = (window: BrowserWindow | null, zoom: number): void => {
+  if (windowControls === 'right') window?.setTitleBarOverlay({ height: titleBarHeight(zoom) });
+  else if (windowControls === 'left') window?.setWindowButtonPosition({ x: 12, y: Math.round((titleBarHeight(zoom) - 15) / 2) });
+};
+
 const registerIpcHandlers = (): void => {
   Object.entries(studio).forEach(([method, handler]: [string, Handler]) => {
     ipcMain.handle(invokeChannels[method as InvokeMethod], (_event, ...args) => handler(...args));
@@ -150,7 +159,7 @@ const registerIpcHandlers = (): void => {
     if (windowControls === 'right') window?.setTitleBarOverlay({
       color: color(colors?.chrome, '#181818'),
       symbolColor: color(colors?.text, '#cccccc'),
-      height: 35,
+      height: titleBarHeight(event.sender.getZoomFactor()),
     });
   });
   ipcMain.handle(invokeChannels.openProject, async () => {
@@ -179,6 +188,7 @@ const registerIpcHandlers = (): void => {
   ipcMain.handle(invokeChannels.setZoomFactor, (event, factor: number) => {
     const safeFactor = Number.isFinite(factor) ? Math.min(3, Math.max(0.5, factor)) : 1;
     event.sender.setZoomFactor(safeFactor);
+    fitWindowControls(BrowserWindow.fromWebContents(event.sender), safeFactor);
     return safeFactor;
   });
 };
