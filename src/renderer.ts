@@ -58,6 +58,7 @@ import { confirmDialog } from './confirm-dialog';
 import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './localization';
 import { renderImagePage, type ImagePage } from './image-page';
 import { imageType } from './images';
+import { loadSession, restorableTab, saveSession, type ProjectSession } from './project-session';
 import { renderReadmePage, type ReadmePage } from './readme-page';
 import './index.css';
 
@@ -827,6 +828,34 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   return tab;
 };
 
+// The open project's tabs, open folders and places in its files, kept so it
+// opens the same way next time (project-session.ts): soon after a change, and
+// at once when the window is left or closed. Not while it is being put back.
+let restoringSession = false;
+let sessionTimer: number | undefined;
+const currentSession = (): ProjectSession => {
+  const views: Record<string, unknown> = {};
+  groupViews.forEach((view) => {
+    view.viewStates.forEach((state, key) => { if (state && restorableTab(key)) views[key] = state; });
+    const shown = view.shown && openFiles.get(view.shown);
+    if (shown && shown.kind === 'file' && view.editor.getModel() === shown.model) views[shown.path] = view.editor.saveViewState();
+  });
+  return {
+    groups: layout.groups.map((group) => ({ tabs: group.tabs.filter(restorableTab), active: group.active })),
+    focused: layout.focused,
+    expanded: [...expandedDirectories],
+    views,
+  };
+};
+const saveSessionNow = (): void => {
+  window.clearTimeout(sessionTimer);
+  if (activeProject && !restoringSession) saveSession(activeProject.root, currentSession());
+};
+const scheduleSessionSave = (): void => {
+  window.clearTimeout(sessionTimer);
+  sessionTimer = window.setTimeout(saveSessionNow, 400);
+};
+
 const renderTabs = (): void => {
   groupViews.forEach((view, group) => {
     const keys = layout.groups[group]?.tabs ?? [];
@@ -835,6 +864,7 @@ const renderTabs = (): void => {
       return file ? [tabElement(file, group)] : [];
     }));
   });
+  scheduleSessionSave();
 };
 
 // A drop past the last tab puts it at the end of that side's strip.
@@ -1716,6 +1746,7 @@ const setUpEditor = (view: GroupView): void => {
   debug.attach(target);
   gitEditor.attach(target);
   target.onDidFocusEditorWidget(() => focusGroup(groupViews.indexOf(view)));
+  target.onDidChangeCursorPosition(scheduleSessionSave);
   // Leaving the editor, for the terminal or the explorer, saves as leaving the
   // window does, so what is run from there sees what is on screen.
   target.onDidBlurEditorWidget(() => { if (activeProject) void saveProjectFiles(false); });
@@ -2048,6 +2079,7 @@ const createTreeRow = (entry: GlistFileEntry, depth: number, options: TreeRowOpt
       children.hidden = !children.hidden;
       if (children.hidden) expandedDirectories.delete(entry.path);
       else expandedDirectories.add(entry.path);
+      scheduleSessionSave();
       showExpanded();
       if (!children.hidden) await loadChildren();
     };
@@ -2463,10 +2495,15 @@ const askForStar = setUpStarPrompt(
 
 const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> => {
   await debug.stop();
+  // The project left is kept as it was; the new one opens as it was left.
+  saveSessionNow();
+  restoringSession = true;
+  const session = loadSession(selected.root);
   disposeOpenFiles(); activeProject = selected;
   selectedEntry = null;
   copiedEntryPaths = [];
   expandedDirectories.clear();
+  session?.expanded.forEach((folder) => expandedDirectories.add(folder));
   projectRootLabel.textContent = selected.name.toUpperCase();
   document.title = `${selected.name} - Glist Studio`;
   studioTerminal.projectChanged();
@@ -2484,7 +2521,37 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   debug.setProject(selected.root);
   targetPicker.projectChanged(selected.root);
   runArguments.projectChanged(selected.root, selected.name);
+  try { if (session) await restoreSession(session); } finally { restoringSession = false; }
   void askForStar();
+};
+
+// A project's last tabs, on the sides they were on, the one in front of each,
+// and where each file was scrolled to. A file gone since is left out.
+const restoreSession = async (session: ProjectSession): Promise<void> => {
+  for (const [index, group] of session.groups.entries()) {
+    if (index > 0 && !layout.groups[index]) layout.groups.push({ tabs: [], active: null });
+    layout.focus(index);
+    for (const key of group.tabs) {
+      try {
+        if (imageType(key)) openImage(key);
+        else await loadFile(key);
+        // A file open on the other side already gets its tab on this one too.
+        layout.add(key, index);
+      } catch { /* Gone, or not readable now. */ }
+    }
+  }
+  if (layout.groups.length > 1 && layout.groups[1].tabs.length === 0) layout.groups.splice(1);
+  session.groups.forEach((group, index) => {
+    if (group.active && layout.groups[index]?.tabs.includes(group.active)) layout.activate(group.active, index);
+  });
+  if (layout.groups.length > 1) secondGroupView();
+  groupViews.forEach((view) => Object.entries(session.views).forEach(([key, state]) => {
+    view.viewStates.set(key, state as monaco.editor.ICodeEditorViewState);
+  }));
+  layout.focus(Math.min(session.focused, layout.groups.length - 1));
+  showGroups();
+  renderTabs();
+  updateButtons();
 };
 
 const openProjectWith = async (open: () => Promise<GlistProjectInfo | null>): Promise<void> => {
@@ -2600,7 +2667,7 @@ const saveProjectFiles = async (format = true): Promise<boolean> => {
 // changed on disk meanwhile, other than those with changes not saved yet. Build,
 // Run, Debug, Git and the Plugins view save first too, and so does leaving an
 // editor (setUpEditor): saving needs no setting.
-window.addEventListener('blur', () => { if (activeProject) void saveProjectFiles(false); });
+window.addEventListener('blur', () => { if (activeProject) { void saveProjectFiles(false); saveSessionNow(); } });
 window.addEventListener('focus', () => { if (activeProject) void reloadOpenFiles(); });
 
 // Keeps a second click from reaching the backend while the first is on its way.
@@ -3415,6 +3482,7 @@ window.addEventListener('wheel', (event) => {
 }, { passive: false, capture: true });
 // Closing with changed files waits for them to be saved (app:save-and-close).
 window.addEventListener('beforeunload', (event) => {
+  saveSessionNow();
   if (hasDirtyFiles()) { event.preventDefault(); event.returnValue = ''; }
 });
 
