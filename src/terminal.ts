@@ -66,6 +66,14 @@ export class StudioTerminal {
     this.terminal.dispose();
   }
 
+  // A shell of its own, rather than Settings' choice; set before it first starts.
+  shell?: string;
+
+  // Whether a program is running in it, or starting.
+  get alive(): boolean {
+    return this.running || Boolean(this.starting);
+  }
+
   // Whether it was ever shown, and so started a program.
   get used(): boolean {
     return this.opened;
@@ -168,7 +176,7 @@ export class StudioTerminal {
     this.fitToHost();
     const { cols, rows } = this.terminal;
     const startup = (async () => {
-      const result = await window.glistAPI.startTerminal(this.session, cols, rows, directory, this.agent);
+      const result = await window.glistAPI.startTerminal(this.session, cols, rows, directory, this.agent, this.shell);
       if (context !== this.context) {
         if (result.success) await window.glistAPI.stopTerminal(this.session);
         return;

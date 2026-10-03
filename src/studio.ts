@@ -1407,7 +1407,7 @@ const installerProgram = async (): Promise<{ file: string; args: string[] }> => 
 };
 
 const startTerminal = async (
-  session: unknown, columns: number, rows: number, requestedDirectory?: unknown, agent?: unknown,
+  session: unknown, columns: number, rows: number, requestedDirectory?: unknown, agent?: unknown, shell?: unknown,
 ): Promise<ProcessResult> => {
   const name = sessionName(session);
   if (!name) return { success: false, message: msg('terminalFailed') };
@@ -1424,7 +1424,8 @@ const startTerminal = async (
   const env: NodeJS.ProcessEnv = {
     ...processEnvironment(resolveToolchain(directory)), TERM: 'xterm-256color', COLORTERM: 'truecolor', TERM_PROGRAM: 'GlistStudio',
   };
-  let program = terminalShell();
+  // A terminal opened with a shell of its own runs it; others run Settings' choice.
+  let program = (isShellSession(name) && typeof shell === 'string' && availableShells().find((each) => each.id === shell)) || terminalShell();
   if (name === 'agent') {
     const launch = isAgentId(agent) ? await agentLaunch(agent, agentPlaces(env)) : null;
     if (!launch) return { success: false, message: msg('agentMissing') };
