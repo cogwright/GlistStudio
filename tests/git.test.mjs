@@ -7,7 +7,7 @@ import {
   branchFormat, logFormat, parseBlame, parseBranches, parseLog, parseNameStatus, parseRemotes, parseStashes, parseStatus,
   parseTags, stashFormat, tagFormat,
 } from '../src/git.ts';
-import { lineChanges } from '../src/line-diff.ts';
+import { lineChanges, mapLine } from '../src/line-diff.ts';
 import { graphRows } from '../src/git-graph.ts';
 import { conflictBlocks, resolvedLines } from '../src/conflicts.ts';
 
@@ -171,6 +171,18 @@ assert.deepEqual(lineChanges('a\nb\nc\nd\ne', 'a\nx\nc\ne\nf'), [
   { originalStart: 6, originalCount: 0, modifiedStart: 5, modifiedCount: 1 },
 ]);
 assert.deepEqual(lineChanges('a\r\nb\r\n', 'a\nb\n'), []);
+// A line followed from one version to another, for Open File from a commit's diff.
+const follow = (before, after, line) => mapLine(lineChanges(before, after), line);
+assert.equal(follow('a\nb\nc', 'a\nb\nc', 3), 3);
+assert.equal(follow('a\nc', 'a\nb\nc', 2), 3, 'a line moved down by one added above it');
+assert.equal(follow('a\nb\nc', 'a\nc', 3), 2, 'and up by one removed above it');
+assert.equal(follow('a\nb\nc', 'a\nc', 2), 2, 'a removed line: the line after it');
+assert.equal(follow('a\nb\nc', 'a\nB\nc', 2), 2, 'a changed line: where its new text is');
+assert.equal(follow('a\nb\nc\nd', 'a\nX\nY\nZ\nd', 3), 3, 'inside a changed block: as far into what replaced it');
+assert.equal(follow('a\nb\nc\nd', 'a\nX\nd', 3), 2, 'or its last line');
+assert.equal(follow('a\nb\nc\nd\ne', 'a\nx\nc\ne\nf', 5), 4, 'past several changes');
+assert.equal(follow('a\nb', 'x\na\nb\ny', 2), 3);
+assert.equal(follow('a\nb', 'x\na\nb\ny', 1), 2);
 // A removed function is shown whole, not with the brace of the one above it.
 assert.deepEqual(lineChanges('a\n}\n\nb\n}\n\nc', 'a\n}\n\nc'), [{ originalStart: 4, originalCount: 3, modifiedStart: 4, modifiedCount: 0 }]);
 assert.deepEqual(lineChanges('a\n}\n\nc', 'a\n}\n\nb\n}\n\nc'), [{ originalStart: 4, originalCount: 0, modifiedStart: 4, modifiedCount: 3 }]);

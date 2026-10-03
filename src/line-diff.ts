@@ -63,6 +63,21 @@ const matchingLines = (a: number[], b: number[]): Array<[number, number]> | null
   return matches.reverse();
 };
 
+// Where a line of the original text is in the modified one: a line changed is
+// where what replaced it starts, a line removed is the line after it, and any
+// other line moves as the changes above it moved it.
+export const mapLine = (changes: LineChange[], line: number): number => {
+  let shift = 0;
+  for (const change of changes) {
+    if (line < change.originalStart) break;
+    if (line < change.originalStart + change.originalCount) {
+      return change.modifiedStart + Math.min(line - change.originalStart, Math.max(change.modifiedCount - 1, 0));
+    }
+    shift = change.modifiedStart + change.modifiedCount - (change.originalStart + change.originalCount);
+  }
+  return line + shift;
+};
+
 export const lineChanges = (originalText: string, modifiedText: string): LineChange[] => {
   if (originalText === modifiedText) return [];
   const [original, modified] = lineIds(originalText.split(/\r?\n/), modifiedText.split(/\r?\n/));

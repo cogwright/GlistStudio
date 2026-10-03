@@ -61,6 +61,7 @@ import { RunArguments } from './run-arguments';
 import { terminalTheme } from './themes';
 import { isLanguage, languages } from './languages';
 import { choiceDialog, confirmDialog } from './confirm-dialog';
+import { lineChanges, mapLine } from './line-diff';
 import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './localization';
 import { renderImagePage, type ImagePage } from './image-page';
 import { imageType } from './images';
@@ -1737,6 +1738,32 @@ const openWorkingDiff = (filePath: string): Promise<void> => {
   return openGitDiff({ file: filePath, from: change?.from, base: git.repositoryOf(filePath)?.head ? 'HEAD' : null, target: null });
 };
 
+// Open File: the file where the diff was looking, the line under the cursor if
+// it is in sight, else the first line in sight, at the same height on screen.
+// A commit's version is followed to the same line in the file as it is now.
+const openDiffFile = async (view: GroupView): Promise<void> => {
+  const tab = shownDiff(view);
+  const shown = view.diff.editor?.getModifiedEditor();
+  if (!tab || !shown) return;
+  const visible = shown.getVisibleRanges();
+  const cursor = shown.getPosition();
+  const inSight = cursor && visible.some((range) => range.startLineNumber <= cursor.lineNumber && cursor.lineNumber <= range.endLineNumber);
+  const anchor = inSight ? cursor : { lineNumber: visible[0]?.startLineNumber ?? 1, column: 1 };
+  // Its height in the window: the diff has its toolbar above it, the editor not.
+  const height = (shown.getDomNode()?.getBoundingClientRect().top ?? 0) + shown.getTopForLineNumber(anchor.lineNumber) - shown.getScrollTop();
+  const shownText = tab.modified.getValue();
+  focusGroup(groupViews.indexOf(view));
+  if (!(await openFile(tab.file, baseName(tab.file)))) return;
+  const target = currentEditor();
+  const model = target.getModel();
+  if (!model) return;
+  const same = model.getValue() === shownText;
+  const line = Math.min(same ? anchor.lineNumber : mapLine(lineChanges(shownText, model.getValue()), anchor.lineNumber), model.getLineCount());
+  target.setPosition({ lineNumber: line, column: same ? anchor.column : 1 });
+  target.setScrollTop(Math.max(0, target.getTopForLineNumber(line) - (height - (target.getDomNode()?.getBoundingClientRect().top ?? 0))));
+  target.focus();
+};
+
 // A side's diff toolbar: step through the changes, one column or two, open
 // the file there, or put the file back as it was committed.
 const wireDiffPane = (view: GroupView): void => {
@@ -1749,14 +1776,7 @@ const wireDiffPane = (view: GroupView): void => {
     try { window.localStorage.setItem('glist-studio-diff-inline', diffInline ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
     groupViews.forEach((other) => other.diff.editor?.updateOptions({ renderSideBySide: !diffInline }));
   });
-  pane.open.addEventListener('click', () => {
-    const tab = shownDiff(view);
-    if (!tab) return;
-    const line = pane.editor?.getModifiedEditor().getPosition()?.lineNumber
-      ?? pane.editor?.getModifiedEditor().getVisibleRanges()[0]?.startLineNumber ?? 1;
-    focusGroup(groupViews.indexOf(view));
-    void revealLocation(pathUri(tab.file), { lineNumber: line, column: 1 });
-  });
+  pane.open.addEventListener('click', () => { void openDiffFile(view); });
   pane.rollback.addEventListener('click', async () => {
     const tab = shownDiff(view);
     if (!tab || !(await confirmDialog(t('confirmRollbackOne').replace('{name}', tab.name)))) return;
