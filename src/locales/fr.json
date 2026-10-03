@@ -715,7 +715,9 @@
     "motion": "Mouvement",
     "reduceMotion": "Réduire les animations",
     "reduceMotionHint": "Fige le curseur et le défilement dans l'éditeur, et les animations de l'interface. Au départ, il suit le réglage du système.",
-    "backendRestarted": "Le travail en arrière-plan de Glist Studio s'est arrêté de façon inattendue et a redémarré. Le projet est de nouveau ouvert."
+    "backendRestarted": "Le travail en arrière-plan de Glist Studio s'est arrêté de façon inattendue et a redémarré. Le projet est de nouveau ouvert.",
+    "newWindow": "Nouvelle fenêtre",
+    "closeProject": "Fermer le projet"
   },
   "platforms": {
     "darwin": {

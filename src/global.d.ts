@@ -172,6 +172,9 @@ interface GlistPluginList {
 
 // A plugin's README, as Markdown, empty when it has none; page is its folder on
 // GitHub, which its relative links and images lead to.
+// A new window's first project: one to open, or one to make from a template.
+type GlistFirstProject = { kind: 'open'; root: string } | { kind: 'create'; template: GlistTemplate; name: string };
+
 // What Electron takes before it starts (Settings > General), kept in startup.json.
 interface GlistStartupSettings {
   hardwareAcceleration: boolean;
@@ -565,7 +568,8 @@ interface Window {
   };
   glistAPI: {
     openProject(): Promise<GlistProjectInfo | null>;
-    createProject(templateName: GlistTemplate, projectName: string): Promise<GlistProjectInfo>;
+    // Null when it was made in a new window, as from a window with a project already.
+    createProject(templateName: GlistTemplate, projectName: string): Promise<GlistProjectInfo | null>;
     listDirectory(directoryPath: string): Promise<GlistFileEntry[]>;
     createFile(directoryPath: string, name: string): Promise<string>;
     createDirectory(directoryPath: string, name: string): Promise<string>;
@@ -592,7 +596,13 @@ interface Window {
     listFiles(dependencies: boolean): Promise<GlistFoundFile[]>;
     getProjectsDirectory(): Promise<string>;
     listProjects(): Promise<GlistProjectSummary[]>;
-    openProjectPath(root: string): Promise<GlistProjectInfo>;
+    // Null when it opened in another window: a new one, or the one that had it already.
+    openProjectPath(root: string): Promise<GlistProjectInfo | null>;
+    // What a window the main process made for a project opens first.
+    windowProject(): Promise<GlistFirstProject | null>;
+    newWindow(): Promise<void>;
+    // The window closes, or as the last one, stays without a project.
+    closeProject(): Promise<void>;
     getPlatform(): Promise<string>;
     writeFile(filePath: string, contents: string): Promise<boolean>;
     // Clean deletes _build first, CMake's cache with it.

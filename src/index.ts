@@ -1,7 +1,7 @@
-import { cpSync, existsSync, mkdirSync, promises as fs, readFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, promises as fs, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions,
+  app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions,
 } from 'electron';
 import { eventChannels, invokeChannels, type InvokeMethod } from './api';
 import { backendStartArgument, type BackendStart, type FromBackend, type ToBackend } from './backend-protocol';
@@ -17,7 +17,6 @@ declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
 // The commit the app was built from (webpack.main.config.ts), empty when unknown.
 declare const GLIST_STUDIO_COMMIT: string;
 
-let mainWindow: BrowserWindow | null = null;
 
 if (require('electron-squirrel-startup')) app.quit();
 
@@ -38,6 +37,12 @@ const useGlistFolder = (): void => {
   }
 };
 useGlistFolder();
+
+// One Glist Studio runs at a time, for each folder it keeps its settings in:
+// starting it again brings its window forward instead of opening the saved
+// windows twice.
+const firstInstance = app.requestSingleInstanceLock();
+if (!firstInstance) app.quit();
 
 // Settings Electron takes only before it starts, which the window's own storage
 // cannot hold: it is not there yet. Settings, under General, writes them.
@@ -95,7 +100,80 @@ const remember = (contentsId: number, method: string, args: unknown[], result: u
   if (!memory) return;
   if (settingCalls.has(method)) memory.settings.set(method, args);
   const root = (result as { root?: unknown } | null)?.root;
-  if (projectCalls.has(method) && typeof root === 'string') memory.projectRoot = root;
+  if (projectCalls.has(method) && typeof root === 'string') {
+    memory.projectRoot = root;
+    scheduleSavingWindows();
+  }
+};
+
+// Windows: one project each, and never one project in two. Which windows are
+// open, with what, where and how large, is kept in windows.json in Glist
+// Studio's folder and opened again on the next start. A window made for a
+// project opens it once its page asks (windowProject).
+type FirstProject = { kind: 'open'; root: string } | { kind: 'create'; template: string; name: string };
+const firstProjects = new Map<number, FirstProject>();
+interface SavedWindow { root: string; bounds?: Electron.Rectangle; maximized?: boolean }
+const windowsFile = (): string => path.join(studioHome(), 'windows.json');
+
+// Folders compare without case except on Linux, whose file systems keep it.
+const sameFolder = (left: string, right: string): boolean => {
+  const fold = (value: string): string => (process.platform === 'linux' ? path.resolve(value) : path.resolve(value).toLowerCase());
+  return fold(left) === fold(right);
+};
+const windowWithProject = (root: string): BrowserWindow | undefined => BrowserWindow.getAllWindows().find((window) => {
+  const open = memories.get(window.webContents.id)?.projectRoot;
+  return open !== null && open !== undefined && sameFolder(open, root);
+});
+const bringForward = (window: BrowserWindow): void => {
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
+};
+
+// Quitting keeps the list as it was, rather than emptying it as windows close.
+let quitting = false;
+let savingWindows: NodeJS.Timeout | null = null;
+const saveWindows = (): void => {
+  if (quitting) return;
+  const saved: SavedWindow[] = BrowserWindow.getAllWindows().flatMap((window) => {
+    const root = memories.get(window.webContents.id)?.projectRoot;
+    return root ? [{ root, bounds: window.getNormalBounds(), maximized: window.isMaximized() }] : [];
+  });
+  try {
+    mkdirSync(studioHome(), { recursive: true });
+    writeFileSync(windowsFile(), JSON.stringify(saved, null, 2), 'utf8');
+  } catch {
+    // Glist Studio's folder cannot be written; the windows are not opened again.
+  }
+};
+const scheduleSavingWindows = (): void => {
+  if (savingWindows) clearTimeout(savingWindows);
+  savingWindows = setTimeout(saveWindows, 400);
+};
+
+// The windows saved, the ones whose project is still there, each once.
+const savedWindows = (): SavedWindow[] => {
+  try {
+    const saved = JSON.parse(readFileSync(windowsFile(), 'utf8')) as SavedWindow[];
+    return (Array.isArray(saved) ? saved : []).filter((entry, index, all) => typeof entry?.root === 'string' && existsSync(entry.root)
+      && all.findIndex((other) => sameFolder(other.root, entry.root)) === index);
+  } catch {
+    return [];
+  }
+};
+// A saved place still on one of the screens, or none.
+const onScreen = (bounds: Electron.Rectangle | undefined): Electron.Rectangle | undefined => (bounds
+  && screen.getAllDisplays().some(({ workArea: area }) => bounds.x < area.x + area.width && bounds.x + bounds.width > area.x
+    && bounds.y < area.y + area.height && bounds.y + bounds.height > area.y) ? bounds : undefined);
+
+// Where a project the window asked for opens: the window that has it already,
+// this one too, comes forward; a window without one opens it; one with another
+// opens a new window.
+const openWhere = async (event: IpcMainInvokeEvent, root: string, open: () => Promise<unknown>): Promise<unknown> => {
+  const already = windowWithProject(root);
+  if (already) { bringForward(already); return null; }
+  if (memories.get(event.sender.id)?.projectRoot) { createWindow({ kind: 'open', root }); return null; }
+  return open();
 };
 
 interface Backend {
@@ -239,9 +317,17 @@ const setAppMenu = (sender: Electron.WebContents, menus: GlistAppMenu[], words: 
       ],
     },
   ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  // The menu bar is the focused window's: each window's is kept, and shown while it has the focus.
+  const menu = Menu.buildFromTemplate(template);
+  windowMenus.set(sender.id, menu);
+  if (BrowserWindow.fromWebContents(sender)?.isFocused() || !BrowserWindow.getFocusedWindow()) Menu.setApplicationMenu(menu);
   return true;
 };
+const windowMenus = new Map<number, Electron.Menu>();
+app.on('browser-window-focus', (_event, window) => {
+  const menu = windowMenus.get(window.webContents.id);
+  if (menu) Menu.setApplicationMenu(menu);
+});
 
 // The title bar is 35px of the page, so it grows and shrinks with the zoom on
 // screen, while the window's own buttons do not: Windows' are made as tall as
@@ -284,7 +370,32 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
       properties: ['openDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
-    return forward(event, 'openProject', [result.filePaths[0]]);
+    const root = result.filePaths[0];
+    return openWhere(event, root, () => forward(event, 'openProject', [root]));
+  },
+  openProjectPath: (event, root: string) => openWhere(event, root, () => forward(event, 'openProjectPath', [root])),
+  createProject: (event, template: string, name: string) => {
+    if (!memories.get(event.sender.id)?.projectRoot) return forward(event, 'createProject', [template, name]);
+    createWindow({ kind: 'create', template, name });
+    return null;
+  },
+  windowProject: (event) => {
+    const first = firstProjects.get(event.sender.id) ?? null;
+    firstProjects.delete(event.sender.id);
+    return first;
+  },
+  newWindow: () => { createWindow(); },
+  // The project's window closes, unless it is the last: that one stays, with
+  // a new backend and no project.
+  closeProject: (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) return;
+    if (BrowserWindow.getAllWindows().length > 1) { window.close(); return; }
+    void backends.get(event.sender.id)?.shutdown();
+    memories.set(event.sender.id, { settings: new Map(), projectRoot: null });
+    backends.set(event.sender.id, startBackend(window));
+    saveWindows();
+    window.webContents.reload();
   },
   openEngineSite: () => shell.openExternal('https://www.glistengine.com/'),
   openEngineRepository: () => shell.openExternal('https://github.com/GlistEngine/GlistEngine'),
@@ -321,10 +432,12 @@ const registerIpcHandlers = (): void => {
   });
 };
 
-const createWindow = (): void => {
+// A window and its backend; with a project to open first, and where it was last time.
+const createWindow = (first?: FirstProject, saved?: SavedWindow): BrowserWindow => {
   const runtimeMessages: string[] = [];
+  const place = onScreen(saved?.bounds);
   const createdWindow = new BrowserWindow({
-    width: 1440, height: 900, minWidth: 980, minHeight: 640,
+    width: place?.width ?? 1440, height: place?.height ?? 900, ...(place ? { x: place.x, y: place.y } : {}), minWidth: 980, minHeight: 640,
     backgroundColor: '#1e1e1e', title: 'Glist Studio', autoHideMenuBar: true,
     icon: path.join(
       app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'assets'),
@@ -345,7 +458,8 @@ const createWindow = (): void => {
       sandbox: true,
     },
   });
-  mainWindow = createdWindow;
+  if (saved?.maximized) createdWindow.maximize();
+  if (first) firstProjects.set(createdWindow.webContents.id, first);
   memories.set(createdWindow.webContents.id, { settings: new Map(), projectRoot: null });
   backends.set(createdWindow.webContents.id, startBackend(createdWindow));
   createdWindow.webContents.on('console-message', (event, _level, message) => {
@@ -393,23 +507,43 @@ const createWindow = (): void => {
     }, 1000);
   });
   const contentsId = createdWindow.webContents.id;
+  createdWindow.on('move', scheduleSavingWindows);
+  createdWindow.on('resize', scheduleSavingWindows);
   createdWindow.on('closed', () => {
     void backends.get(contentsId)?.shutdown();
     backends.delete(contentsId);
     memories.delete(contentsId);
-    mainWindow = null;
+    firstProjects.delete(contentsId);
+    windowMenus.delete(contentsId);
+    // A window closed while quitting, once its files were saved, lets quitting go on.
+    if (quitting) app.quit();
+    else saveWindows();
   });
+  return createdWindow;
 };
 
 setUpdateListener((update) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(eventChannels.onUpdateState, update);
+  BrowserWindow.getAllWindows().forEach((window) => window.webContents.send(eventChannels.onUpdateState, update));
 });
+
+// The saved windows, or one empty window when there are none.
+const restoreWindows = (): void => {
+  const saved = savedWindows();
+  if (saved.length === 0) createWindow();
+  saved.forEach((entry) => createWindow({ kind: 'open', root: entry.root }, entry));
+};
 
 // macOS sends activate when the app is opened or its Dock icon clicked, also while
 // it is starting, before Electron is ready, as on a first launch after installing.
 // Only once the first window is made does activate bring one back.
 let started = false;
-app.whenReady().then(() => { registerIpcHandlers(); createWindow(); started = true; });
+app.whenReady().then(() => {
+  if (!firstInstance) return;
+  registerIpcHandlers();
+  restoreWindows();
+  started = true;
+});
+app.on('before-quit', () => { saveWindows(); quitting = true; });
 // On macOS the app stays open without windows, unless it is restarting to update.
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' || restartingToUpdate()) app.quit(); });
 // Quitting waits for every backend to stop what it started, so no clangd,
@@ -428,3 +562,9 @@ app.on('will-quit', (event) => {
   installOnQuit();
 });
 app.on('activate', () => { if (started && BrowserWindow.getAllWindows().length === 0) createWindow(); });
+
+app.on('second-instance', () => {
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (window) bringForward(window);
+  else if (started) createWindow();
+});

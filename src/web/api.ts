@@ -78,6 +78,10 @@ Object.assign(api, {
   setAppMenu: async (): Promise<boolean> => false,
   // There is no folder picker for the server's disk, so ask for a path.
   chooseFolder: async (): Promise<string | null> => window.prompt('Folder on the host') || null,
+  // A page is one window: it opens no others, and closing its project starts it afresh.
+  windowProject: async (): Promise<null> => null,
+  newWindow: async (): Promise<void> => undefined,
+  closeProject: async (): Promise<void> => { window.location.reload(); },
   // The browser draws the page; the server has no say in how.
   startupSettings: async (): Promise<null> => null,
   setStartupSettings: async (settings: GlistStartupSettings): Promise<GlistStartupSettings> => settings,

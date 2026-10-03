@@ -168,6 +168,7 @@ const gitMenuButton = element<HTMLButtonElement>('#git-menu-button');
 const branchChip = element<HTMLButtonElement>('#git-branch-chip');
 const output = element<HTMLPreElement>('#output');
 const projectRootLabel = element<HTMLDivElement>('#project-root-label');
+const closeProjectButton = element<HTMLButtonElement>('#close-project');
 const processStatus = element<HTMLSpanElement>('#process-status');
 const clangdStatus = element<HTMLSpanElement>('#clangd-status');
 const buildNotice = element<HTMLElement>('#build-notice');
@@ -2468,6 +2469,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   copiedEntryPaths = [];
   expandedDirectories.clear();
   projectRootLabel.textContent = selected.name.toUpperCase();
+  closeProjectButton.hidden = false;
   document.title = `${selected.name} - Glist Studio`;
   studioTerminal.projectChanged();
   agentTerminal.projectChanged();
@@ -2749,6 +2751,10 @@ const configureMenus = (): void => {
         item(t('openProject'), chooseProject, { shortcut: 'Ctrl+O' }),
         ...(git.enabled ? [item(t('cloneMenu'), () => { void cloneProject(); })] : []),
         item(t('save'), saveActiveFile, { shortcut: 'Ctrl+S', disabled: !activeFile() }),
+        { kind: 'separator' },
+        // The browser build is one page, which opens no other windows.
+        ...(window.glistFiles ? [item(t('newWindow'), () => { void window.glistAPI.newWindow(); })] : []),
+        item(t('closeProject'), () => { void closeProject(); }, { disabled: !activeProject }),
       ],
       edit: [
         item(t('undo'), () => currentEditor().trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFile(), role: 'undo' }),
@@ -3204,6 +3210,14 @@ setUpThemePicker({
   error: element<HTMLElement>('#theme-error'),
 });
 element<HTMLButtonElement>('#project-cancel').addEventListener('click', () => projectDialog.close());
+// A new project from a template, opened here; from a window with a project
+// already, the main process makes it in a new window instead (index.ts).
+const createAndOpen = async (template: GlistTemplate, name: string): Promise<void> => {
+  const selected = await window.glistAPI.createProject(template, name);
+  if (!selected) return;
+  await openSelectedProject(selected);
+  notify({ text: `${t('projectCreated')}: ${baseName(selected.root)}`, detail: selected.root, kind: 'success' });
+};
 element<HTMLFormElement>('#new-project-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!(await saveProjectFiles(false))) return;
@@ -3211,14 +3225,26 @@ element<HTMLFormElement>('#new-project-form').addEventListener('submit', async (
   const template = element<HTMLSelectElement>('#project-template').value as GlistTemplate;
   const errorHost = element<HTMLElement>('#project-dialog-error');
   try {
-    const selected = await window.glistAPI.createProject(template, name);
+    await createAndOpen(template, name);
     projectDialog.close();
-    await openSelectedProject(selected);
-    notify({ text: `${t('projectCreated')}: ${baseName(selected.root)}`, detail: selected.root, kind: 'success' });
   } catch (error) {
     errorHost.textContent = errorText(error);
   }
 });
+
+// A window the main process made for a project, at the start or for one
+// opened from another window, opens it first.
+void window.glistAPI.windowProject().then(async (first) => {
+  if (first?.kind === 'open') await openProjectWith(() => window.glistAPI.openProjectPath(first.root));
+  else if (first?.kind === 'create') await createAndOpen(first.template, first.name).catch((error: unknown) => noticeFailed('projectOpenFailed', error));
+});
+
+// The project's window closes, saved first; the last window stays, without a project.
+const closeProject = async (): Promise<void> => {
+  if (!activeProject || !(await saveProjectFiles(false))) return;
+  await window.glistAPI.closeProject();
+};
+closeProjectButton.addEventListener('click', () => { void closeProject(); });
 fileTree.addEventListener('click', (event) => {
   if (event.target instanceof Element && event.target.closest('.tree-row')) return;
   clearTreeSelection();
