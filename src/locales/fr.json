@@ -867,7 +867,7 @@
     "copyByHand": "Impossible de le mettre dans le presse-papiers. Sélectionnez-le et copiez-le vous-même.",
     "unexpectedError": "Glist Studio a rencontré une erreur inattendue",
     "copyDebugInfo": "Copier les infos de débogage",
-    "toggleDevTools": "Afficher ou masquer les outils de développement",
+    "toggleDevTools": "Afficher ou masquer les outils de développement du navigateur",
     "debugInfoCopied": "Infos de débogage copiées. Collez-les dans votre rapport.",
     "newWindow": "Nouvelle fenêtre",
     "exitApp": "Quitter",

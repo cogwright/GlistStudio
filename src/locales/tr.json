@@ -867,7 +867,7 @@
     "copyByHand": "Panoya konulamadı. Seçip kendiniz kopyalayın.",
     "unexpectedError": "Glist Studio beklenmedik bir hatayla karşılaştı",
     "copyDebugInfo": "Hata Ayıklama Bilgisini Kopyala",
-    "toggleDevTools": "Geliştirici Araçlarını Aç/Kapat",
+    "toggleDevTools": "Tarayıcı Geliştirici Araçlarını Aç/Kapat",
     "debugInfoCopied": "Hata ayıklama bilgisi kopyalandı. Raporunuza yapıştırın.",
     "newWindow": "Yeni Pencere",
     "exitApp": "Çıkış",
