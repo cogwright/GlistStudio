@@ -132,11 +132,16 @@ const bringForward = (window: BrowserWindow): void => {
 };
 
 // Quitting keeps the list as it was, rather than emptying it as windows close.
+// So does closing the last window on Windows and Linux, which quits there: the
+// list still has it, and it opens again with the app. A Mac app runs on with
+// no window, so a window closed there is not opened again.
 let quitting = false;
 let savingWindows: NodeJS.Timeout | null = null;
 const saveWindows = (): void => {
   if (quitting) return;
-  const saved: SavedWindow[] = BrowserWindow.getAllWindows().flatMap((window) => {
+  const open = BrowserWindow.getAllWindows();
+  if (open.length === 0 && process.platform !== 'darwin') return;
+  const saved: SavedWindow[] = open.flatMap((window) => {
     const root = memories.get(window.webContents.id)?.projectRoot;
     return root ? [{ root, bounds: window.getNormalBounds(), maximized: window.isMaximized() }] : [];
   });
