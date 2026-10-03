@@ -20,7 +20,7 @@ export const rendererConfig: Configuration = {
   plugins: [
     ...plugins,
     new MonacoWebpackPlugin({
-      languages: ['cpp', 'json', 'markdown', 'sql', 'xml', 'yaml'],
+      languages: ['cpp', 'ini', 'json', 'markdown', 'sql', 'xml', 'yaml'],
     }),
   ],
   resolve: {

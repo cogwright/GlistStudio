@@ -59,8 +59,12 @@ const groups = (editor: monaco.editor.ICodeEditor, hooks: EditorMenuHooks, navig
     change: writable ? [
       ...(supported('editor.action.rename') ? [command('editor.action.rename', 'renameSymbol', 'F2')] : []),
       ...(supported('editor.action.changeAll') ? [command('editor.action.changeAll', 'changeAllOccurrences', 'Ctrl+F2')] : []),
-      ...(model?.getLanguageId() === 'cpp' ? [{
-        id: 'glist.reformat', label: t(selection && !selection.isEmpty() ? 'reformatSelection' : 'reformatFile'), shortcut: reformatShortcut, run: hooks.reformat,
+      // C++ by its .clang-format, the lines chosen or all; settings files whole.
+      ...(model && ['cpp', 'json', 'yaml', 'toml', 'ini'].includes(model.getLanguageId()) ? [{
+        id: 'glist.reformat',
+        label: t(selection && !selection.isEmpty() && model.getLanguageId() === 'cpp' ? 'reformatSelection' : 'reformatFile'),
+        shortcut: reformatShortcut,
+        run: hooks.reformat,
       }] : []),
     ] : [],
     clipboard: [
