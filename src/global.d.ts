@@ -200,11 +200,15 @@ interface GlistDatabaseTable {
   indexes: Array<{ name: string; unique: boolean; automatic: boolean; columns: string[] }>;
   foreignKeys: Array<{ from: string; table: string; to: string }>;
 }
+// Changes made and not committed yet. They wait in a transaction, which the
+// first change begins, or BEGIN typed in the console; how many were made in it.
+interface GlistDatabasePending { open: boolean; changes: number }
 interface GlistDatabaseSchema {
   tables: GlistDatabaseTable[];
   triggers: Array<{ name: string; table: string; sql: string }>;
   readOnly: boolean;
   version: string;
+  pending: GlistDatabasePending;
 }
 interface GlistDatabaseRowsOptions { offset?: number; orderBy?: string; descending?: boolean; where?: string }
 interface GlistDatabaseRows {
@@ -682,11 +686,14 @@ interface Window {
     readImage(filePath: string): Promise<GlistImageFile>;
     readModel(filePath: string): Promise<GlistModelFile>;
     // A SQLite database's tab (database.ts): its tables, a page of rows, SQL
-    // run as typed, a row changed, added or deleted, and the file let go of.
+    // run as typed, a row changed, added or deleted, the changes committed to
+    // the file or discarded, and the file let go of.
     databaseSchema(filePath: string): Promise<GlistDatabaseSchema>;
     databaseRows(filePath: string, table: string, options: GlistDatabaseRowsOptions): Promise<GlistDatabaseRows>;
     databaseQuery(filePath: string, sql: string): Promise<GlistDatabaseResult[]>;
-    databaseEdit(filePath: string, change: GlistDatabaseEdit): Promise<{ changes: number }>;
+    databaseEdit(filePath: string, change: GlistDatabaseEdit): Promise<{ changes: number; pending: GlistDatabasePending }>;
+    databaseCommit(filePath: string): Promise<GlistDatabasePending>;
+    databaseDiscard(filePath: string): Promise<GlistDatabasePending>;
     databaseClose(filePath: string): Promise<void>;
     // The .clang-format a C or C++ file follows, or null.
     codeStyle(filePath: string, mode?: GlistCodeStyleMode): Promise<GlistCodeStyle | null>;

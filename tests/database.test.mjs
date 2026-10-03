@@ -1,9 +1,9 @@
 /* global BigInt */
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { Databases, cellOf, statementStart } from '../src/database.ts';
+import { Databases, cellOf, statementStart, writes } from '../src/database.ts';
 import { createTableSql, quoteName } from '../src/database-sql.ts';
 
 // What crosses to the window: big integers as text, BLOBs as their size.
@@ -27,6 +27,15 @@ assert.equal(createTableSql('items', [
 assert.equal(createTableSql('pairs', [column('a', 'INTEGER', { primaryKey: true }), column('b', 'TEXT', { primaryKey: true, defaultValue: '-1.5' })]),
   `CREATE TABLE "pairs" (\n  "a" INTEGER,\n  "b" TEXT DEFAULT -1.5,\n  PRIMARY KEY ("a", "b")\n);`);
 
+// What writes to the file, as SQLite's program for it says: not a read, an
+// EXPLAIN, a TEMP table or VACUUM; a change of rows, PRAGMA user_version and ANALYZE.
+const { DatabaseSync } = await import('node:sqlite');
+const probe = new DatabaseSync(':memory:');
+probe.exec('CREATE TABLE t (a)');
+assert.deepEqual(['SELECT * FROM t', 'INSERT INTO t VALUES (1)', 'EXPLAIN INSERT INTO t VALUES (1)', 'CREATE TEMP TABLE x (a)', 'VACUUM', 'PRAGMA user_version = 1', 'ANALYZE']
+  .map((sql) => writes(probe, sql)), [false, true, false, false, false, true, true]);
+probe.close();
+
 const root = mkdtempSync(path.join(tmpdir(), 'glist-database-'));
 const file = path.join(root, 'game.db');
 const elsewhere = path.join(root, 'engine.db');
@@ -36,6 +45,13 @@ const databases = new Databases(async (filePath) => {
   if (filePath === notSqlite) throw new Error('not a database');
   return { file: filePath, readOnly: filePath === elsewhere };
 }, () => 'unavailable');
+// What the file itself holds, read beside the studio.
+const inFile = (sql) => {
+  const reader = new DatabaseSync(file, { readOnly: true });
+  try { return reader.prepare(sql).all(); } finally { reader.close(); }
+};
+const pending = async () => (await databases.schema(file)).pending;
+let other;
 
 try {
   // The console: statements run in order, each before the next is read, a
@@ -87,7 +103,7 @@ try {
   // Edits: a value changed (SQLite's affinity makes '30' a number in a REAL
   // column), NULL set, a row added and rows deleted; a WITHOUT ROWID table by
   // its key; a view refused.
-  assert.deepEqual(await databases.edit(file, { kind: 'update', table: 'players', key: [2], column: 'score', value: '30' }), { changes: 1 });
+  assert.equal((await databases.edit(file, { kind: 'update', table: 'players', key: [2], column: 'score', value: '30' })).changes, 1);
   await databases.edit(file, { kind: 'update', table: 'players', key: [1], column: 'avatar', value: null });
   await databases.edit(file, { kind: 'insert', table: 'players', values: { name: 'grace' } });
   await databases.edit(file, { kind: 'update', table: 'settings', key: ['volume'], column: 'value', value: '9' });
@@ -95,20 +111,97 @@ try {
   assert.deepEqual(after[0].rows, [['ada', 12.5, 'real', null], ['linus', 30, 'real', null], ['grace', 0, 'real', null]]);
   assert.deepEqual(after[1].rows, [['9']]);
   assert.deepEqual(after[2].rows, [[3]]);
-  assert.deepEqual(await databases.edit(file, { kind: 'delete', table: 'players', keys: [[1], [3]] }), { changes: 2 });
+  assert.equal((await databases.edit(file, { kind: 'delete', table: 'players', keys: [[1], [3]] })).changes, 2);
   await assert.rejects(databases.edit(file, { kind: 'update', table: 'leaders', key: [1], column: 'name', value: 'x' }), /view/);
   await assert.rejects(databases.edit(file, { kind: 'insert', table: 'players', values: { score: '1' } }), /NOT NULL/);
+
+  // All of it waits in one transaction, each statement that wrote and each
+  // edit a change: the tab reads them, the file does not have them yet, and
+  // another connection cannot write meanwhile. Committed, the file has them.
+  assert.deepEqual(await pending(), { open: true, changes: 12 });
+  assert.deepEqual(inFile('SELECT name FROM sqlite_schema'), []);
+  other = new DatabaseSync(file, { timeout: 100 });
+  assert.throws(() => other.exec('CREATE TABLE beside (a)'), /locked/);
+  assert.deepEqual(databases.finish(file, true), { open: false, changes: 0 });
+  assert.deepEqual(inFile('SELECT name FROM players ORDER BY id').map((found) => found.name), ['linus']);
+
+  // Discarded, they are gone; and closed with changes waiting, as when the
+  // backend stops, the file never gets them.
+  await databases.edit(file, { kind: 'update', table: 'players', key: [2], column: 'name', value: 'changed' });
+  assert.equal((await databases.rows(file, 'players', {})).rows[0][1], 'changed');
+  assert.equal(inFile('SELECT name FROM players')[0].name, 'linus');
+  assert.deepEqual(databases.finish(file, false), { open: false, changes: 0 });
+  assert.equal((await databases.rows(file, 'players', {})).rows[0][1], 'linus');
+  await databases.query(file, "INSERT INTO log VALUES ('closing')");
+  databases.close(file);
+  assert.deepEqual(await pending(), { open: false, changes: 0 });
+  assert.equal(inFile("SELECT count(*) AS n FROM log WHERE what = 'closing'")[0].n, 0);
+  // A database not open has nothing waiting, and is not opened to say so.
+  assert.deepEqual(databases.finish(path.join(root, 'never.db'), true), { open: false, changes: 0 });
+  assert.equal(existsSync(path.join(root, 'never.db')), false);
+
+  // Reading leaves no transaction open: another connection writes at once.
+  const read = await databases.query(file, 'SELECT * FROM players; PRAGMA user_version; EXPLAIN SELECT 1; SELECT * FROM leaders');
+  assert.ok(read.every((result) => 'columns' in result), JSON.stringify(read));
+  assert.deepEqual(await pending(), { open: false, changes: 0 });
+  other.exec("INSERT INTO log VALUES ('beside')");
+
+  // VACUUM, which SQLite runs only outside a transaction, runs as typed while
+  // nothing waits, and says why not while something does; a TEMP table is not
+  // the file's; PRAGMA user_version, which changes no row, waits like the rest.
+  const vacuumed = await databases.query(file, 'VACUUM; CREATE TEMP TABLE scratch (a); PRAGMA user_version = 7');
+  assert.ok(vacuumed.every((result) => !('error' in result)), JSON.stringify(vacuumed));
+  assert.deepEqual(await pending(), { open: true, changes: 1 });
+  assert.equal(inFile('PRAGMA user_version')[0].user_version, 0);
+  assert.match((await databases.query(file, 'VACUUM'))[0].error, /cannot VACUUM from within a transaction/);
+  databases.finish(file, true);
+  assert.equal(inFile('PRAGMA user_version')[0].user_version, 7);
+
+  // BEGIN, COMMIT and ROLLBACK typed run as typed: begun and committed in one
+  // run, nothing is left waiting; left open, it waits, its changes counted
+  // from none; BEGIN again says one is open, and ROLLBACK discards it. A run
+  // that commits and begins again counts only what came after.
+  await databases.query(file, "BEGIN IMMEDIATE; INSERT INTO log VALUES ('typed'); COMMIT");
+  await databases.query(file, "SAVEPOINT one; INSERT INTO log VALUES ('saved'); RELEASE one");
+  assert.deepEqual(await pending(), { open: false, changes: 0 });
+  assert.equal(inFile("SELECT count(*) AS n FROM log WHERE what IN ('typed', 'saved')")[0].n, 2);
+  await databases.query(file, 'BEGIN');
+  assert.deepEqual(await pending(), { open: true, changes: 0 });
+  await databases.query(file, 'ROLLBACK');
+  await databases.query(file, "BEGIN; INSERT INTO log VALUES ('left open'); SELECT 1");
+  assert.deepEqual(await pending(), { open: true, changes: 1 });
+  assert.match((await databases.query(file, 'BEGIN'))[0].error, /within a transaction/);
+  await databases.query(file, 'ROLLBACK');
+  assert.deepEqual(await pending(), { open: false, changes: 0 });
+  assert.deepEqual((await databases.query(file, "SELECT count(*) FROM log WHERE what = 'left open'"))[0].rows, [[0]]);
+  await databases.query(file, "INSERT INTO log VALUES ('first'); COMMIT; BEGIN; INSERT INTO log VALUES ('second')");
+  assert.deepEqual(await pending(), { open: true, changes: 1 });
+  databases.finish(file, false);
+  assert.deepEqual(inFile("SELECT what FROM log WHERE what IN ('first', 'second')").map((found) => found.what), ['first']);
+
+  // A change that fails leaves what waits as it was, and as the first begins
+  // nothing; one that undoes the whole transaction itself (OR ROLLBACK) leaves
+  // nothing waiting.
+  assert.match((await databases.query(file, "INSERT INTO settings VALUES ('volume', 'again')"))[0].error, /UNIQUE/);
+  assert.deepEqual(await pending(), { open: false, changes: 0 });
+  await databases.edit(file, { kind: 'insert', table: 'settings', values: { key: 'speed', value: '1' } });
+  assert.match((await databases.query(file, "INSERT INTO settings VALUES ('speed', '2')"))[0].error, /UNIQUE/);
+  assert.deepEqual(await pending(), { open: true, changes: 1 });
+  await databases.query(file, "INSERT OR ROLLBACK INTO settings VALUES ('speed', '3')");
+  assert.deepEqual(await pending(), { open: false, changes: 0 });
+  assert.deepEqual(inFile("SELECT value FROM settings WHERE key = 'speed'"), []);
 
   // One elsewhere is only read; a file that is not SQLite is refused.
   await databases.query(elsewhere, 'SELECT 1').catch(() => undefined);
   databases.close(elsewhere);
-  const { DatabaseSync } = await import('node:sqlite');
   new DatabaseSync(elsewhere).exec('CREATE TABLE t (a); INSERT INTO t VALUES (1)');
   assert.equal((await databases.schema(elsewhere)).readOnly, true);
   const refused = await databases.query(elsewhere, 'INSERT INTO t VALUES (2)');
   assert.match(refused[0].error, /readonly/);
+  assert.deepEqual((await databases.schema(elsewhere)).pending, { open: false, changes: 0 });
   await assert.rejects(databases.schema(notSqlite), /not a database/);
 } finally {
+  other?.close();
   databases.closeAll();
   rmSync(root, { recursive: true, force: true });
 }

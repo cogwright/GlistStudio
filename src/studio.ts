@@ -1650,6 +1650,8 @@ export const studio: Handlers = {
     databases.rows(String(filePath), String(table), (options ?? {}) as GlistDatabaseRowsOptions),
   databaseQuery: (filePath: unknown, sql: unknown) => databases.query(String(filePath), String(sql)),
   databaseEdit: (filePath: unknown, change: unknown) => databases.edit(String(filePath), change as GlistDatabaseEdit),
+  databaseCommit: (filePath: unknown) => databases.finish(String(filePath), true),
+  databaseDiscard: (filePath: unknown) => databases.finish(String(filePath), false),
   databaseClose: (filePath: unknown) => databases.close(String(filePath)),
   // Only style files are read, wherever the file is: clang-format looks as far up.
   // Glist Engine's style unless Settings says the project's, or none.

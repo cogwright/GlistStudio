@@ -892,13 +892,15 @@ const forgetDocument = (tab: EditorTab): void => {
 };
 
 // Closes one tab; the file closes with its last tab, saved first. If it cannot
-// be saved, the tab stays.
+// be saved, the tab stays. A database's last tab asks first whether to commit
+// the changes waiting.
 const closeFile = async (filePath: string, group = layout.focused): Promise<void> => {
   const file = openFiles.get(filePath);
   if (!file) return;
   if (layout.groupsWith(filePath).length <= 1 && file.kind === 'file' && isDirty(file)) {
     try { await saveFile(file); } catch (error) { noticeFailed('saveFailed', error); return; }
   }
+  if (layout.groupsWith(filePath).length <= 1 && file.kind === 'database' && !(await databasesSettled(filePath))) return;
   const wasInFront = layout.groups[group]?.active === filePath;
   layout.close(filePath, group);
   showGroups();
@@ -2646,10 +2648,30 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
   renderTabs();
 };
 
+// A database's tab with changes waiting to be committed, as its page last heard.
+const hasPending = (tab: EditorTab): tab is DatabaseTab => tab.kind === 'database' && Boolean(tab.page.pending?.open);
+
+// Before databases let go of their files, which rolls back what was not
+// committed, each with changes waiting asks whether to commit them, and
+// discards them if not. A commit that fails throws, its changes still waiting.
+const settleDatabases = async (entryPath?: string): Promise<void> => {
+  const pending = [...openFiles.values()].filter(hasPending).filter((tab) => entryPath === undefined || isWithin(tab.path, entryPath));
+  for (const tab of pending) {
+    const save = await confirmDialog(t('databaseSaveBeforeClosing').replace('{name}', tab.name), { yes: t('databaseCommit'), no: t('databaseDiscard') });
+    tab.page.pending = await (save ? window.glistAPI.databaseCommit(tab.path) : window.glistAPI.databaseDiscard(tab.path));
+  }
+};
+const databasesSettled = (entryPath?: string): Promise<boolean> => settleDatabases(entryPath)
+  .then(() => true, (error: unknown) => { noticeFailed('saveFailed', error); return false; });
+// The browser build opens a project in place of the one open, letting go of
+// its databases; the app opens it in a window of its own.
+const leavingDatabases = (): Promise<boolean> => (window.glistFiles ? Promise.resolve(true) : databasesSettled());
+
 // Renames or moves an entry: changed files in it are saved first, and open
 // tabs, copied paths and open folders in it follow it to its new path.
-// Databases open in tabs let go of their files first: Windows moves and deletes
-// no file that is open. They open again when next asked for.
+// Databases open in tabs let go of their files first, asking about the changes
+// waiting in them: Windows moves and deletes no file that is open. They open
+// again when next asked for.
 const releaseDatabases = async (entryPath: string): Promise<void> => {
   await Promise.all([...openFiles.values()].filter((tab) => tab.kind === 'database' && isWithin(tab.path, entryPath))
     .map((tab) => window.glistAPI.databaseClose(tab.path)));
@@ -2657,6 +2679,7 @@ const releaseDatabases = async (entryPath: string): Promise<void> => {
 
 const relocateEntry = async (entryPath: string, change: () => Promise<string>): Promise<string> => {
   await saveOpenCmake();
+  await settleDatabases(entryPath);
   await releaseDatabases(entryPath);
   for (const file of fileTabs()) {
     if (isWithin(file.path, entryPath) && isDirty(file)) await saveFile(file);
@@ -2716,7 +2739,7 @@ const deleteSelectedEntries = async (): Promise<void> => {
     ? `“${entries[0].name}”: ${t(entries[0].isDirectory ? 'confirmDeleteFolder' : 'confirmDeleteFile')}`
     : t('confirmDeleteItems').replace('{count}', String(entries.length));
   if (!(await confirmDialog(description))) return;
-  if ([...openFiles.values()].some((file) => entries.some((entry) => isWithin(file.path, entry.path)) && isDirty(file))
+  if ([...openFiles.values()].some((file) => entries.some((entry) => isWithin(file.path, entry.path)) && (isDirty(file) || hasPending(file)))
     && !(await confirmDialog(t('confirmDirtyDelete')))) return;
   const deleted: GlistFileEntry[] = [];
   try {
@@ -2828,6 +2851,7 @@ const restoreSession = async (session: ProjectSession): Promise<void> => {
 
 const openProjectWith = async (open: () => Promise<GlistProjectInfo | null>): Promise<void> => {
   try {
+    if (!(await leavingDatabases())) return;
     const selected = await open();
     if (selected) await openSelectedProject(selected);
   } catch (error) {
@@ -3597,6 +3621,7 @@ element<HTMLButtonElement>('#project-cancel').addEventListener('click', () => pr
 // A new project from a template, opened here; from a window with a project
 // already, the main process makes it in a new window instead (index.ts).
 const createAndOpen = async (template: GlistTemplate, name: string): Promise<void> => {
+  if (!(await leavingDatabases())) return;
   const selected = await window.glistAPI.createProject(template, name);
   if (!selected) return;
   await openSelectedProject(selected);
@@ -3625,7 +3650,7 @@ void window.glistAPI.windowProject().then(async (first) => {
 
 // The project's window closes, saved first; the last window stays, without a project.
 const closeProject = async (): Promise<void> => {
-  if (!activeProject || !(await saveProjectFiles())) return;
+  if (!activeProject || !(await saveProjectFiles()) || !(await databasesSettled())) return;
   await window.glistAPI.closeProject();
 };
 fileTree.addEventListener('click', (event) => {
@@ -3823,10 +3848,11 @@ window.addEventListener('wheel', (event) => {
   changeZoom(pinchDelta < 0 ? 1 : -1);
   pinchDelta = 0;
 }, { passive: false, capture: true });
-// Closing with changed files waits for them to be saved (app:save-and-close).
+// Closing with changed files waits for them to be saved, and with changes
+// waiting in databases, for them to be committed or discarded (app:save-and-close).
 window.addEventListener('beforeunload', (event) => {
   saveSessionNow();
-  if (hasDirtyFiles()) { event.preventDefault(); event.returnValue = ''; }
+  if (hasDirtyFiles() || [...openFiles.values()].some(hasPending)) { event.preventDefault(); event.returnValue = ''; }
 });
 
 window.glistAPI.onBuildOutput((text) => { appendOutput(text); buildLog = (buildLog + text).slice(-200000); });
@@ -3897,6 +3923,14 @@ window.glistAPI.onRunOutput((text) => appendOutput(text, 'normal', launchedRun ?
 // tabs stay as they are. The notice has the error that stopped it, when it said.
 window.glistAPI.onBackendRestarted((error) => {
   notify({ text: t('backendRestarted'), kind: 'error', ...(error ? { detail: errorMessage(error), error } : {}) });
+  // Changes waiting in databases were in the backend that stopped: gone, and
+  // their tabs read their files again.
+  const lost = [...openFiles.values()].filter(hasPending);
+  lost.forEach((tab) => { tab.page.pending = undefined; tab.version += 1; });
+  if (lost.length) {
+    notify({ text: t('databaseChangesLost').replace('{name}', lost.map((tab) => tab.name).join(', ')), kind: 'error' });
+    showGroups();
+  }
   if (!activeProject) return;
   void debug.stop();
   void clangd.start(activeProject.root);
@@ -3906,7 +3940,7 @@ window.glistAPI.onBackendRestarted((error) => {
   void targetPicker.refresh();
 });
 window.glistAPI.onSaveAndClose(async () => {
-  if (await saveProjectFiles()) window.close();
+  if (await saveProjectFiles() && await databasesSettled()) window.close();
 });
 window.glistAPI.onRunStatus((status) => {
   isRunRunning = status.running;
