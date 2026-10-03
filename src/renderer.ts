@@ -261,6 +261,8 @@ const expandedDirectories = new Set<string>();
 let scheduleMenuSync: () => void = () => undefined;
 let draggedTab: { key: string; group: number } | null = null;
 let suppressTabClick = false;
+// The tab a click began on, for a double click to be on one tab.
+let tabPressed: { key: string; group: number } | null = null;
 
 type SidebarView = 'explorer' | 'debug' | 'commit' | 'engine' | 'plugins';
 let sidebarView: SidebarView = 'explorer';
@@ -690,11 +692,12 @@ const outputHistory = new OutputHistory(output, outputHistorySelect, clearsOutpu
 
 const clearOutput = (text = ''): void => outputHistory.reset(text);
 
-// Opens a file named in the output, relative to the project when not absolute.
+// Opens a file named in the output, relative to the project when not absolute,
+// in a transient tab, as an error looked at.
 const openOutputLocation = (filePath: string, line: number): void => {
   if (!activeProject) return;
   const absolute = /^([a-zA-Z]:[\\/]|[\\/])/.test(filePath) ? filePath : joinPath(activeProject.root, filePath);
-  void revealLocation(pathUri(absolute), { lineNumber: line, column: 1 });
+  void revealLocation(pathUri(absolute), { lineNumber: line, column: 1 }, true);
 };
 
 // Appends nodes; rewriting textContent made long builds quadratic. To the
@@ -883,15 +886,35 @@ const showGroups = (): void => {
   });
 };
 
+// How a tab comes to the front: as it is, such as clicked; opened to stay; or
+// opened transient, only to be looked at, as a diff or a search result is,
+// until another tab of its side comes to the front (editor-layout.ts).
+type Opening = 'front' | 'keep' | 'transient';
+
 // Brings a tab to the front of a side, the one being worked in unless given.
-const activateFile = (filePath: string, group = layout.focused): void => {
+// A file with unsaved changes never opens transient, as leaving would close it.
+const activateFile = (filePath: string, group = layout.focused, opening: Opening = 'front'): void => {
   const tab = openFiles.get(filePath);
   if (!tab) return;
-  layout.activate(filePath, group);
+  const closed = opening === 'front' ? layout.activate(filePath, group)
+    : layout.open(filePath, group, opening === 'transient' && !isDirty(tab));
   showGroups();
+  forgetClosed(closed);
   renderTabs();
   updateButtons();
   if (tab.kind === 'file') currentEditor().focus();
+};
+
+// A transient tab that closed as another took its place, or as its side
+// switched to another tab: what it showed is let go, unless another tab has it.
+const forgetClosed = (key: string | null): void => {
+  const tab = key === null || layout.isOpen(key) ? undefined : openFiles.get(key);
+  if (tab) forgetDocument(tab);
+};
+
+// A transient tab double-clicked, or its file edited, stays.
+const keepTab = (key: string, group?: number): void => {
+  if (layout.keep(key, group)) renderTabs();
 };
 
 const disposeTab = (tab: EditorTab): void => {
@@ -944,8 +967,9 @@ const clearTabDropIndicators = (): void => {
 const moveTab = (key: string, from: number, to: number, targetKey?: string, placeAfter = false): void => {
   const tabs = layout.groups[to]?.tabs.filter((other) => other !== key) ?? [];
   const before = targetKey && placeAfter ? tabs[tabs.indexOf(targetKey) + 1] : targetKey;
-  layout.move(key, from, to, before);
+  const closed = layout.move(key, from, to, before);
   showGroups();
+  forgetClosed(closed);
   renderTabs();
   updateButtons();
 };
@@ -958,12 +982,14 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   tab.dataset.path = file.path;
   tab.classList.toggle('active', file.path === layout.groups[group]?.active);
   tab.classList.toggle('read-only', file.kind === 'file' && file.readOnly);
+  tab.classList.toggle('transient', layout.isTransient(file.path, group));
   tab.classList.toggle('diff', file.kind === 'diff' || file.kind === 'database-diff');
   if (file.kind === 'diff') tab.title = `${file.file}\n${file.leftLabel} / ${file.rightLabel}`;
   else if (file.kind === 'database-diff') tab.title = `${file.file}\n${file.page.left} / ${file.page.right}`;
   else if (file.kind === 'readme') tab.title = `${file.name} README`;
   else if (isFilePageTab(file)) tab.title = file.path;
   else tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
+  if (layout.isTransient(file.path, group)) tab.title += `\n${t('transientTab')}`;
   const label = document.createElement('span');
   label.className = 'tab-label';
   label.textContent = file.name;
@@ -982,12 +1008,26 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
     kind.className = `file-icon ${file.kind === 'readme' ? 'dependency' : 'diff'}`;
     kind.append(icon(file.kind === 'readme' ? 'extensions' : 'diff'));
   }
-  tab.append(kind, label, dirty, close);
+  // Italics say transient now, so a file that cannot be changed shows a lock.
+  const lock = file.kind === 'file' && file.readOnly ? [icon('lock-small')] : [];
+  lock.forEach((svg) => svg.classList.add('tab-lock'));
+  tab.append(kind, label, ...lock, dirty, close);
   tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path, group); });
+  // A double click on it keeps a transient tab. Both clicks must be on this
+  // tab: an X's first click closes its tab, and the second lands on the one
+  // that slid under it. (Each click draws the tabs again, so the element is new.)
+  tab.addEventListener('dblclick', () => {
+    if (tabPressed?.key === file.path && tabPressed.group === group) keepTab(file.path, group);
+  });
   // A middle click closes the tab, as in a browser. Pressing the middle button
   // would otherwise start the page scrolling on Windows and Linux, and letting
   // it go would paste Linux's selected text into the editor that has the keys.
-  tab.addEventListener('mousedown', (event) => { if (event.button === 1) event.preventDefault(); });
+  tab.addEventListener('mousedown', (event) => {
+    if (event.button === 1) event.preventDefault();
+    if (event.button === 0 && event.detail === 1) {
+      tabPressed = event.target instanceof Element && event.target.closest('.tab-close') ? null : { key: file.path, group };
+    }
+  });
   tab.addEventListener('mouseup', (event) => { if (event.button === 1) event.preventDefault(); });
   tab.addEventListener('auxclick', (event) => {
     if (event.button !== 1) return;
@@ -1039,8 +1079,9 @@ const currentSession = (): ProjectSession => {
     const shown = view.shown && openFiles.get(view.shown);
     if (shown && shown.kind === 'file' && view.editor.getModel() === shown.model) views[shown.path] = view.editor.saveViewState();
   });
+  // A transient tab does not come back.
   return {
-    groups: layout.groups.map((group) => ({ tabs: group.tabs.filter(restorableTab), active: group.active })),
+    groups: layout.keptGroups().map((group) => ({ tabs: group.tabs.filter(restorableTab), active: group.active })),
     focused: layout.focused,
     expanded: [...expandedDirectories],
     views,
@@ -1055,6 +1096,19 @@ const scheduleSessionSave = (): void => {
   sessionTimer = window.setTimeout(saveSessionNow, 400);
 };
 
+// Names are never shortened, so a side's strip scrolls sideways instead.
+// Its tab in front is scrolled into sight when that tab or the number of tabs
+// changes, not each time the strip is drawn, which would undo scrolling it by hand.
+const stripShowed = new WeakMap<HTMLElement, string>();
+const revealFrontTab = (strip: HTMLElement): void => {
+  const tab = strip.querySelector('.editor-tab.active');
+  if (!tab) return;
+  const bounds = strip.getBoundingClientRect();
+  const box = tab.getBoundingClientRect();
+  if (box.left < bounds.left) strip.scrollLeft -= bounds.left - box.left;
+  else if (box.right > bounds.right) strip.scrollLeft += Math.min(box.right - bounds.right, box.left - bounds.left);
+};
+
 const renderTabs = (): void => {
   groupViews.forEach((view, group) => {
     const keys = layout.groups[group]?.tabs ?? [];
@@ -1062,8 +1116,24 @@ const renderTabs = (): void => {
       const file = openFiles.get(key);
       return file ? [tabElement(file, group)] : [];
     }));
+    const showing = `${layout.groups[group]?.active ?? ''}\n${keys.length}`;
+    // A strip not drawn yet has no width to scroll in; it is done once it has.
+    if (stripShowed.get(view.tabsHost) === showing || view.tabsHost.clientWidth === 0) return;
+    stripShowed.set(view.tabsHost, showing);
+    revealFrontTab(view.tabsHost);
   });
   scheduleSessionSave();
+};
+
+// A mouse's wheel turns the strip sideways; a touchpad's sideways swipe already does.
+const scrollTabsByWheel = (view: GroupView): void => {
+  view.tabsHost.addEventListener('wheel', (event) => {
+    const strip = view.tabsHost;
+    if (event.ctrlKey || strip.scrollWidth <= strip.clientWidth || Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    event.preventDefault();
+    const step = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? strip.clientWidth : 1;
+    strip.scrollLeft += event.deltaY * step;
+  }, { passive: false });
 };
 
 // A drop past the last tab puts it at the end of that side's strip.
@@ -1182,8 +1252,9 @@ const findOpenFile = (uri: monaco.Uri): OpenFile | undefined =>
   fileTabs().find((file) => file.model.uri.toString() === uri.toString());
 
 // Gives a file a tab without switching to it. Files outside the project, the
-// engine and its plugins open read-only.
-const loadFile = async (filePath: string): Promise<OpenFile> => {
+// engine and its plugins open read-only. One opening transient gets its tab
+// only once it comes to the front, so one asked for later is not replaced by it.
+const loadFile = async (filePath: string, transient = false): Promise<OpenFile> => {
   const uri = pathUri(filePath);
   let file = findOpenFile(uri);
   if (file) return file;
@@ -1194,6 +1265,7 @@ const loadFile = async (filePath: string): Promise<OpenFile> => {
   // clangd may already hold a model of this file for a preview.
   const model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(contents, languageForFile(filePath).id, uri);
   if (model.getValue() !== contents) model.setValue(contents);
+  if (transient) return addDocument(filePath, model, !isEditablePath(filePath));
   const added = addTab(filePath, model, !isEditablePath(filePath));
   renderTabs();
   return added;
@@ -1210,8 +1282,10 @@ const refreshDirtyMark = (file: OpenFile): void => {
 const addDocument = (filePath: string, model: monaco.editor.ITextModel, readOnly: boolean): OpenFile => {
   const file: OpenFile = { kind: 'file', path: filePath, name: baseName(filePath), model, savedVersion: model.getAlternativeVersionId(), readOnly };
   openFiles.set(filePath, file);
-  model.onDidChangeContent(() => {
+  model.onDidChangeContent((event) => {
     refreshDirtyMark(file);
+    // Edited, by typing, pasting or formatting, its transient tabs stay. Read again from disk, not.
+    if (!event.isFlush && !reloading.has(file)) keepTab(file.path);
     const folder = dependencyFolderOf(file.path);
     if (folder && !warnedShared.has(folder) && isDirty(file) && !reloading.has(file)) {
       warnedShared.add(folder);
@@ -1406,17 +1480,24 @@ const saveFile = (file: OpenFile): Promise<void> => {
 // not whichever finished loading last.
 let navigation = 0;
 
-const openFile = async (filePath: string, name: string): Promise<boolean> => {
-  if (imageType(filePath)) { openImage(filePath); return true; }
-  if (modelType(filePath)) { openModel(filePath); return true; }
+// Opens a file in a tab to stay, or transient: a search result, a definition
+// or an error looked at, until another tab of the side comes to the front. A
+// database's always stays: closing it would ask about its changes waiting.
+const openFile = async (filePath: string, name: string, transient = false): Promise<boolean> => {
+  if (imageType(filePath)) { openImage(filePath, transient); return true; }
+  if (modelType(filePath)) { openModel(filePath, transient); return true; }
   if (isDatabaseFile(filePath)) { openDatabase(filePath); return true; }
   navigation += 1;
   const ticket = navigation;
   try {
-    const file = await loadFile(filePath);
-    // Another tab was asked for meanwhile, so nothing is placed in this one.
-    if (ticket !== navigation) return false;
-    activateFile(file.path);
+    const file = await loadFile(filePath, transient);
+    // Another tab was asked for meanwhile, so nothing is placed in this one,
+    // and a transient one, never placed, is let go.
+    if (ticket !== navigation) {
+      if (!layout.isOpen(file.path) && openFiles.get(file.path) === file) forgetDocument(file);
+      return false;
+    }
+    activateFile(file.path, layout.focused, transient ? 'transient' : 'keep');
     return true;
   } catch (error) {
     noticeFailed('fileOpenFailed', error, name);
@@ -1424,9 +1505,9 @@ const openFile = async (filePath: string, name: string): Promise<boolean> => {
   }
 };
 
-const revealLocation = async (uri: monaco.Uri, selection?: monaco.IRange | monaco.IPosition): Promise<boolean> => {
+const revealLocation = async (uri: monaco.Uri, selection?: monaco.IRange | monaco.IPosition, transient = false): Promise<boolean> => {
   const filePath = uriPath(uri);
-  if (!(await openFile(filePath, baseName(filePath)))) return false;
+  if (!(await openFile(filePath, baseName(filePath), transient))) return false;
   if (!selection) return true;
   const target = currentEditor();
   if ('startLineNumber' in selection) {
@@ -1622,7 +1703,7 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
   const existing = openFiles.get(key);
   if (existing?.kind === 'diff') {
     await fillDiff(existing);
-    if (ticket === navigation) activateFile(key);
+    if (ticket === navigation) activateFile(key, layout.focused, 'transient');
     return;
   }
   const language = languageForFile(request.file).id;
@@ -1641,10 +1722,13 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
     message: '',
   };
   openFiles.set(key, tab);
-  layout.add(key);
+  // Transient, in the place of the one before as soon as it is asked for, so
+  // the last diff asked for is the one left; that one is let go once this shows.
+  const replaced = layout.add(key, layout.focused, true);
   await fillDiff(tab);
-  if (ticket === navigation) activateFile(key);
+  if (ticket === navigation) activateFile(key, layout.focused, 'transient');
   else renderTabs();
+  forgetClosed(replaced);
 };
 
 // A database between two versions, compared when its tab opens, when it is
@@ -1658,7 +1742,7 @@ const openDatabaseDiff = (key: string, request: DiffRequest): void => {
   const existing = openFiles.get(key);
   if (existing?.kind === 'database-diff') {
     void existing.page.refresh();
-    activateFile(key);
+    activateFile(key, layout.focused, 'transient');
     return;
   }
   const working = request.target === null;
@@ -1768,7 +1852,8 @@ const openDatabaseDiff = (key: string, request: DiffRequest): void => {
       },
     },
   };
-  openPageTab(tab, compare);
+  // Transient, as every diff is.
+  openPageTab(tab, compare, true);
 };
 
 // A plugin's README in a tab of its own, asked for when the tab first opens.
@@ -1778,15 +1863,17 @@ const openReadme = (plugin: GlistPlugin): void => openPageTab<ReadmeTab>(
 );
 
 // An image file as a picture, in a tab of its own.
-const openImage = (filePath: string): void => openPageTab<ImageTab>(
+const openImage = (filePath: string, transient = false): void => openPageTab<ImageTab>(
   { kind: 'image', path: filePath, name: baseName(filePath), page: { name: baseName(filePath) }, version: 0 },
   async (tab) => { tab.page.image = await window.glistAPI.readImage(filePath); },
+  transient,
 );
 
 // A 3D model, drawn, in a tab of its own.
-const openModel = (filePath: string): void => openPageTab<ModelTab>(
+const openModel = (filePath: string, transient = false): void => openPageTab<ModelTab>(
   { kind: 'model', path: filePath, name: baseName(filePath), page: { name: baseName(filePath) }, version: 0 },
   async (tab) => { tab.page.model = await window.glistAPI.readModel(filePath); },
+  transient,
 );
 
 // A SQLite database, in a tab of its own that reads it as it is shown.
@@ -1801,17 +1888,16 @@ const openDatabase = (filePath: string): void => openPageTab<DatabaseTab>(
   async (): Promise<void> => undefined,
 );
 
-// A README's or an image's tab, brought to the front; what it shows is asked
-// for when it first opens, and drawn when it arrives.
-const openPageTab = <T extends PageTab>(tab: T, load: (tab: T) => Promise<void>): void => {
+// A README's or an image's tab, brought to the front, to stay or transient;
+// what it shows is asked for when it first opens, and drawn when it arrives.
+const openPageTab = <T extends PageTab>(tab: T, load: (tab: T) => Promise<void>, transient = false): void => {
   if (!openFiles.has(tab.path)) {
     openFiles.set(tab.path, tab);
-    layout.add(tab.path);
     void load(tab)
       .catch((error: unknown) => { tab.page.error = remoteError(error); })
       .finally(() => { tab.version += 1; showGroups(); });
   }
-  activateFile(tab.path);
+  activateFile(tab.path, layout.focused, transient ? 'transient' : 'keep');
 };
 
 // A file against its last commit.
@@ -2128,8 +2214,9 @@ let showMenuAt: (anchor: HTMLElement, menu: string) => void = () => undefined;
 // The title bar menus' commands, for the command palette; set up with the menus.
 let menuCommands: () => PaletteCommand[] = () => [];
 
+// Go to Definition and References landing in another file open it transient.
 monaco.editor.registerEditorOpener({
-  openCodeEditor: (_source, resource, selectionOrPosition) => revealLocation(resource, selectionOrPosition),
+  openCodeEditor: (_source, resource, selectionOrPosition) => revealLocation(resource, selectionOrPosition, true),
 });
 
 const switchSourceHeader = async (): Promise<void> => {
@@ -2238,6 +2325,7 @@ const listenForEditorDrops = (view: GroupView): void => {
 const setUpGroupView = (view: GroupView): void => {
   setUpEditor(view);
   listenForTabDrops(view);
+  scrollTabsByWheel(view);
   listenForEditorDrops(view);
   wireDiffPane(view);
   // A click anywhere in a side makes it the one worked in.
@@ -2305,11 +2393,12 @@ const secondGroupView = (): GroupView => {
 const splitTab = (key: string, group = layout.focused): void => {
   const source = groupViews[group];
   const state = source?.shown === key && source.editor.getModel() ? source.editor.saveViewState() : source?.viewStates.get(key);
-  layout.split(key, group);
+  const closed = layout.split(key, group);
   if (layout.groups.length > 1) secondGroupView();
   const target = groupViews[layout.focused];
   if (state && target && target.shown !== key && !target.viewStates.has(key)) target.viewStates.set(key, state);
   showGroups();
+  forgetClosed(closed);
   renderTabs();
   updateButtons();
   if (openFiles.get(key)?.kind === 'file') currentEditor().focus();
@@ -2999,7 +3088,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
 // and where each file was scrolled to. A file gone since is left out.
 const restoreSession = async (session: ProjectSession): Promise<void> => {
   for (const [index, group] of session.groups.entries()) {
-    if (index > 0 && !layout.groups[index]) layout.groups.push({ tabs: [], active: null });
+    if (index > 0 && !layout.groups[index]) layout.groups.push({ tabs: [], active: null, transient: null });
     layout.focus(index);
     for (const key of group.tabs) {
       try {
@@ -4205,7 +4294,7 @@ const findInFiles = new FindInFiles({
   search: (query) => window.glistAPI.searchText(query),
   unsaved: () => [...openFiles.values()].flatMap((tab) => (tab.kind === 'file' && isDirty(tab) ? [{ path: tab.path, text: tab.model.getValue() }] : [])),
   model: (filePath) => loadModel(pathUri(filePath)),
-  open: (filePath, range) => { void revealLocation(pathUri(filePath), range); },
+  open: (filePath, range) => { void revealLocation(pathUri(filePath), range, true); },
   selection: () => {
     if (!activeFile()) return '';
     const target = currentEditor();
@@ -4249,8 +4338,9 @@ const searchEverywhere = new SearchEverywhere({
   },
   signature: async (hit) => declarationAt(await declaredText(hit.path), hit.line, hit.character),
   commands: paletteCommands,
+  // A file or a symbol chosen opens transient, as a search result does.
   openFile: (filePath, line, column) => {
-    void revealLocation(pathUri(filePath), line ? { lineNumber: line, column: column ?? 1 } : undefined);
+    void revealLocation(pathUri(filePath), line ? { lineNumber: line, column: column ?? 1 } : undefined, true);
   },
 });
 

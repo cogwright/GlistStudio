@@ -60,6 +60,7 @@ import starFull from '@vscode/codicons/src/icons/star-full.svg';
 import chevronUp from '@vscode/codicons/src/icons/chevron-up.svg';
 import chevronDown from '@vscode/codicons/src/icons/chevron-down.svg';
 import info from '@vscode/codicons/src/icons/info.svg';
+import lockSmall from '@vscode/codicons/src/icons/lock-small.svg';
 import errorIcon from '@vscode/codicons/src/icons/error.svg';
 import caseSensitive from '@vscode/codicons/src/icons/case-sensitive.svg';
 import wholeWord from '@vscode/codicons/src/icons/whole-word.svg';
@@ -125,6 +126,7 @@ const icons = {
   'go-to-file': goToFile,
   history: historyIcon,
   info,
+  'lock-small': lockSmall,
   'new-file': newFile,
   'new-folder': newFolder,
   package: packageIcon,

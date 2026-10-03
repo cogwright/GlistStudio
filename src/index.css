@@ -474,16 +474,24 @@ body .monaco-editor .suggest-details > .monaco-scrollable-element > .body > .doc
 .build-notice { grid-row: 1; display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 12px; border-bottom: 1px solid color-mix(in srgb, var(--ui-warning) 45%, transparent); color: var(--ui-fg-strong); background: color-mix(in srgb, var(--ui-warning) 18%, var(--ui-chrome)); font-size: 12px; }
 .build-notice svg.icon { flex: none; color: var(--ui-warning); }
 .build-notice span { flex: 1; min-width: 0; }
+/* Names are never shortened: each tab is as wide as its name, and the strip scrolls sideways instead, on a
+   scrollbar thin and faint enough to leave the names alone, and plainer while the pointer is over the strip. */
 .editor-tabs { display: flex; min-width: 0; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid var(--ui-border); background: var(--ui-chrome); }
-.editor-tab { position: relative; display: flex; min-width: 120px; max-width: 210px; height: 35px; align-items: center; gap: 7px; padding: 0 8px 0 12px; border: 0; border-right: 1px solid var(--ui-border); color: var(--ui-fg-muted); background: var(--ui-chrome); cursor: pointer; }
+.editor-tabs::-webkit-scrollbar { height: 5px; }
+.editor-tabs::-webkit-scrollbar-thumb { border: 0; border-radius: 3px; background: color-mix(in srgb, var(--ui-fg) 14%, transparent); }
+.editor-tabs:hover::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--ui-fg) 28%, transparent); }
+.editor-tabs::-webkit-scrollbar-thumb:hover, .editor-tabs::-webkit-scrollbar-thumb:active { background: color-mix(in srgb, var(--ui-fg) 42%, transparent); }
+.editor-tab { position: relative; display: flex; flex: none; min-width: 120px; height: 35px; align-items: center; gap: 7px; padding: 0 8px 0 12px; border: 0; border-right: 1px solid var(--ui-border); color: var(--ui-fg-muted); background: var(--ui-chrome); cursor: pointer; }
 .editor-tab.active { border-top: 1px solid var(--ui-accent); color: var(--ui-fg-strong); background: var(--ui-bg); }
 .editor-tab.dragging { opacity: .42; cursor: grabbing; }
 .editor-tab.drop-before::before, .editor-tab.drop-after::after { position: absolute; top: 3px; bottom: 3px; z-index: 2; width: 2px; border-radius: 1px; background: var(--ui-accent); content: ''; pointer-events: none; }
 .editor-tab.drop-before::before { left: 0; }
 .editor-tab.drop-after::after { right: -1px; }
 .editor-tabs.drop-at-end .editor-tab:last-child { box-shadow: inset -2px 0 var(--ui-accent); }
-.tab-label { flex: 1; overflow: hidden; line-height: 18px; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.editor-tab.read-only .tab-label { font-style: italic; }
+.tab-label { flex: 1; line-height: 18px; text-align: left; white-space: nowrap; }
+/* A transient tab, only being looked at until another of its side comes to the front, as in IntelliJ and VS Code. */
+.editor-tab.transient .tab-label { font-style: italic; }
+.editor-tab svg.tab-lock { flex: none; width: 14px; height: 14px; margin: 0 -3px; color: var(--ui-fg-muted); }
 .dirty-dot { display: grid; width: 12px; height: 18px; place-items: center; color: var(--ui-accent); }
 .dirty-dot svg.icon { width: 12px; height: 12px; }
 .dirty-dot:not(.visible) svg.icon { visibility: hidden; }

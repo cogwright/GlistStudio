@@ -289,6 +289,7 @@
     "classLocation": "Sélectionnez un dossier pour la classe C++.",
     "open": "Ouvrir",
     "readOnly": "Lecture seule",
+    "transientTab": "Se ferme quand vous passez à un autre onglet. Double-cliquez pour le garder ouvert.",
     "switchSourceHeader": "Basculer en-tête/source",
     "clangdRunning": "est actif",
     "closeOthers": "Fermer les autres",
