@@ -112,6 +112,7 @@ export const eventChannels: Record<EventMethod, string> = {
   onClangdStatus: 'clangd:status',
   onCompileCommands: 'clangd:compile-commands',
   onSaveAndClose: 'app:save-and-close',
+  onBackendRestarted: 'app:backend-restarted',
   onDebugMessage: 'debug:message',
   onDebugStatus: 'debug:status',
   onDebuggerInstall: 'debugger:install-output',

@@ -714,7 +714,8 @@
     "hiddenFoldersHint": "Separated by commas; * stands for any text, as in cmake-build-*. Clear a name to see that folder again.",
     "motion": "Motion",
     "reduceMotion": "Reduce motion",
-    "reduceMotionHint": "Stills the caret and scrolling in the editor and the interface's animations. It starts as the system has it."
+    "reduceMotionHint": "Stills the caret and scrolling in the editor and the interface's animations. It starts as the system has it.",
+    "backendRestarted": "Glist Studio's background work stopped unexpectedly and was started again. The project is open again."
   },
   "platforms": {
     "darwin": {

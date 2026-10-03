@@ -1,11 +1,12 @@
 import { cpSync, existsSync, mkdirSync, promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron';
-import { eventChannels, invokeChannels, type Handler, type InvokeMethod } from './api';
 import {
-  defaultProjectsDirectory, initializeStudio, msg, openProjectAt, projectsDirectory, stopClangd, stopDebugging, stopProcesses,
-  stopGit, stopTerminal, stopWatchingConfiguration, studio, studioHome,
-} from './studio';
+  app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions,
+} from 'electron';
+import { eventChannels, invokeChannels, type InvokeMethod } from './api';
+import { backendStartArgument, type BackendStart, type FromBackend, type ToBackend } from './backend-protocol';
+import { isLanguage, languages, type Language, type Words } from './languages';
+import { defaultProjectsDirectory, studioHome } from './studio-places';
 import {
   checkForUpdates, installOnQuit, installUpdate, openUpdatePage, restartingToUpdate, setUpdateListener, source, updateState,
 } from './updater';
@@ -63,26 +64,117 @@ const tilingDesktop = process.platform === 'linux' && (
 // other Linux desktops get Electron's overlay on the right.
 const windowControls = process.platform === 'darwin' ? 'left' : tilingDesktop ? 'none' : 'right';
 
-initializeStudio({
-  send: (channel, payload) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(channel, payload);
-    }
-  },
-  trashItem: (entryPath) => shell.trashItem(entryPath),
-  showItemInFolder: (entryPath) => shell.showItemInFolder(entryPath),
-  openPath: (entryPath) => shell.openPath(entryPath),
+// The interface language, which the window sets, for the main process's own dialogs.
+let language: Language = 'en';
+const msg = (key: keyof Words['studio']): string => languages[language].studio[key];
+
+// Each window's backend runs in a utility process of its own (backend.ts), so
+// one window's project, builds, terminals and clangd never meet another's.
+// Calls from the window come here and go on to its backend, which answers;
+// what it sends the window goes straight there; what only Electron can do, it
+// asks of this process.
+const commit = typeof GLIST_STUDIO_COMMIT === 'string' && GLIST_STUDIO_COMMIT ? GLIST_STUDIO_COMMIT : null;
+const commitPage = commit ? githubCommitPage(`${source.site}/${source.repository}`, commit) : undefined;
+const backendStart: BackendStart = {
   templateRoot: app.isPackaged
     ? path.join(process.resourcesPath, 'glistapp-template')
     : path.join(app.getAppPath(), 'glistapp-template'),
   projectsDirectory: defaultProjectsDirectory(),
   version: app.getVersion(),
-  studioHead: async () => {
-    const commit = typeof GLIST_STUDIO_COMMIT === 'string' && GLIST_STUDIO_COMMIT ? GLIST_STUDIO_COMMIT : null;
-    const commitPage = commit ? githubCommitPage(`${source.site}/${source.repository}`, commit) : undefined;
-    return commit ? { branch: null, commit, ...(commitPage ? { commitPage } : {}) } : null;
-  },
-});
+  studioHead: commit ? { branch: null, commit, ...(commitPage ? { commitPage } : {}) } : null,
+};
+
+// What a window told its backend that a new one would need, if that one
+// stopped: the last of each setting it sent, and the project it opened.
+const settingCalls = new Set(['setLanguage', 'setCustomPath', 'setCustomEnvironment', 'setRunArguments', 'setAutoConfigure', 'setTarget', 'gitProtection', 'setHiddenFolders']);
+const projectCalls = new Set(['openProject', 'openProjectPath', 'createProject']);
+interface WindowMemory { settings: Map<string, unknown[]>; projectRoot: string | null }
+const memories = new Map<number, WindowMemory>();
+const remember = (contentsId: number, method: string, args: unknown[], result: unknown): void => {
+  const memory = memories.get(contentsId);
+  if (!memory) return;
+  if (settingCalls.has(method)) memory.settings.set(method, args);
+  const root = (result as { root?: unknown } | null)?.root;
+  if (projectCalls.has(method) && typeof root === 'string') memory.projectRoot = root;
+};
+
+interface Backend {
+  call(method: string, args: unknown[]): Promise<unknown>;
+  // Stops what it started, waiting for it at most three seconds.
+  shutdown(): Promise<void>;
+}
+const backends = new Map<number, Backend>();
+
+const startBackend = (window: BrowserWindow): Backend => {
+  const contents = window.webContents;
+  const child = utilityProcess.fork(path.join(__dirname, 'backend.js'), [`${backendStartArgument}${JSON.stringify(backendStart)}`], {
+    serviceName: 'Glist Studio backend', stdio: 'inherit',
+  });
+  const post = (message: ToBackend): void => child.postMessage(message);
+  const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
+  let calls = 0;
+  let stopping = false;
+  const exited = new Promise<void>((resolve) => { child.once('exit', () => resolve()); });
+  child.on('message', (message: FromBackend) => {
+    if (message.kind === 'reply') {
+      const waiting = pending.get(message.reply.id);
+      pending.delete(message.reply.id);
+      if ('error' in message.reply) waiting?.reject(new Error(message.reply.error));
+      else waiting?.resolve(message.reply.result);
+    } else if (message.kind === 'event') {
+      if (!contents.isDestroyed()) contents.send(message.channel, message.payload);
+    } else if (message.kind === 'host') {
+      const done = (error?: unknown): void => post({ kind: 'host-reply', id: message.id, ...(error ? { error: String(error) } : {}) });
+      if (message.op === 'showItemInFolder') { shell.showItemInFolder(message.path); done(); }
+      else if (message.op === 'trash') shell.trashItem(message.path).then(() => done(), done);
+      else shell.openPath(message.path).then((problem) => done(problem || undefined), done);
+    }
+  });
+  // A backend that stops by itself is started again for the window, given its
+  // settings and its project again, and then the window is told.
+  child.once('exit', (code) => {
+    pending.forEach((waiting) => waiting.reject(new Error(`Glist Studio's backend stopped (${code}).`)));
+    pending.clear();
+    if (stopping || window.isDestroyed()) return;
+    const next = startBackend(window);
+    const memory = memories.get(contents.id);
+    const restored = (async () => {
+      for (const [method, args] of memory?.settings ?? []) await next.call(method, args).catch((): undefined => undefined);
+      if (memory?.projectRoot) await next.call('openProjectPath', [memory.projectRoot]).catch((): undefined => undefined);
+    })();
+    // The window's calls wait until then: before it, reading an open file would fail and close its tab.
+    backends.set(contents.id, { ...next, call: (method, args) => restored.then(() => next.call(method, args)) });
+    void restored.then(() => { if (!contents.isDestroyed()) contents.send(eventChannels.onBackendRestarted, null); });
+  });
+  return {
+    call: (method, args) => new Promise((resolve, reject) => {
+      calls += 1;
+      pending.set(calls, { resolve, reject });
+      post({ kind: 'call', call: { id: calls, method, args } });
+    }),
+    shutdown: () => {
+      if (!stopping) {
+        stopping = true;
+        post({ kind: 'shutdown' });
+        setTimeout(() => child.kill(), 3000).unref();
+      }
+      return exited;
+    },
+  };
+};
+
+const backendFor = (event: IpcMainInvokeEvent): Backend => {
+  const backend = backends.get(event.sender.id);
+  if (!backend) throw new Error('This window has no backend.');
+  return backend;
+};
+
+// A call to the window's backend, remembered when a new backend would need it.
+const forward = async (event: IpcMainInvokeEvent, method: string, args: unknown[]): Promise<unknown> => {
+  const result = await backendFor(event).call(method, args);
+  remember(event.sender.id, method, args, result);
+  return result;
+};
 
 // A shortcut as the menus write it, as Electron takes it: Ctrl is Cmd on a
 // Mac and Control is Control; Ctrl++ is Plus.
@@ -160,11 +252,19 @@ const fitWindowControls = (window: BrowserWindow | null, zoom: number): void => 
   else if (windowControls === 'left') window?.setWindowButtonPosition({ x: 12, y: Math.round((titleBarHeight(zoom) - 15) / 2) });
 };
 
-const registerIpcHandlers = (): void => {
-  Object.entries(studio).forEach(([method, handler]: [string, Handler]) => {
-    ipcMain.handle(invokeChannels[method as InvokeMethod], (_event, ...args) => handler(...args));
-  });
-  ipcMain.handle(invokeChannels.setTheme, (event, colors: GlistWindowColors) => {
+// What the main process answers itself: windows, dialogs, menus and updates.
+// Every other call goes to the window's backend.
+// The calls the main process answers itself: windows, dialogs, menus and
+// updates, and the language, which its dialogs use too. Every other call goes
+// on to the window's backend.
+type OwnHandler = (event: IpcMainInvokeEvent, ...args: never[]) => unknown;
+const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
+  setLanguage: async (event, next: unknown) => {
+    const chosen = await forward(event, 'setLanguage', [next]);
+    if (isLanguage(chosen)) language = chosen;
+    return chosen;
+  },
+  setTheme: (event, colors: GlistWindowColors) => {
     const color = (value: unknown, fallback: string): string =>
       (typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback);
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -175,42 +275,49 @@ const registerIpcHandlers = (): void => {
       symbolColor: color(colors?.text, '#cccccc'),
       height: titleBarHeight(event.sender.getZoomFactor()),
     });
-  });
-  ipcMain.handle(invokeChannels.openProject, async () => {
-    const defaultPath = projectsDirectory();
+  },
+  openProject: async (event) => {
+    const defaultPath = String(await backendFor(event).call('getProjectsDirectory', []));
     const result = await dialog.showOpenDialog({
       title: msg('openTitle'),
       defaultPath: existsSync(defaultPath) ? defaultPath : undefined,
       properties: ['openDirectory'],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
-    return openProjectAt(result.filePaths[0]);
-  });
-  ipcMain.handle(invokeChannels.openEngineSite, () => shell.openExternal('https://www.glistengine.com/'));
-  ipcMain.handle(invokeChannels.openEngineRepository, () => shell.openExternal('https://github.com/GlistEngine/GlistEngine'));
-  ipcMain.handle(invokeChannels.setAppMenu, (event, menus: GlistAppMenu[], words: GlistAppMenuWords) => setAppMenu(event.sender, menus, words));
-  ipcMain.handle(invokeChannels.chooseFolder, async (event) => {
+    return forward(event, 'openProject', [result.filePaths[0]]);
+  },
+  openEngineSite: () => shell.openExternal('https://www.glistengine.com/'),
+  openEngineRepository: () => shell.openExternal('https://github.com/GlistEngine/GlistEngine'),
+  setAppMenu: (event, menus: GlistAppMenu[], words: GlistAppMenuWords) => setAppMenu(event.sender, menus, words),
+  chooseFolder: async (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     const options = { title: msg('pathFolderTitle'), properties: ['openDirectory' as const] };
     const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
     return result.canceled ? null : result.filePaths[0] ?? null;
-  });
-  ipcMain.handle(invokeChannels.startupSettings, () => ({ saved: readStartup(), running: runningStartup }));
-  ipcMain.handle(invokeChannels.setStartupSettings, async (_event, next: unknown): Promise<GlistStartupSettings> => {
+  },
+  startupSettings: () => ({ saved: readStartup(), running: runningStartup }),
+  setStartupSettings: async (_event, next: unknown): Promise<GlistStartupSettings> => {
     const settings = { hardwareAcceleration: (next as Partial<GlistStartupSettings> | null)?.hardwareAcceleration !== false };
     await fs.mkdir(studioHome(), { recursive: true });
     await fs.writeFile(startupFile(), JSON.stringify(settings, null, 2), 'utf8');
     return settings;
-  });
-  ipcMain.handle(invokeChannels.updateState, () => updateState());
-  ipcMain.handle(invokeChannels.checkForUpdates, (_event, previews?: unknown) => checkForUpdates(previews));
-  ipcMain.handle(invokeChannels.installUpdate, () => installUpdate());
-  ipcMain.handle(invokeChannels.openUpdatePage, () => openUpdatePage());
-  ipcMain.handle(invokeChannels.setZoomFactor, (event, factor: number) => {
+  },
+  updateState: () => updateState(),
+  checkForUpdates: (_event, previews?: unknown) => checkForUpdates(previews),
+  installUpdate: () => installUpdate(),
+  openUpdatePage: () => openUpdatePage(),
+  setZoomFactor: (event, factor: number) => {
     const safeFactor = Number.isFinite(factor) ? Math.min(3, Math.max(0.5, factor)) : 1;
     event.sender.setZoomFactor(safeFactor);
     fitWindowControls(BrowserWindow.fromWebContents(event.sender), safeFactor);
     return safeFactor;
+  },
+};
+
+const registerIpcHandlers = (): void => {
+  Object.entries(invokeChannels).forEach(([method, channel]) => {
+    const own = ownHandlers[method as InvokeMethod] as ((event: IpcMainInvokeEvent, ...args: unknown[]) => unknown) | undefined;
+    ipcMain.handle(channel, (event, ...args) => (own ? own(event, ...args) : forward(event, method, args)));
   });
 };
 
@@ -239,6 +346,8 @@ const createWindow = (): void => {
     },
   });
   mainWindow = createdWindow;
+  memories.set(createdWindow.webContents.id, { settings: new Map(), projectRoot: null });
+  backends.set(createdWindow.webContents.id, startBackend(createdWindow));
   createdWindow.webContents.on('console-message', (event, _level, message) => {
     const detailMessage = (event as unknown as { message?: string }).message;
     runtimeMessages.push(detailMessage ?? message);
@@ -283,7 +392,13 @@ const createWindow = (): void => {
       app.quit();
     }, 1000);
   });
-  createdWindow.on('closed', () => { stopProcesses(); stopClangd(); stopDebugging(); stopTerminal(); stopGit(); stopWatchingConfiguration(); mainWindow = null; });
+  const contentsId = createdWindow.webContents.id;
+  createdWindow.on('closed', () => {
+    void backends.get(contentsId)?.shutdown();
+    backends.delete(contentsId);
+    memories.delete(contentsId);
+    mainWindow = null;
+  });
 };
 
 setUpdateListener((update) => {
@@ -297,5 +412,19 @@ let started = false;
 app.whenReady().then(() => { registerIpcHandlers(); createWindow(); started = true; });
 // On macOS the app stays open without windows, unless it is restarting to update.
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' || restartingToUpdate()) app.quit(); });
-app.on('will-quit', installOnQuit);
+// Quitting waits for every backend to stop what it started, so no clangd,
+// shell or program outlives the app; then an update downloaded meanwhile installs.
+let backendsStopped = false;
+app.on('will-quit', (event) => {
+  if (!backendsStopped && backends.size > 0) {
+    event.preventDefault();
+    void Promise.all([...backends.values()].map((backend) => backend.shutdown())).then(() => {
+      backendsStopped = true;
+      backends.clear();
+      app.quit();
+    });
+    return;
+  }
+  installOnQuit();
+});
 app.on('activate', () => { if (started && BrowserWindow.getAllWindows().length === 0) createWindow(); });

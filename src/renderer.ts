@@ -3457,6 +3457,19 @@ window.glistAPI.onBuildStatus((status) => {
   isBuildRunning = status.running; setProcessStatus(status.label, status.running); updateButtons();
 });
 window.glistAPI.onRunOutput((text) => appendOutput(text));
+// The backend stopped by itself, and a new one has the window's settings and
+// project again (index.ts): what ran in the old one starts again here, and the
+// tabs stay as they are.
+window.glistAPI.onBackendRestarted(() => {
+  notify({ text: t('backendRestarted'), kind: 'error' });
+  if (!activeProject) return;
+  void debug.stop();
+  void clangd.start(activeProject.root);
+  studioTerminal.projectChanged();
+  agentTerminal.projectChanged();
+  void git.projectChanged();
+  void targetPicker.refresh();
+});
 window.glistAPI.onSaveAndClose(async () => {
   if (await saveProjectFiles()) window.close();
 });

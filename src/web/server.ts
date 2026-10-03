@@ -4,11 +4,10 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { Handler, Handlers } from '../api';
+import type { Handlers } from '../api';
 import { readRepositoryHead } from '../repository-head';
-import {
-  initializeStudio, openProjectAt, stopClangd, stopDebugging, stopGit, stopProcesses, stopTerminal, stopWatchingConfiguration, studio,
-} from '../studio';
+import { initializeStudio } from '../studio';
+import { answer, backendHandlers, stopBackend, type BackendCall } from '../studio-rpc';
 
 export interface WebServerOptions {
   port: number;
@@ -68,11 +67,7 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     studioHead: () => readRepositoryHead(options.sourceRoot),
   });
 
-  const handlers: Handlers = {
-    ...studio,
-    openProject: (projectRoot: string) => openProjectAt(projectRoot),
-    setTheme: () => undefined,
-  };
+  const handlers: Handlers = { ...backendHandlers, setTheme: () => undefined };
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');
@@ -126,22 +121,15 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     client?.close(4000, 'Glist Studio was opened in another tab.');
     client = socket;
     socket.on('message', async (data) => {
-      let request: { id: number; method: string; args: unknown[] };
+      let request: BackendCall;
       try { request = JSON.parse(data.toString()); } catch { return; }
-      const { id, method, args } = request;
-      const handler = (handlers as Record<string, Handler | undefined>)[method];
-      try {
-        if (!handler) throw new Error(`Unknown method ${method}`);
-        const result = await handler(...args);
-        if (socket === client) send({ id, result: result ?? null });
-      } catch (error) {
-        if (socket === client) send({ id, error: error instanceof Error ? error.message : String(error) });
-      }
+      const reply = await answer(handlers, request);
+      if (socket === client) send(reply);
     });
     socket.on('close', () => { if (socket === client) client = null; });
   });
 
-  server.on('close', () => { stopProcesses(); stopClangd(); stopDebugging(); stopTerminal(); stopGit(); stopWatchingConfiguration(); });
+  server.on('close', stopBackend);
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(options.port, '127.0.0.1', () => resolve(server));

@@ -714,7 +714,8 @@
     "hiddenFoldersHint": "Séparés par des virgules ; * remplace n'importe quel texte, comme dans cmake-build-*. Effacez un nom pour revoir ce dossier.",
     "motion": "Mouvement",
     "reduceMotion": "Réduire les animations",
-    "reduceMotionHint": "Fige le curseur et le défilement dans l'éditeur, et les animations de l'interface. Au départ, il suit le réglage du système."
+    "reduceMotionHint": "Fige le curseur et le défilement dans l'éditeur, et les animations de l'interface. Au départ, il suit le réglage du système.",
+    "backendRestarted": "Le travail en arrière-plan de Glist Studio s'est arrêté de façon inattendue et a redémarré. Le projet est de nouveau ouvert."
   },
   "platforms": {
     "darwin": {
