@@ -176,8 +176,11 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 
 .menu-button:hover, .menu-button.active { background: var(--ui-hover-strong); color: var(--ui-fg-strong); }
 
+/* At the right, beside the window buttons where the page draws them, rather
+   than wherever space-between would leave it between them and the menus. */
 .toolbar-actions {
   justify-content: flex-end;
+  margin-left: auto;
   gap: 4px;
   min-width: 0;
   -webkit-app-region: no-drag;
