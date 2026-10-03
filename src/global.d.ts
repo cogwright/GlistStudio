@@ -680,6 +680,7 @@ interface Window {
     // What a window the main process made for a project opens first.
     windowProject(): Promise<GlistFirstProject | null>;
     newWindow(): Promise<void>;
+    quitApp(): Promise<void>;
     // The window closes, or as the last one, stays without a project.
     closeProject(): Promise<void>;
     getPlatform(): Promise<string>;

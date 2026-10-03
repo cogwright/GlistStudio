@@ -822,6 +822,7 @@
     "reduceMotionHint": "Düzenleyicide imleci ve kaydırmayı, arayüzde canlandırmaları durgunlaştırır. Başlangıçta sistemdeki ayarı izler.",
     "backendRestarted": "Glist Studio'nun arka plandaki işleri beklenmedik biçimde durdu ve yeniden başlatıldı. Proje yeniden açıldı.",
     "newWindow": "Yeni Pencere",
+    "exitApp": "Çıkış",
     "closeProject": "Projeyi Kapat"
   },
   "platforms": {

@@ -12,6 +12,7 @@ export type Handlers = Partial<Record<InvokeMethod, Handler>>;
 export const invokeChannels: Record<InvokeMethod, string> = {
   windowProject: 'window:project',
   newWindow: 'window:new',
+  quitApp: 'app:quit',
   closeProject: 'window:close-project',
   openProject: 'project:open',
   createProject: 'project:create',
