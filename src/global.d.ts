@@ -187,6 +187,17 @@ interface GlistImageFile {
   size: number;
 }
 
+type GlistModelFormat = 'gltf' | 'glb' | 'obj' | 'fbx' | 'dae' | 'stl' | 'ply' | '3ds';
+// A 3D model in base64, with the files it names (materials, buffers, textures)
+// under the names it gives them, and those it names that could not be read.
+interface GlistModelFile {
+  format: GlistModelFormat;
+  data: string;
+  size: number;
+  files: Record<string, string>;
+  missing: string[];
+}
+
 interface GlistPluginReadme {
   text: string;
   page: string;
@@ -587,6 +598,7 @@ interface Window {
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
     readImage(filePath: string): Promise<GlistImageFile>;
+    readModel(filePath: string): Promise<GlistModelFile>;
     // The .clang-format a C or C++ file follows, or null.
     codeStyle(filePath: string, mode?: GlistCodeStyleMode): Promise<GlistCodeStyle | null>;
     listDependencies(): Promise<GlistDependency[]>;
