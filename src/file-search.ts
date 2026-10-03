@@ -1,5 +1,6 @@
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
+import { isHiddenFolder } from './hidden-folders';
 import { findInText, queryPattern, type TextQuery } from './text-search';
 
 // Find in Files and Search Everywhere's files: every file in the project, and
@@ -31,8 +32,6 @@ export interface SearchOutcome {
   limited: boolean;
 }
 
-// Folders nobody means to search: Git's, the builds', and packages'.
-const skippedFolders = new Set(['.git', '.webpack', 'node_modules', 'out', 'build', '_build']);
 // Larger files are data rather than code.
 const largestFile = 2 * 1024 * 1024;
 
@@ -51,7 +50,8 @@ export const filesIn = async (folders: SearchFolder[], limit = 50000, cancelled 
         const inner = relative ? `${relative}/${entry.name}` : entry.name;
         // Links are left out, so a link to a folder above cannot make it go round.
         if (entry.isDirectory()) {
-          if (!entry.name.startsWith('.') && !skippedFolders.has(entry.name)) await walk(path.join(directory, entry.name), inner);
+          // Hidden ones too, and the explorer's hidden folders (hidden-folders.ts).
+          if (!entry.name.startsWith('.') && !isHiddenFolder(entry.name)) await walk(path.join(directory, entry.name), inner);
         } else if (entry.isFile()) {
           found.push({ path: path.join(directory, entry.name), relative: inner, owner: folder.name, kind: folder.kind });
         }

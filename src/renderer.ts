@@ -14,6 +14,7 @@ import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './a
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
 import { editorBehaviour, loadEditorSettings, onEditorSettingsChange, setUpEditorSettings } from './editor-settings';
+import { defaultHiddenFolders } from './hidden-folders';
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
 import { changedLines, codeLines, editsWithin, type LineRange } from './format-lines';
 import { formatOutput, newOutputStyle, outputBanner } from './output-format';
@@ -131,6 +132,7 @@ const emptyOpenButton = element<HTMLButtonElement>('#empty-open-project');
 const emptyNewProjectButton = element<HTMLButtonElement>('#empty-new-project');
 const saveButton = element<HTMLButtonElement>('#save-file');
 const buildButton = element<HTMLButtonElement>('#build-project');
+const buildMenuButton = element<HTMLButtonElement>('#build-menu');
 const runButton = element<HTMLButtonElement>('#run-project');
 const stopButton = element<HTMLButtonElement>('#stop-project');
 const debugButton = element<HTMLButtonElement>('#debug-project');
@@ -456,7 +458,6 @@ const codeEditorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
   'semanticHighlighting.enabled': true,
   // Matching brackets share a color, by how deep they are nested.
   bracketPairColorization: { enabled: true },
-  minimap: { enabled: true, scale: 1 },
   // Room for breakpoints.
   glyphMargin: true,
   // The caret and scrolling as Settings > Editor has them.
@@ -610,6 +611,7 @@ const updateButtons = (): void => {
   const hasProject = Boolean(activeProject);
   saveButton.disabled = !activeFile();
   buildButton.disabled = !hasProject || isBuildRunning || isStarting;
+  buildMenuButton.disabled = buildButton.disabled;
   runButton.disabled = !hasProject || isRunRunning || isBuildRunning || isStarting || !targetPicker.runnable;
   debugButton.disabled = !hasProject || isBuildRunning || isStarting || debug.active || !targetPicker.runnable;
   debugStartButton.disabled = debugButton.disabled;
@@ -1238,7 +1240,8 @@ const ensureDiffEditor = (view: GroupView): monaco.editor.IStandaloneDiffEditor 
   });
   pane.editor = viewer;
   onFontsChange((fonts) => viewer.updateOptions(editorFonts(fonts)));
-  onEditorSettingsChange((settings) => viewer.updateOptions(editorBehaviour(settings)));
+  // A diff view keeps going without a minimap.
+  onEditorSettingsChange((settings) => viewer.updateOptions({ ...editorBehaviour(settings), minimap: { enabled: false } }));
   [viewer.getOriginalEditor(), viewer.getModifiedEditor()].forEach((side) => {
     side.onContextMenu((event) => showMenu(event.event.browserEvent, editorMenu(side, editorMenuHooks, false)));
     side.onDidFocusEditorWidget(() => focusGroup(groupViews.indexOf(view)));
@@ -2626,14 +2629,15 @@ const noticeBuildFailed = (message: string): void => {
   });
 };
 
-const buildProject = async (): Promise<void> => {
+// Clean, everything built so far is deleted first, CMake's cache with it.
+const buildProject = async (clean = false): Promise<void> => {
   if (!activeProject || isBuildRunning || isStarting) return;
   await whileStarting(async () => {
     if (!(await saveProjectFiles())) return;
     showPanel('output');
-    appendOutput(outputBanner(t('outputBuild')));
+    appendOutput(outputBanner(t(clean ? 'cleanBuild' : 'outputBuild')));
     buildLog = '';
-    const result = await window.glistAPI.buildProject();
+    const result = await window.glistAPI.buildProject(clean);
     clangd.buildFinished();
     void targetPicker.refresh();
     // A build can change open files, such as CMakeLists.txt when sources were added.
@@ -2782,9 +2786,10 @@ const configureMenus = (): void => {
         item(t('settings'), () => openSettings()),
       ],
       run: [
-        item(t('build'), buildProject, {
+        item(t('build'), () => { void buildProject(); }, {
           shortcut: 'Ctrl+Shift+B', disabled: !activeProject || isBuildRunning || isStarting,
         }),
+        item(t('cleanBuild'), () => { void buildProject(true); }, { disabled: !activeProject || isBuildRunning || isStarting }),
         item(t('run'), runProject, {
           shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning || isStarting || !targetPicker.runnable,
         }),
@@ -3055,7 +3060,15 @@ openButton.addEventListener('click', chooseProject);
 emptyOpenButton.addEventListener('click', chooseProject);
 emptyNewProjectButton.addEventListener('click', showNewProjectDialog);
 saveButton.addEventListener('click', saveActiveFile);
-buildButton.addEventListener('click', buildProject);
+buildButton.addEventListener('click', () => { void buildProject(); });
+// Beside Build, its other ways: Clean Build.
+buildMenuButton.addEventListener('click', (event) => {
+  const disabled = !activeProject || isBuildRunning || isStarting;
+  showMenu(event, [
+    { label: t('build'), run: () => { void buildProject(); }, disabled },
+    { label: t('cleanBuild'), run: () => { void buildProject(true); }, disabled },
+  ]);
+});
 runButton.addEventListener('click', runProject);
 stopButton.addEventListener('click', stopProject);
 newFileButton.addEventListener('click', createFile);
@@ -3154,6 +3167,19 @@ setUpEditorSettings({
   caretStyle: element<HTMLSelectElement>('#caret-style'),
   smoothCaret: element<HTMLInputElement>('#smooth-caret'),
   smoothScrolling: element<HTMLInputElement>('#smooth-scrolling'),
+  wordWrap: element<HTMLInputElement>('#word-wrap'),
+  minimap: element<HTMLInputElement>('#show-minimap'),
+  stickyScroll: element<HTMLInputElement>('#sticky-scroll'),
+  reduceMotion: element<HTMLInputElement>('#reduce-motion'),
+});
+
+// Settings > General: the folders the explorer and search leave out.
+const hiddenFoldersInput = element<HTMLInputElement>('#hidden-folders');
+hiddenFoldersInput.value = ((): string => { try { return window.localStorage.getItem('glist-studio-hidden-folders') ?? defaultHiddenFolders.join(', '); } catch { return defaultHiddenFolders.join(', '); } })();
+void window.glistAPI.setHiddenFolders(hiddenFoldersInput.value);
+hiddenFoldersInput.addEventListener('change', () => {
+  try { window.localStorage.setItem('glist-studio-hidden-folders', hiddenFoldersInput.value); } catch { /* Storage may be unavailable. */ }
+  void window.glistAPI.setHiddenFolders(hiddenFoldersInput.value).then(() => loadProjectTree());
 });
 
 // Settings > General: hardware acceleration, which Electron takes only as it

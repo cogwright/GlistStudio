@@ -702,7 +702,19 @@
     "reformatOff": "Kod biçimlendirme kapalı: Ayarlar > Kod Biçimlendirme'den bir stil seçin.",
     "movedInto": "{name}, {folder} klasörüne taşındı",
     "movedItemsInto": "{count} öğe {folder} klasörüne taşındı",
-    "moveFailed": "Öğe taşınamadı"
+    "moveFailed": "Öğe taşınamadı",
+    "cleanBuild": "Temiz Derleme",
+    "buildMenuTitle": "Diğer derleme seçenekleri",
+    "editorView": "Görünüm",
+    "wordWrap": "Uzun satırları kaydır",
+    "showMinimap": "Kodun yanında küçük haritayı göster",
+    "stickyScroll": "Kaydırırken fonksiyonun, sınıfın veya bloğun ilk satırını üstte tut",
+    "filesSettings": "Dosyalar",
+    "hiddenFolders": "Gezginde ve aramada gizlenen klasörler",
+    "hiddenFoldersHint": "Virgülle ayrılır; * herhangi bir metin yerine geçer, cmake-build-* gibi. Bir klasörü yeniden görmek için adını silin.",
+    "motion": "Hareket",
+    "reduceMotion": "Hareketi azalt",
+    "reduceMotionHint": "Düzenleyicide imleci ve kaydırmayı, arayüzde canlandırmaları durgunlaştırır. Başlangıçta sistemdeki ayarı izler."
   },
   "platforms": {
     "darwin": {

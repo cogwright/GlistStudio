@@ -75,6 +75,8 @@ body { -webkit-user-select: none; user-select: none; }
 /* A modal dialog is in the top layer, where Chromium does not carry this over
    from the page, so Settings and the other dialogs say it again. */
 dialog { -webkit-user-select: none; user-select: none; }
+/* Settings > Appearance > Reduce motion (editor-settings.ts). */
+html[data-reduce-motion] *, html[data-reduce-motion] *::before, html[data-reduce-motion] *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 input, textarea, [contenteditable="true"], .output, .log-details, .about-list dd, .debug-status, .debug-value,
 .notice-text, .notice-detail, .dialog-error, .engine-facts dd, .path-folder, .glist-install-location, .monaco-hover, .readme-view {
   -webkit-user-select: text;
@@ -224,6 +226,11 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .target-select { height: 26px; max-width: 190px; margin-right: 3px; padding: 0 6px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-bg); font: inherit; font-size: 11px; }
 .target-select[hidden] { display: none; }
 .build-control:hover:not(:disabled) { background: var(--ui-hover-strong); }
+/* Build and its dropdown (Clean Build) as one split button. */
+.build-control { border-radius: 4px 0 0 4px; }
+.run-control.build-menu { width: 18px; min-width: 18px; margin-left: -2px; padding: 0; border-left: 1px solid var(--ui-border); border-radius: 0 4px 4px 0; }
+.build-menu:not(:disabled) { color: var(--ui-fg-strong); background: var(--ui-hover); }
+.build-menu:hover:not(:disabled) { background: var(--ui-hover-strong); }
 .stop-control { width: 31px; padding: 0; }
 .stop-control:not(:disabled) { color: var(--ui-danger); }
 .run-control:disabled { color: var(--ui-fg-faint); cursor: default; }
