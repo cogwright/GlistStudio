@@ -352,9 +352,18 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
     return chosen;
   },
   setTheme: (event, colors: GlistWindowColors) => {
-    const color = (value: unknown, fallback: string): string =>
-      (typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback);
     const window = BrowserWindow.fromWebContents(event.sender);
+    const kept: GlistWindowColors = {
+      kind: colors?.kind === 'light' ? 'light' : 'dark',
+      background: color(colors?.background, '#1e1e1e'),
+      chrome: color(colors?.chrome, '#181818'),
+      text: color(colors?.text, '#cccccc'),
+    };
+    try {
+      if (readFileSync(colorsFile(), 'utf8') !== JSON.stringify(kept)) throw new Error('changed');
+    } catch {
+      try { mkdirSync(studioHome(), { recursive: true }); writeFileSync(colorsFile(), JSON.stringify(kept)); } catch { /* Not kept, then. */ }
+    }
     nativeTheme.themeSource = colors?.kind === 'light' ? 'light' : 'dark';
     window?.setBackgroundColor(color(colors?.background, '#1e1e1e'));
     if (windowControls === 'right') window?.setTitleBarOverlay({
@@ -437,12 +446,32 @@ const registerIpcHandlers = (): void => {
 };
 
 // A window and its backend; with a project to open first, and where it was last time.
+// The theme's colours, as the last window had them, for a new window to start
+// in before its page has said them: no dark window turning light.
+const colorsFile = (): string => path.join(studioHome(), 'window-colors.json');
+const color = (value: unknown, fallback: string): string =>
+  (typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback);
+const savedColors = (): GlistWindowColors => {
+  let saved: Partial<GlistWindowColors> = {};
+  try { saved = JSON.parse(readFileSync(colorsFile(), 'utf8')) as Partial<GlistWindowColors>; } catch { /* The dark defaults. */ }
+  return {
+    kind: saved.kind === 'light' ? 'light' : 'dark',
+    background: color(saved.background, '#1e1e1e'),
+    chrome: color(saved.chrome, '#181818'),
+    text: color(saved.text, '#cccccc'),
+  };
+};
+
 const createWindow = (first?: FirstProject, saved?: SavedWindow): BrowserWindow => {
   const runtimeMessages: string[] = [];
   const place = onScreen(saved?.bounds);
+  const colors = savedColors();
+  nativeTheme.themeSource = colors.kind;
   const createdWindow = new BrowserWindow({
     width: place?.width ?? 1440, height: place?.height ?? 900, ...(place ? { x: place.x, y: place.y } : {}), minWidth: 980, minHeight: 640,
-    backgroundColor: '#1e1e1e', title: 'Glist Studio', autoHideMenuBar: true,
+    // Shown once it has drawn (below), so never before its styles are there.
+    show: false,
+    backgroundColor: colors.background, title: 'Glist Studio', autoHideMenuBar: true,
     icon: path.join(
       app.isPackaged ? process.resourcesPath : path.join(app.getAppPath(), 'assets'),
       process.platform === 'win32' ? 'glistengine.ico' : 'glistengine.png',
@@ -450,8 +479,8 @@ const createWindow = (first?: FirstProject, saved?: SavedWindow): BrowserWindow 
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 12, y: 10 },
     titleBarOverlay: windowControls === 'right' && {
-      color: '#181818',
-      symbolColor: '#cccccc',
+      color: colors.chrome,
+      symbolColor: colors.text,
       height: 35,
     },
     webPreferences: {
@@ -462,7 +491,10 @@ const createWindow = (first?: FirstProject, saved?: SavedWindow): BrowserWindow 
       sandbox: true,
     },
   });
-  if (saved?.maximized) createdWindow.maximize();
+  createdWindow.once('ready-to-show', () => {
+    if (saved?.maximized) createdWindow.maximize();
+    else createdWindow.show();
+  });
   if (first) firstProjects.set(createdWindow.webContents.id, first);
   memories.set(createdWindow.webContents.id, { settings: new Map(), projectRoot: null });
   backends.set(createdWindow.webContents.id, startBackend(createdWindow));

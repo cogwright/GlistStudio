@@ -155,6 +155,9 @@ type EditorTab = OpenFile | DiffTab | PageTab;
 const isFilePageTab = (tab: EditorTab): tab is FilePageTab => tab.kind === 'image' || tab.kind === 'model' || tab.kind === 'database';
 const isPageTab = (tab: EditorTab): tab is PageTab => tab.kind === 'readme' || isFilePageTab(tab);
 
+// Shown regardless after a moment, should setting up stop short of the end.
+window.setTimeout(() => document.documentElement.classList.add('ready'), 4000);
+
 const element = <T extends HTMLElement>(selector: string): T => {
   const found = document.querySelector<T>(selector);
   if (!found) throw new Error(`Arayüz öğesi bulunamadı: ${selector}`);
@@ -4059,3 +4062,5 @@ gitProtectedBranches.addEventListener('change', saveProtection);
 configureResizers();
 configureMenus();
 updateButtons();
+// Styled, themed and in its language: the page can show (index.html hides it until now).
+document.documentElement.classList.add('ready');
