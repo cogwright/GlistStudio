@@ -153,7 +153,7 @@ const listDirectory = async (directoryPath: string): Promise<FileEntry[]> =>
 const listEntries = async (safeDirectory: string, directoryPath: string): Promise<FileEntry[]> => {
   const entries = await fs.readdir(safeDirectory, { withFileTypes: true });
   return entries
-    .filter((entry) => !entry.isDirectory() || !isHiddenFolder(entry.name))
+    .filter((entry) => !isHiddenFolder(entry.name))
     .map((entry) => ({
       name: entry.name,
       path: path.join(directoryPath, entry.name),

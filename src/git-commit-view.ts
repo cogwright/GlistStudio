@@ -7,6 +7,7 @@ import { confirmDialog } from './confirm-dialog';
 import { t, type TranslationKey } from './localization';
 import { copyPatch, savePatch } from './patches';
 import { notify } from './notifications';
+import { isHiddenPath } from './hidden-folders';
 import { baseName } from './paths';
 
 // The Commit view beside the explorer, like JetBrains' Commit tool window: the
@@ -75,6 +76,10 @@ export class CommitView {
   // commit until chosen, and their groups start closed.
   private readonly includedShared = new Set<string>();
   private readonly openShared = new Set<string>();
+  // Files the explorer hides (Settings > General), such as Eclipse's .project
+  // that Glist apps come with: changes to them stay out of a commit until chosen,
+  // so they are not committed by the way.
+  private readonly includedHidden = new Set<string>();
   private selected: string | null = null;
   // The message being written before Amend put the last commit's in its place.
   private draft = '';
@@ -206,15 +211,20 @@ export class CommitView {
     return this.client.rootOf(change.path) !== undefined;
   }
 
+  private isHidden(change: GlistGitChange): boolean {
+    const root = this.client.repository?.root;
+    return Boolean(root) && isHiddenPath(change.path, root);
+  }
+
   // The files that go into the next commit.
   private included(): GlistGitChange[] {
-    return (this.client.repository?.changes ?? []).filter((change) => (change.state === 'untracked'
-      ? this.addedUnversioned.has(change.path) : change.state !== 'conflict' && !this.excluded.has(change.path)));
+    return (this.client.repository?.changes ?? []).filter((change) => this.isIncluded(change));
   }
 
   private isIncluded(change: GlistGitChange): boolean {
     if (change.state === 'conflict') return false;
     if (this.isShared(change)) return this.includedShared.has(change.path);
+    if (this.isHidden(change)) return this.includedHidden.has(change.path);
     return change.state === 'untracked' ? this.addedUnversioned.has(change.path) : !this.excluded.has(change.path);
   }
 
@@ -223,6 +233,8 @@ export class CommitView {
     if (change.state === 'conflict') return;
     if (this.isShared(change)) {
       if (on) this.includedShared.add(change.path); else this.includedShared.delete(change.path);
+    } else if (this.isHidden(change)) {
+      if (on) this.includedHidden.add(change.path); else this.includedHidden.delete(change.path);
     } else if (change.state === 'untracked') {
       if (on) this.addedUnversioned.add(change.path); else this.addedUnversioned.delete(change.path);
     } else if (on) this.excluded.delete(change.path);
@@ -416,7 +428,7 @@ export class CommitView {
   // A file of the project, or of an engine or plugin with its repository.
   private changeRow(group: Group, change: GlistGitChange, shared?: GlistGitRepository): HTMLElement {
     const row = document.createElement('div');
-    row.className = `change-row git-${change.state}`;
+    row.className = `change-row git-${change.state}${this.isHidden(change) ? ' hidden-change' : ''}`;
     row.tabIndex = this.selected === change.path || (!this.selected && this.rows.length === 0) ? 0 : -1;
     row.dataset.path = change.path;
     row.setAttribute('role', 'treeitem');
