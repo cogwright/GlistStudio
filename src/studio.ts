@@ -22,7 +22,7 @@ import { createPluginService } from './plugins';
 import { hiddenFolderList, isHiddenFolder, setHiddenFolders } from './hidden-folders';
 import { imageType } from './images';
 import { Databases } from './database';
-import { diffDatabase } from './database-diff';
+import { diffDatabase, fileStamp } from './database-diff';
 import { gatherModel, modelBytes } from './model-files';
 import { modelType } from './models';
 import { glistRoot, studioHome } from './studio-places';
@@ -1118,6 +1118,10 @@ const databases = new Databases(async (filePath) => {
   return { file, readOnly: !editable };
 }, () => msg('databaseUnavailable'));
 export const closeDatabases = (): void => databases.closeAll();
+// A database on disk for its diff, if the studio may read it as the database
+// tab would; null when there is none.
+const workingDatabase = async (file: string): Promise<string | null> => (await fs.stat(file).then(() => true, () => false)
+  ? assertEditablePath(file).catch(() => workspacePath(file)) : null);
 
 // What an app is built with, for the explorer: the engine, and the plugins its
 // CMakeLists.txt names, from the Glist workspace it reaches as ../..
@@ -1658,10 +1662,14 @@ export const studio: Handlers = {
   // it is, if the studio may read it, as the database tab would.
   databaseDiff: (filePath: unknown, base: unknown, target: unknown, from: unknown) => diffDatabase({
     blob: (revision, file) => git.blobAt(revision, file),
-    working: async (file) => (await fs.stat(file).then(() => true, () => false)
-      ? assertEditablePath(file).catch(() => workspacePath(file)) : null),
+    working: workingDatabase,
     unavailable: () => msg('databaseUnavailable'),
   }, String(filePath), typeof base === 'string' ? base : null, typeof target === 'string' ? target : null, typeof from === 'string' ? from : undefined),
+  // Whether the file on disk changed since its diff read it, without reading it again.
+  databaseStamp: async (filePath: unknown) => {
+    const file = await workingDatabase(String(filePath));
+    return file === null ? 'missing' : fileStamp(file);
+  },
   // Only style files are read, wherever the file is: clang-format looks as far up.
   // Glist Engine's style unless Settings says the project's, or none.
   codeStyle: (filePath: unknown, mode: unknown) => {

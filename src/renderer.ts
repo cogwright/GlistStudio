@@ -1646,9 +1646,13 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
   else renderTabs();
 };
 
-// A database between two versions, compared when its tab opens and again when
-// it is opened again or refreshed. What waits in the database's own tab is not
-// in the file, so the page says so while there is any.
+// A database between two versions, compared when its tab opens, when it is
+// opened again or refreshed, and by itself once what it read changed: the file
+// on disk and its -wal (by their sizes and times, cheaply told), or the commit
+// HEAD names. Only while in front of a side: one behind looks when next shown.
+// Two commits never change. One comparison at a time; asked meanwhile, it
+// looks again once done. What waits in the database's own tab is not in the
+// file, so the page says so while there is any.
 const openDatabaseDiff = (key: string, request: DiffRequest): void => {
   const existing = openFiles.get(key);
   if (existing?.kind === 'database-diff') {
@@ -1656,14 +1660,60 @@ const openDatabaseDiff = (key: string, request: DiffRequest): void => {
     activateFile(key);
     return;
   }
-  const load = async (tab: DatabaseDiffTab): Promise<void> => {
-    Object.assign(tab.page, { diff: undefined, error: undefined });
-    const diff = await window.glistAPI.databaseDiff(request.file, request.base, request.target, request.from);
-    tab.page.left = request.base ? versionLabel(request.base, { text: diff.base.missing ? null : '' }, request.file) : t('diffMissing');
-    tab.page.right = versionLabel(request.target, { text: diff.target.missing ? null : '' }, request.file);
-    tab.page.diff = diff;
-    // The tab's tooltip names the versions.
-    if (openFiles.get(key) === tab) renderTabs();
+  const working = request.target === null;
+  const followsHead = request.base === 'HEAD' || request.target === 'HEAD';
+  const stampOf = async (): Promise<string> => `${followsHead ? git.repositoryOf(request.file)?.head ?? '' : ''}|${
+    working ? await window.glistAPI.databaseStamp(request.file) : ''}`;
+  let stamp: string | undefined;
+  let running: Promise<void> | null = null;
+  let again = false;
+  let finished = 0;
+  let timer: number | undefined;
+  const inFront = (): boolean => layout.groups.some((group) => group.active === key);
+  const database = (): DatabaseTab | undefined => {
+    const tab = openFiles.get(request.file);
+    return tab?.kind === 'database' ? tab : undefined;
+  };
+  const compare = (): Promise<void> => {
+    if (running) { again = true; return running; }
+    running = (async () => {
+      const read = await stampOf();
+      const diff = await window.glistAPI.databaseDiff(request.file, request.base, request.target, request.from);
+      tab.page.left = request.base ? versionLabel(request.base, { text: diff.base.missing ? null : '' }, request.file) : t('diffMissing');
+      tab.page.right = versionLabel(request.target, { text: diff.target.missing ? null : '' }, request.file);
+      Object.assign(tab.page, { diff, error: undefined });
+      stamp = read;
+      // The tab's tooltip names the versions.
+      if (openFiles.get(key) === tab) renderTabs();
+    })().catch((error: unknown) => {
+      tab.page.error = remoteError(error);
+      // Tried again on the next change.
+      stamp = undefined;
+    }).finally(() => {
+      running = null;
+      finished = Date.now();
+      // Drawn next by whoever asked.
+      shown = drawn();
+      if (again) { again = false; tab.page.check(); }
+    });
+    return running;
+  };
+  // What the page drew that git or the database's tab may change meanwhile.
+  const drawn = (): string => `${tab.page.canOpen()}:${tab.page.canRollback()}:${tab.page.waiting()}`;
+  let shown = '';
+  const redraw = (): void => {
+    tab.version += 1;
+    shown = drawn();
+    if (openFiles.get(key) === tab) showGroups();
+  };
+  const refresh = (): Promise<void> => compare().finally(redraw);
+  const look = async (): Promise<void> => {
+    if (openFiles.get(key) !== tab || !inFront()) return;
+    if (running) { again = true; return; }
+    const now = working || followsHead ? await stampOf().catch((): string => '') : stamp;
+    if (running || openFiles.get(key) !== tab) return;
+    if (now !== stamp) void refresh();
+    else if (drawn() !== shown) redraw();
   };
   const tab: DatabaseDiffTab = {
     kind: 'database-diff',
@@ -1675,17 +1725,49 @@ const openDatabaseDiff = (key: string, request: DiffRequest): void => {
       name: baseName(request.file),
       left: '',
       right: '',
-      refresh: () => load(tab).catch((error: unknown) => { tab.page.error = remoteError(error); }).finally(() => {
-        tab.version += 1;
-        if (openFiles.get(key) === tab) showGroups();
-      }),
+      refresh,
+      // Soon, and not sooner than a second after the last comparison, so a
+      // file being written all the time is not compared all the time.
+      check: () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => { void look(); }, Math.max(250, finished + 1000 - Date.now()));
+      },
       waiting: () => {
-        const database = openFiles.get(request.file);
-        return database !== undefined && hasPending(database);
+        const own = database();
+        return own !== undefined && hasPending(own);
+      },
+      canOpen: () => !(working && (git.changeOf(request.file)?.state === 'deleted' || tab.page.diff?.target.missing)),
+      open: () => openDatabase(request.file),
+      canRollback: () => {
+        const change = git.changeOf(request.file);
+        return working && change !== undefined && change.state !== 'untracked' && change.state !== 'conflict';
+      },
+      // As a text diff's Rollback, saying when changes waiting in the
+      // database's tab go too. Those are discarded and the file let go of
+      // first: Windows replaces no file that is open, and no connection should
+      // have its file replaced under it. The database's tab then reads it again.
+      rollback: async () => {
+        const own = database();
+        const waiting = own !== undefined && hasPending(own);
+        if (!(await confirmDialog(t(waiting ? 'databaseDiffRollbackWaiting' : 'confirmRollbackOne').replace('{name}', tab.name)))) return;
+        try {
+          if (own && waiting) own.page.pending = await window.glistAPI.databaseDiscard(request.file);
+          await window.glistAPI.databaseClose(request.file);
+        } catch (error) {
+          noticeFailed('gitFailed', error);
+          return;
+        }
+        await git.run({ kind: 'rollback', paths: [request.file] }, { root: git.rootOf(request.file) });
+        const reopened = database();
+        if (reopened) {
+          reopened.version += 1;
+          showGroups();
+        }
+        void refresh();
       },
     },
   };
-  openPageTab(tab, load);
+  openPageTab(tab, compare);
 };
 
 // A plugin's README in a tab of its own, asked for when the tab first opens.
@@ -4059,6 +4141,7 @@ git.onStatus((status) => {
   renderBranchChip(status?.repository ?? null);
   fileTree.querySelectorAll<HTMLElement>('.tree-row[data-path]').forEach(decorateTreeRow);
   diffsInFront().filter((diff) => diff.target === null).forEach((diff) => { void fillDiff(diff); });
+  [...openFiles.values()].forEach((tab) => { if (tab.kind === 'database-diff') tab.page.check(); });
 });
 applyGitEnabled(git.enabled);
 if (git.enabled) {

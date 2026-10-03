@@ -1,4 +1,5 @@
 import { button, cellView, colored, counted, make, numbers, words } from './database-page';
+import { icon, type IconName } from './icons';
 import { lineChanges } from './line-diff';
 import { t, type TranslationKey } from './localization';
 
@@ -6,7 +7,8 @@ import { t, type TranslationKey } from './localization';
 // compares): its tables and views beside it, each with what happened to it and
 // the unchanged ones folded away; for the one chosen, its SQL before and after
 // with the lines that differ marked, and its rows added, removed and changed,
-// a changed cell as it was and as it is.
+// a changed cell as it was and as it is. Its toolbar is a text diff's: the
+// previous and next changed table, open the database, put the file back.
 
 export interface DatabaseDiffPage {
   name: string;
@@ -17,12 +19,26 @@ export interface DatabaseDiffPage {
   error?: string;
   // Compares again; the tab is drawn again once it has.
   refresh(): Promise<void>;
+  // Shown, after being hidden or drawn anew: compares again if what it
+  // compared changed meanwhile.
+  check(): void;
   // Whether the database's own tab has changes waiting to be committed, which
-  // the file does not have yet. Asked each time the page is drawn.
+  // the file does not have yet. Asked each time the page is drawn, as the
+  // toolbar's buttons are.
   waiting(): boolean;
-  // The table or view shown, and whether unchanged ones are listed, kept while the tab is open.
+  // The database's own tab, while its file is there.
+  canOpen(): boolean;
+  open(): void;
+  // The file put back as the base has it, as a text diff's Rollback does: for
+  // a diff against the file on disk, with changes git knows of.
+  canRollback(): boolean;
+  rollback(): void;
+  // The table or view shown, whether unchanged ones are listed, and where the
+  // shown one's rows and the list were scrolled to, kept while the tab is open.
   chosen?: string;
   unchangedOpen?: boolean;
+  scroll?: { table: string; top: number; left: number };
+  listTop?: number;
 }
 
 const stateWords: Record<GlistDatabaseDiffState, TranslationKey> = {
@@ -45,10 +61,37 @@ export const renderDatabaseDiffPage = (target: HTMLElement, page: DatabaseDiffPa
   let disposed = false;
   const view = make('div', 'database-diff-view');
   const header = make('div', 'database-diff-header');
-  const refresh = button(t('databaseRefresh'));
+  const action = (name: IconName, title: string, run: () => void, className = ''): HTMLButtonElement => {
+    const made = button('', `heading-action ${className}`.trim());
+    made.title = title;
+    made.append(icon(name));
+    made.addEventListener('click', run);
+    return made;
+  };
+  // Set once the tables are known.
+  let step = (by: number): void => { void by; };
+  const previous = action('arrow-up', t('databaseDiffPrevious'), () => step(-1));
+  const next = action('arrow-down', t('databaseDiffNext'), () => step(1));
+  const refresh = action('refresh', t('databaseRefresh'), () => {
+    refresh.disabled = true;
+    status(t('databaseDiffComparing'));
+    void page.refresh();
+  });
+  const open = action('go-to-file', t('databaseDiffOpen'), () => page.open());
+  const rollback = action('discard', t('rollback'), () => page.rollback(), 'danger');
+  open.disabled = !page.canOpen();
+  rollback.hidden = !page.canRollback();
+  [previous, next].forEach((each) => { each.disabled = true; });
   header.append(make('span', 'database-diff-name', page.name), make('span', 'database-diff-versions', page.diff ? `${page.left}  →  ${page.right}` : ''),
-    make('span', 'database-diff-space'), refresh);
+    make('span', 'database-diff-space'), previous, next, refresh, open, rollback);
   view.append(header);
+  // Shown again, or drawn anew, it looks whether what it compared changed.
+  const shown = new IntersectionObserver((entries) => { if (entries.some((entry) => entry.isIntersecting)) page.check(); });
+  shown.observe(view);
+  const dispose = (): void => {
+    disposed = true;
+    shown.disconnect();
+  };
   // The file as saved is what is compared; what waits in its tab is not in it.
   if (page.waiting()) {
     const waiting = make('div', 'database-pending database-diff-waiting');
@@ -61,15 +104,11 @@ export const renderDatabaseDiffPage = (target: HTMLElement, page: DatabaseDiffPa
     const line = make('p', `readme-status database-diff-status${error ? ' error' : ''}`, text);
     header.after(line);
   };
-  refresh.addEventListener('click', () => {
-    refresh.disabled = true;
-    status(t('databaseDiffComparing'));
-    void page.refresh();
-  });
   const { diff } = page;
+  if (page.error) status(`${t('databaseDiffFailed')}: ${page.error}`, true);
   if (!diff) {
-    status(page.error ? `${t('databaseDiffFailed')}: ${page.error}` : t('databaseDiffComparing'), Boolean(page.error));
-    return { dispose: () => { disposed = true; } };
+    if (!page.error) status(t('databaseDiffComparing'));
+    return { dispose };
   }
 
   // A version that is not a database it can read says so, and nothing is compared.
@@ -77,7 +116,7 @@ export const renderDatabaseDiffPage = (target: HTMLElement, page: DatabaseDiffPa
     ? [words(version.problem === 'lfs' ? 'databaseDiffLfs' : 'databaseDiffNotDatabase', { version: label })] : []));
   if (problems.length) {
     problems.forEach((problem) => view.append(make('p', 'database-diff-problem', problem)));
-    return { dispose: () => { disposed = true; } };
+    return { dispose };
   }
 
   const body = make('div', 'database-diff-body');
@@ -87,7 +126,8 @@ export const renderDatabaseDiffPage = (target: HTMLElement, page: DatabaseDiffPa
   view.append(body);
   const differing = diff.tables.filter((table) => table.state !== 'unchanged');
   const unchanged = diff.tables.filter((table) => table.state === 'unchanged');
-  if (!diff.tables.some((table) => keyOf(table) === page.chosen)) page.chosen = differing[0] ? keyOf(differing[0]) : undefined;
+  // With nothing different, it says so, though an unchanged table can still be chosen from the list.
+  if (!differing.length || !diff.tables.some((table) => keyOf(table) === page.chosen)) page.chosen = differing[0] ? keyOf(differing[0]) : undefined;
 
   // SQL before and after, side by side, the lines that differ marked.
   const sqlPair = (before: string | null, after: string | null): HTMLElement => {
@@ -184,6 +224,10 @@ export const renderDatabaseDiffPage = (target: HTMLElement, page: DatabaseDiffPa
       }
     }
     main.replaceChildren(title, detail);
+    // Compared again, it stays where it was.
+    const key = keyOf(table);
+    if (page.scroll?.table === key) Object.assign(detail, { scrollTop: page.scroll.top, scrollLeft: page.scroll.left });
+    detail.addEventListener('scroll', () => { page.scroll = { table: key, top: detail.scrollTop, left: detail.scrollLeft }; });
   };
 
   const draw = (): void => {
@@ -209,11 +253,21 @@ export const renderDatabaseDiffPage = (target: HTMLElement, page: DatabaseDiffPa
     }
     list.replaceChildren(...group(t('databaseTables'), differing.filter((table) => table.kind === 'table')),
       ...group(t('databaseViews'), differing.filter((table) => table.kind === 'view')), ...folded);
+    list.scrollTop = page.listTop ?? 0;
     const chosen = diff.tables.find((table) => keyOf(table) === page.chosen);
     if (chosen) showTable(chosen);
     else main.replaceChildren(make('p', 'database-empty database-diff-none', t('databaseDiffNone')));
   };
+  list.addEventListener('scroll', () => { page.listTop = list.scrollTop; });
+  // The previous or next table that changed, round from the last to the first.
+  step = (by: number): void => {
+    const at = differing.findIndex((table) => keyOf(table) === page.chosen);
+    const index = at < 0 ? (by > 0 ? 0 : differing.length - 1) : (at + by + differing.length) % differing.length;
+    page.chosen = keyOf(differing[index]);
+    draw();
+  };
+  [previous, next].forEach((each) => { each.disabled = !differing.length; });
   draw();
 
-  return { dispose: () => { disposed = true; } };
+  return { dispose };
 };

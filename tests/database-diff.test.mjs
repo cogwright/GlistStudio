@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { compareDatabases, diffDatabase, diffRows } from '../src/database-diff.ts';
+import { compareDatabases, diffDatabase, diffRows, fileStamp } from '../src/database-diff.ts';
 
 // A database compared between two versions: tables, schema and rows added,
 // removed and changed, counted by SQLite; neither version written to, nor
@@ -23,6 +23,7 @@ const leftBefore = ours();
 // Every file beside one, with its bytes and when it was written.
 const besides = (file) => readdirSync(path.dirname(file)).filter((name) => name.startsWith(path.basename(file)))
   .map((name) => `${name}:${statSync(path.join(path.dirname(file), name)).mtimeMs}:${readFileSync(path.join(path.dirname(file), name)).toString('base64')}`).sort();
+const sql = (file, text) => { const db = new DatabaseSync(file); try { db.exec(text); } finally { db.close(); } };
 const table = (diff, name) => diff.tables.find((entry) => entry.name === name);
 const brief = (rows) => rows.rows.map((row) => `${row.state}:${JSON.stringify(row.before)}>${JSON.stringify(row.after)}:${row.changed.join(',')}`);
 
@@ -174,6 +175,20 @@ try {
   const heldDiff = await compareDatabases(rollback, at('held.db'));
   assert.deepEqual(brief(table(heldDiff, 't').rows), ['changed:[1,1]>[1,"held"]:1', 'added:null>[2,"only in the wal"]:']);
   assert.deepEqual(besides(at('held.db')).filter((entry) => !entry.startsWith('held.db-shm')), heldBefore);
+  // What tells a diff its file changed: the same until a write, the file's or
+  // its -wal's, and not moved by reading.
+  const stamped = await fileStamp(at('held.db'));
+  assert.match(stamped, /^\d+:[\d.]+\/\d+:[\d.]+$/);
+  await compareDatabases(rollback, at('held.db'));
+  assert.equal(await fileStamp(at('held.db')), stamped);
+  held.exec("INSERT INTO t VALUES (3, 'later')");
+  assert.notEqual(await fileStamp(at('held.db')), stamped);
+  const rollbackStamp = await fileStamp(rollback);
+  assert.match(rollbackStamp, /\/-$/);
+  sql(rollback, "UPDATE t SET v = 2");
+  assert.notEqual(await fileStamp(rollback), rollbackStamp);
+  sql(rollback, "UPDATE t SET v = 1");
+  assert.equal(await fileStamp(at('nowhere.db')), '-/-');
   // Open in another process, as a Glist app has it: its -shm is not written to either.
   const writer = spawn(process.execPath, ['--no-warnings', '--input-type=module', '-e', `
     import { DatabaseSync } from 'node:sqlite';
@@ -194,7 +209,7 @@ try {
   held.close();
   const orphanBefore = besides(at('orphan.db'));
   assert.deepEqual(readdirSync(root).filter((name) => name.startsWith('orphan.db')), ['orphan.db', 'orphan.db-wal']);
-  assert.equal(table(await compareDatabases(rollback, at('orphan.db')), 't').rows.added, 1);
+  assert.equal(table(await compareDatabases(rollback, at('orphan.db')), 't').rows.added, 2);
   assert.deepEqual(besides(at('orphan.db')), orphanBefore);
 
   // From git and the disk: a commit's version copied to a folder of our own,

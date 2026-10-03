@@ -756,6 +756,8 @@ interface Window {
     // disk (target null); no base when the file is new. From: where a renamed
     // file was at the base.
     databaseDiff(filePath: string, base: string | null, target: string | null, from?: string): Promise<GlistDatabaseDiff>;
+    // The file on disk's size and when it was written, and its -wal's: changes when what a diff read did.
+    databaseStamp(filePath: string): Promise<string>;
     // The .clang-format a C or C++ file follows, or null.
     codeStyle(filePath: string, mode?: GlistCodeStyleMode): Promise<GlistCodeStyle | null>;
     listDependencies(): Promise<GlistDependency[]>;
