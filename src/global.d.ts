@@ -244,6 +244,21 @@ interface GlistUpdateState {
   version?: string;
   page?: string;
   message?: string;
+  // The version is an earlier one, gone back to.
+  rollback?: boolean;
+  // Gone back from this version: it, and those before it, are not installed again by themselves.
+  held?: string;
+}
+
+// An earlier version Settings offers to go back to.
+interface GlistRollbackChoice {
+  version: string;
+  preview: boolean;
+  // On the computer already: nothing to download.
+  kept: boolean;
+  // This copy can install it itself; otherwise its release page opens.
+  installable: boolean;
+  page: string;
 }
 
 // A target of the project's build, as CMake describes it.
@@ -672,6 +687,10 @@ interface Window {
     // Quits, asking about unsaved files as usual, and installs the downloaded update.
     installUpdate(): Promise<void>;
     openUpdatePage(): Promise<void>;
+    // Going back to an earlier version (updater.ts), and letting go of the hold after.
+    rollbackChoices(previews: boolean): Promise<GlistRollbackChoice[]>;
+    rollBack(version: string): Promise<GlistUpdateState>;
+    releaseHold(previews: boolean): Promise<GlistUpdateState>;
     installAgent(agent: GlistAgentId): Promise<GlistProcessResult>;
     gitStatus(): Promise<GlistGitStatus>;
     gitWatch(on: boolean): Promise<void>;

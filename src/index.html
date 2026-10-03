@@ -226,6 +226,17 @@
         </form>
       </dialog>
 
+      <dialog id="rollback-dialog" class="studio-dialog rollback-dialog">
+        <form method="dialog" id="rollback-form">
+          <h2 data-i18n="rollbackTitle">Roll Back to an Earlier Version</h2>
+          <p class="dialog-hint" data-i18n="rollbackIntro">For when a newer version does not work for you: Glist Studio goes back to the one chosen when it restarts.</p>
+          <div id="rollback-list" class="rollback-list" role="radiogroup" aria-labelledby="rollback-dialog"></div>
+          <p class="rollback-warning" data-i18n="rollbackWarning">Settings this version saved may not work in an earlier one, and some may go back to their defaults. Your projects are not touched. The version you leave is not installed again by itself; a newer one will be.</p>
+          <p id="rollback-status" class="dialog-error" role="alert"></p>
+          <div class="dialog-actions"><button type="button" id="rollback-cancel" data-i18n="cancel">Cancel</button><button type="submit" id="rollback-confirm" class="primary" data-i18n="rollbackConfirm">Roll Back</button></div>
+        </form>
+      </dialog>
+
       <dialog id="glist-install-dialog" class="studio-dialog">
         <h2 data-i18n="installGlist">Install Glist Engine</h2>
         <div id="glist-install-intro">
@@ -325,6 +336,11 @@
                   <label class="checkbox-row"><input id="update-previews" type="checkbox" /><span data-i18n="updatePreviews">Get previews too</span></label>
                   <p class="dialog-hint" data-i18n="updatePreviewsHint">Previews are built from every change to Glist Studio, before a release: the newest work, less tested.</p>
                   <p id="update-version" class="dialog-hint"></p>
+                  <p id="update-held" class="dialog-hint update-held" hidden></p>
+                  <div class="rollback-actions">
+                    <button id="update-again" class="path-add" type="button" data-i18n="updateAgain" hidden>Update Again</button>
+                    <button id="rollback-open" class="path-add" type="button" data-i18n="rollbackOpen">Roll Back to an Earlier Version...</button>
+                  </div>
                 </fieldset>
                 <fieldset class="settings-section">
                   <legend data-i18n="filesSettings">Files</legend>
