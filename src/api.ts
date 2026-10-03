@@ -14,6 +14,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   newWindow: 'window:new',
   quitApp: 'app:quit',
   copyText: 'app:copy-text',
+  toggleDevTools: 'window:toggle-dev-tools',
   windowControl: 'window:control',
   windowMaximized: 'window:is-maximized',
   closeProject: 'window:close-project',

@@ -40,6 +40,10 @@ export interface RepairHost {
 
 export interface Repair {
   open(): void;
+  // Reload the Window, as from Repair IDE or Ctrl+R: null once it reloads, or
+  // why it did not: changed files that could not be saved, or a database's
+  // changes kept when asked.
+  reload(): Promise<'unsaved' | 'kept' | null>;
   // A restart Repair IDE asked for is underway: the window's own notice of a new backend is not wanted.
   restarting(): boolean;
 }
@@ -78,6 +82,22 @@ const marks: Record<RepairState, IconName> = {
 
 export const setUpRepair = (host: RepairHost): Repair => {
   let restartingNow = false;
+  // The page starts afresh, Monaco with it, and opens its project again
+  // (index.ts), its files saved and its session kept first. The backend stays,
+  // and so would what the page started there: its shells and agent, which no
+  // tab would show, and the debugger, so those end. Saving needs the backend;
+  // one that does not answer would keep this waiting, so it is given 15 seconds.
+  const reloadWindow = async (closing: () => void = () => undefined): Promise<'unsaved' | 'kept' | null> => {
+    const saved = await within(host.saveFiles(), 15000).catch(() => false);
+    if (!saved || host.unsavedFiles()) return 'unsaved';
+    if (!(await host.settleDatabases())) return 'kept';
+    host.saveSession();
+    host.processes().terminals.filter((terminal) => /^(shell|agent)/.test(terminal.session)).forEach((terminal) => terminal.stop());
+    await within(host.stopDebugging(), 5000).catch((): undefined => undefined);
+    closing();
+    await window.glistAPI.reloadWindow(host.projectRoot());
+    return null;
+  };
   // Backends that stopped by themselves since the window opened, which the
   // main process started again (index.ts).
   let restartedBefore = 0;
@@ -205,21 +225,11 @@ export const setUpRepair = (host: RepairHost): Repair => {
       void (async () => {
         reload.disabled = true;
         summary.textContent = t('repairReloading');
-        // Saving needs the backend; one that does not answer would keep this waiting.
-        const saved = await within(host.saveFiles(), 15000).catch(() => false);
-        if (!saved || host.unsavedFiles()) {
+        const kept = await reloadWindow(() => view.close());
+        if (kept === 'unsaved') {
           summary.textContent = t('repairReloadUnsaved');
           reload.disabled = false;
-          return;
-        }
-        if (!(await host.settleDatabases())) { render(); return; }
-        host.saveSession();
-        // The backend stays, and so would what the page started there: its
-        // shells and agent, which no tab would show, and the debugger.
-        host.processes().terminals.filter((terminal) => /^(shell|agent)/.test(terminal.session)).forEach((terminal) => terminal.stop());
-        await within(host.stopDebugging(), 5000).catch((): undefined => undefined);
-        view.close();
-        await window.glistAPI.reloadWindow(host.projectRoot());
+        } else if (kept === 'kept') render();
       })();
     });
     close.addEventListener('click', () => view.close());
@@ -250,7 +260,7 @@ export const setUpRepair = (host: RepairHost): Repair => {
   };
   window.setTimeout(() => { void beat(); }, 30000);
 
-  return { open, restarting: () => restartingNow };
+  return { open, reload: () => reloadWindow(), restarting: () => restartingNow };
 };
 
 // The words on screen, in the language in use.

@@ -437,6 +437,7 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
   quitApp: () => { app.quit(); },
   // The renderer's copies (clipboard.ts), which need no focus here.
   copyText: (_event, text: string) => { clipboard.writeText(String(text)); },
+  toggleDevTools: (event) => { event.sender.toggleDevTools(); },
   windowControl: (event, action: unknown) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (action === 'minimize') window?.minimize();
@@ -588,6 +589,20 @@ const createWindow = (first?: FirstProject, saved?: SavedWindow): BrowserWindow 
     runtimeMessages.push(detailMessage ?? message);
   });
   createdWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
+  // Loaded again some other way than Reload the Window (renderer.ts), such as
+  // from the developer tools, the page opens its project again as that does,
+  // rather than coming up empty beside a backend that still has it open.
+  let loaded = false;
+  createdWindow.webContents.once('did-finish-load', () => { loaded = true; });
+  createdWindow.webContents.on('did-start-navigation', (details) => {
+    if (!loaded || !details.isMainFrame || details.isSameDocument) return;
+    const id = createdWindow.webContents.id;
+    const memory = memories.get(id);
+    if (memory?.projectRoot && !firstProjects.has(id)) {
+      firstProjects.set(id, { kind: 'open', root: memory.projectRoot });
+      memory.projectRoot = null;
+    }
+  });
   // Web pages and mail addresses open in the browser and the mail program, never
   // in a window here: commit pages from Settings > About, and a plugin's README's links.
   createdWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -665,6 +680,11 @@ const restoreWindows = (): void => {
 let started = false;
 app.whenReady().then(() => {
   if (!firstInstance) return;
+  // On Windows and Linux the menus are the page's own. Electron's, hidden,
+  // would still take keys before it: Ctrl+R reloading the page bare, also in a
+  // terminal where Ctrl+R searches the shell's history, and F11 full screen
+  // where the debugger steps into, and Alt would show it. A Mac's is set by the page.
+  if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
   registerIpcHandlers();
   restoreWindows();
   void tidySquirrelFolders();
