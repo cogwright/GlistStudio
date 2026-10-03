@@ -60,7 +60,7 @@ import { EnvironmentSettings } from './environment-settings';
 import { RunArguments } from './run-arguments';
 import { terminalTheme } from './themes';
 import { isLanguage, languages } from './languages';
-import { confirmDialog } from './confirm-dialog';
+import { choiceDialog, confirmDialog } from './confirm-dialog';
 import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './localization';
 import { renderImagePage, type ImagePage } from './image-page';
 import { imageType } from './images';
@@ -2652,17 +2652,23 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
 const hasPending = (tab: EditorTab): tab is DatabaseTab => tab.kind === 'database' && Boolean(tab.page.pending?.open);
 
 // Before databases let go of their files, which rolls back what was not
-// committed, each with changes waiting asks whether to commit them, and
-// discards them if not. A commit that fails throws, its changes still waiting.
-const settleDatabases = async (entryPath?: string): Promise<void> => {
+// committed, each with changes waiting asks: Commit, Discard, or Cancel (and
+// Escape), which keeps them waiting and stops what asked: false then. A commit
+// that fails throws, its changes still waiting.
+const settleDatabases = async (entryPath?: string): Promise<boolean> => {
   const pending = [...openFiles.values()].filter(hasPending).filter((tab) => entryPath === undefined || isWithin(tab.path, entryPath));
   for (const tab of pending) {
-    const save = await confirmDialog(t('databaseSaveBeforeClosing').replace('{name}', tab.name), { yes: t('databaseCommit'), no: t('databaseDiscard') });
-    tab.page.pending = await (save ? window.glistAPI.databaseCommit(tab.path) : window.glistAPI.databaseDiscard(tab.path));
+    const chosen = await choiceDialog(t('databaseSaveBeforeClosing').replace('{name}', tab.name), [
+      { value: 'discard', label: t('databaseDiscard') },
+      { value: 'commit', label: t('databaseCommit'), primary: true },
+    ]);
+    if (!chosen) return false;
+    tab.page.pending = await (chosen === 'commit' ? window.glistAPI.databaseCommit(tab.path) : window.glistAPI.databaseDiscard(tab.path));
   }
+  return true;
 };
 const databasesSettled = (entryPath?: string): Promise<boolean> => settleDatabases(entryPath)
-  .then(() => true, (error: unknown) => { noticeFailed('saveFailed', error); return false; });
+  .catch((error: unknown) => { noticeFailed('saveFailed', error); return false; });
 // The browser build opens a project in place of the one open, letting go of
 // its databases; the app opens it in a window of its own.
 const leavingDatabases = (): Promise<boolean> => (window.glistFiles ? Promise.resolve(true) : databasesSettled());
@@ -2677,9 +2683,10 @@ const releaseDatabases = async (entryPath: string): Promise<void> => {
     .map((tab) => window.glistAPI.databaseClose(tab.path)));
 };
 
-const relocateEntry = async (entryPath: string, change: () => Promise<string>): Promise<string> => {
+// Null when a database in it was asked about and Cancel chosen: nothing moves.
+const relocateEntry = async (entryPath: string, change: () => Promise<string>): Promise<string | null> => {
   await saveOpenCmake();
-  await settleDatabases(entryPath);
+  if (!(await settleDatabases(entryPath))) return null;
   await releaseDatabases(entryPath);
   for (const file of fileTabs()) {
     if (isWithin(file.path, entryPath) && isDirty(file)) await saveFile(file);
@@ -2704,6 +2711,7 @@ const renameSelectedEntry = async (): Promise<void> => {
   if (!newName || newName === entry.name) return;
   try {
     const nextPath = await relocateEntry(entry.path, () => window.glistAPI.renameEntry(entry.path, newName));
+    if (nextPath === null) return;
     await loadProjectTree();
     notify({ text: t('renamedTo').replace('{from}', entry.name).replace('{to}', baseName(nextPath)), detail: noticePath(nextPath), kind: 'success' });
   } catch (error) {
@@ -2718,8 +2726,11 @@ const moveEntries = async (entryPaths: string[], folder: string): Promise<void> 
   const movedPaths: string[] = [];
   try {
     for (const entryPath of moving) {
-      movedPaths.push(await relocateEntry(entryPath, () => window.glistAPI.moveEntry(entryPath, folder)));
+      const movedPath = await relocateEntry(entryPath, () => window.glistAPI.moveEntry(entryPath, folder));
+      if (movedPath === null) break;
+      movedPaths.push(movedPath);
     }
+    if (movedPaths.length === 0) return;
     if (activeProject && folder !== activeProject.root) expandedDirectories.add(folder);
     await loadProjectTree();
     const text = movedPaths.length === 1
