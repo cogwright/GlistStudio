@@ -206,6 +206,9 @@ const paletteRules = (palette: ThemePalette): monaco.editor.ITokenThemeRule[] =>
     rule('string.escape', palette.constant),
     rule('number', palette.number),
     rule('annotation', palette.macro),
+    // A section or table in INI and TOML, and their keys, as YAML colours its keys.
+    rule('metatag', palette.keyword),
+    rule('key', palette.type),
     rule('delimiter', palette.operator ?? palette.editorText),
     rule('constant', palette.constant),
     ...Object.entries(semantic).map(([token, color]) => rule(token, color)),

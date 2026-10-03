@@ -13,6 +13,9 @@ import { AgentSettings } from './agent-settings';
 import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
+import { checkDataFiles } from './data-checks';
+import { DataFormatError, formatIni, formatToml, formatYaml, isDataLanguage } from './data-format';
+import { registerTomlLanguage } from './toml-language';
 import { editorBehaviour, loadEditorSettings, onEditorSettingsChange, setUpEditorSettings } from './editor-settings';
 import { defaultHiddenFolders } from './hidden-folders';
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
@@ -454,6 +457,8 @@ const showZoom = (): void => {
 
 placeIcons();
 registerCmakeLanguage();
+registerTomlLanguage();
+checkDataFiles();
 applyTheme(getActiveTheme());
 
 const setZoom = (percentage: number): void => {
@@ -695,7 +700,12 @@ const languageForFile = (filePath: string): { id: string; label: string } => {
     hpp: { id: 'cpp', label: 'C++ Header' }, json: { id: 'json', label: 'JSON' },
     md: { id: 'markdown', label: 'Markdown' }, xml: { id: 'xml', label: 'XML' },
     yml: { id: 'yaml', label: 'YAML' }, yaml: { id: 'yaml', label: 'YAML' },
-    cmake: { id: 'cmake', label: 'CMake' },
+    cmake: { id: 'cmake', label: 'CMake' }, toml: { id: 'toml', label: 'TOML' },
+    ini: { id: 'ini', label: 'INI' }, cfg: { id: 'ini', label: 'INI' }, conf: { id: 'ini', label: 'INI' },
+    properties: { id: 'ini', label: 'INI' }, editorconfig: { id: 'ini', label: 'INI' },
+    gitconfig: { id: 'ini', label: 'INI' }, gitmodules: { id: 'ini', label: 'INI' },
+    // .clang-format and .clang-tidy are YAML.
+    'clang-format': { id: 'yaml', label: 'YAML' }, 'clang-tidy': { id: 'yaml', label: 'YAML' },
   };
   return languages[extension] ?? { id: 'plaintext', label: 'Plain Text' };
 };
@@ -1180,6 +1190,10 @@ const formatForSaving = async (file: OpenFile): Promise<void> => {
 const reformatFile = async (): Promise<void> => {
   const file = activeFile();
   const editor = currentEditor();
+  if (file && !file.readOnly && editor.getModel() === file.model && isDataLanguage(file.model.getLanguageId())) {
+    await reformatData(file, editor);
+    return;
+  }
   if (!file || file.readOnly || file.model.getLanguageId() !== 'cpp' || editor.getModel() !== file.model) return;
   if (codeStyleMode() === 'none') {
     notify({ text: t('reformatOff') });
@@ -1199,11 +1213,47 @@ const reformatFile = async (): Promise<void> => {
   if (!(await formatLines(file, lines, style))) notify({ text: t('reformatUnavailable'), kind: 'error' });
 };
 
+// A settings file laid out whole, as one step Undo takes back: JSON by
+// Monaco's JSON service, YAML, TOML and INI by data-format.ts. One with a
+// mistake is left as it is, and the notice says where.
+const reformatData = async (file: OpenFile, editor: monaco.editor.IStandaloneCodeEditor): Promise<void> => {
+  const { model } = file;
+  const language = model.getLanguageId();
+  if (language === 'json') {
+    await editor.getAction('editor.action.formatDocument')?.run();
+    return;
+  }
+  const { insertSpaces, indentSize } = model.getOptions();
+  let laid: string;
+  try {
+    laid = language === 'yaml' ? formatYaml(model.getValue(), insertSpaces ? indentSize : 2)
+      : language === 'toml' ? await formatToml(model.getValue()) : formatIni(model.getValue());
+  } catch (error) {
+    if (!(error instanceof DataFormatError)) throw error;
+    const { line, column, message } = error.problem;
+    notify({
+      text: t('reformatMistake'),
+      detail: `${t('line')} ${line}: ${message}`,
+      kind: 'error',
+      actions: [{ label: t('goToMistake'), run: () => { editor.setPosition({ lineNumber: line, column }); editor.revealLineInCenter(line); editor.focus(); } }],
+    });
+    return;
+  }
+  if (laid === model.getValue()) return;
+  const position = editor.getPosition();
+  editor.pushUndoStop();
+  editor.executeEdits('glist.reformat', [{ range: model.getFullModelRange(), text: laid, forceMoveMarkers: true }]);
+  editor.pushUndoStop();
+  if (position) editor.setPosition(model.validatePosition(position));
+};
+
 const canReformat = (): boolean => {
   const file = activeFile();
-  return Boolean(file && !file.readOnly && file.model.getLanguageId() === 'cpp');
+  return Boolean(file && !file.readOnly && (file.model.getLanguageId() === 'cpp' || isDataLanguage(file.model.getLanguageId())));
 };
 const hasSelection = (): boolean => Boolean(currentEditor().getSelection() && !currentEditor().getSelection()?.isEmpty());
+// Settings files are laid out whole; only C++ can be by the lines chosen.
+const reformatsSelection = (): boolean => hasSelection() && currentEditor().getModel()?.getLanguageId() === 'cpp';
 
 // Formats lines of a file by its .clang-format through clangd, as one step Undo
 // takes back. False when clangd did not answer in time; typed into meanwhile,
@@ -1886,7 +1936,7 @@ const setUpEditor = (view: GroupView): void => {
   target.onDidBlurEditorWidget(() => { if (activeProject) void saveProjectFiles(false); });
   target.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
   target.addCommand(isLinux ? monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI : monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
-    () => { void reformatFile(); }, 'editorLangId == cpp');
+    () => { void reformatFile(); }, 'editorLangId =~ /^(cpp|json|yaml|toml|ini)$/');
   // As Monaco's own menu did: focus, and the cursor at the click unless it is in the selection.
   target.onContextMenu((event) => {
     target.focus();
@@ -2994,7 +3044,7 @@ const configureMenus = (): void => {
         item(t('findInFilesMenu'), () => findInFiles.open(), { shortcut: 'Ctrl+Shift+F', disabled: !activeProject }),
         item(t('searchEverywhere'), () => searchEverywhere.open(), { hint: t('doubleShift') }),
         { kind: 'separator' },
-        item(t(hasSelection() ? 'reformatSelection' : 'reformatFile'), () => { void reformatFile(); }, { shortcut: reformatShortcut, disabled: !canReformat() }),
+        item(t(reformatsSelection() ? 'reformatSelection' : 'reformatFile'), () => { void reformatFile(); }, { shortcut: reformatShortcut, disabled: !canReformat() }),
       ],
       view: [
         { kind: 'heading', label: t('layout') },
