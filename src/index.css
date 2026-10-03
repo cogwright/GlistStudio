@@ -137,10 +137,19 @@ button:focus-visible { outline: 1px solid var(--ui-accent); outline-offset: -1px
   -webkit-app-region: drag;
 }
 
-/* Room for the window buttons Electron draws over the title bar. They keep their
-   size when the page is zoomed, so the room is the same on screen at any zoom. */
+/* Room for a Mac's window buttons, which Electron draws over the title bar. They
+   keep their size when the page is zoomed, so the room is the same on screen at
+   any zoom. On Windows and Linux the page draws its own, at its right edge. */
 html[data-window-controls="left"] .topbar { padding-left: calc(78px / var(--window-zoom, 1)); }
-html[data-window-controls="right"] .topbar { padding-right: calc(138px / var(--window-zoom, 1)); }
+.window-buttons { display: none; }
+html[data-window-controls="right"] .window-buttons { display: flex; align-self: stretch; margin: -1px -8px -1px 4px; -webkit-app-region: no-drag; }
+.window-button { display: inline-flex; width: 46px; align-items: center; justify-content: center; padding: 0; border: 0; color: var(--ui-fg); background: transparent; cursor: default; }
+.window-button svg { width: 16px; height: 16px; }
+.window-button:hover { background: var(--ui-hover-strong); }
+.window-button:active { background: var(--ui-hover); }
+/* Red as Windows' own close button is. */
+.window-button.window-close:hover { color: #ffffff; background: #c42b1c; }
+.window-button.window-close:active { color: #ffffff; background: #a52a1d; }
 
 .titlebar-left, .menubar, .toolbar-actions {
   display: flex;

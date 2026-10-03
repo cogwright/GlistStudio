@@ -341,12 +341,12 @@ app.on('browser-window-focus', (_event, window) => {
 });
 
 // The title bar is 35px of the page, so it grows and shrinks with the zoom on
-// screen, while the window's own buttons do not: Windows' are made as tall as
-// the bar, and a Mac's are kept in its middle, where y 10 puts them at 100%.
+// screen. A Mac's window buttons do not, and are kept in its middle, where y 10
+// puts them at 100%. On Windows and Linux the page draws the buttons itself, so
+// they zoom with it, and its menus open over them.
 const titleBarHeight = (zoom: number): number => Math.round(35 * zoom);
 const fitWindowControls = (window: BrowserWindow | null, zoom: number): void => {
-  if (windowControls === 'right') window?.setTitleBarOverlay({ height: titleBarHeight(zoom) });
-  else if (windowControls === 'left') window?.setWindowButtonPosition({ x: 12, y: Math.round((titleBarHeight(zoom) - 15) / 2) });
+  if (windowControls === 'left') window?.setWindowButtonPosition({ x: 12, y: Math.round((titleBarHeight(zoom) - 15) / 2) });
 };
 
 // What the main process answers itself: windows, dialogs, menus and updates.
@@ -376,11 +376,6 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
     }
     nativeTheme.themeSource = colors?.kind === 'light' ? 'light' : 'dark';
     window?.setBackgroundColor(color(colors?.background, '#1e1e1e'));
-    if (windowControls === 'right') window?.setTitleBarOverlay({
-      color: color(colors?.chrome, '#181818'),
-      symbolColor: color(colors?.text, '#cccccc'),
-      height: titleBarHeight(event.sender.getZoomFactor()),
-    });
   },
   openProject: async (event) => {
     const defaultPath = String(await backendFor(event).call('getProjectsDirectory', []));
@@ -407,6 +402,19 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
   newWindow: () => { createWindow(); },
   // File > Exit: every window closes, saving its files, and opens again on the next start.
   quitApp: () => { app.quit(); },
+  windowControl: (event, action: unknown) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (action === 'minimize') window?.minimize();
+    else if (action === 'maximize') {
+      if (window?.isFullScreen()) window.setFullScreen(false);
+      else if (window?.isMaximized()) window.unmaximize();
+      else window?.maximize();
+    } else if (action === 'close') window?.close();
+  },
+  windowMaximized: (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    return Boolean(window?.isMaximized() || window?.isFullScreen());
+  },
   // The project's window closes, unless it is the last: that one stays, with
   // a new backend and no project.
   closeProject: (event) => {
@@ -490,11 +498,6 @@ const createWindow = (first?: FirstProject, saved?: SavedWindow): BrowserWindow 
     ),
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: 12, y: 10 },
-    titleBarOverlay: windowControls === 'right' && {
-      color: colors.chrome,
-      symbolColor: colors.text,
-      height: 35,
-    },
     webPreferences: {
       preload: MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY,
       additionalArguments: [`--window-controls=${windowControls}`],
@@ -555,6 +558,11 @@ const createWindow = (first?: FirstProject, saved?: SavedWindow): BrowserWindow 
     }, 1000);
   });
   const contentsId = createdWindow.webContents.id;
+  // The page's maximize button shows Restore Down while the window fills the screen.
+  const sayMaximized = (): void => {
+    if (!createdWindow.isDestroyed()) createdWindow.webContents.send(eventChannels.onWindowMaximized, createdWindow.isMaximized() || createdWindow.isFullScreen());
+  };
+  ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'].forEach((name) => createdWindow.on(name as 'maximize', sayMaximized));
   createdWindow.on('move', scheduleSavingWindows);
   createdWindow.on('resize', scheduleSavingWindows);
   createdWindow.on('closed', () => {

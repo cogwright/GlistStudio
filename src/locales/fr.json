@@ -826,6 +826,10 @@
     "backendRestarted": "Le travail en arrière-plan de Glist Studio s'est arrêté de façon inattendue et a redémarré. Le projet est de nouveau ouvert.",
     "newWindow": "Nouvelle fenêtre",
     "exitApp": "Quitter",
+    "windowMinimize": "Réduire",
+    "windowMaximize": "Agrandir",
+    "windowRestore": "Niveau inférieur",
+    "windowClose": "Fermer",
     "closeProject": "Fermer le projet"
   },
   "platforms": {

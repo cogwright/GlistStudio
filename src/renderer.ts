@@ -468,6 +468,27 @@ const showZoom = (): void => {
 };
 
 placeIcons();
+
+// Windows and Linux: the window's buttons, the page's own (index.html), so they
+// zoom with it. The middle one is Restore Down while the window fills the screen.
+const windowMaximize = element<HTMLButtonElement>('#window-maximize');
+const showMaximized = (maximized: boolean): void => {
+  const key = maximized ? 'windowRestore' : 'windowMaximize';
+  windowMaximize.replaceChildren(icon(maximized ? 'chrome-restore' : 'chrome-maximize'));
+  windowMaximize.dataset.i18nTitle = key;
+  windowMaximize.dataset.i18nAriaLabel = key;
+  windowMaximize.title = t(key);
+  windowMaximize.setAttribute('aria-label', t(key));
+};
+// They show only where the main process draws none (index.css), which the
+// preload marks after this runs, so they are wired in the app regardless.
+if (window.glistFiles) {
+  element<HTMLButtonElement>('#window-minimize').addEventListener('click', () => { void window.glistAPI.windowControl('minimize'); });
+  windowMaximize.addEventListener('click', () => { void window.glistAPI.windowControl('maximize'); });
+  element<HTMLButtonElement>('#window-close').addEventListener('click', () => { void window.glistAPI.windowControl('close'); });
+  window.glistAPI.onWindowMaximized(showMaximized);
+  void window.glistAPI.windowMaximized().then(showMaximized);
+}
 registerCmakeLanguage();
 registerTomlLanguage();
 checkDataFiles();

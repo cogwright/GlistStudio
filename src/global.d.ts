@@ -681,6 +681,9 @@ interface Window {
     windowProject(): Promise<GlistFirstProject | null>;
     newWindow(): Promise<void>;
     quitApp(): Promise<void>;
+    // The window buttons the page draws on Windows and Linux.
+    windowControl(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
+    windowMaximized(): Promise<boolean>;
     // The window closes, or as the last one, stays without a project.
     closeProject(): Promise<void>;
     getPlatform(): Promise<string>;
@@ -736,6 +739,8 @@ interface Window {
     // True where the menus went to the system's menu bar, on macOS.
     setAppMenu(menus: GlistAppMenu[], words: GlistAppMenuWords): Promise<boolean>;
     onMenuCommand(callback: (id: string) => void): () => void;
+    // The window was maximized or made fullscreen, or put back.
+    onWindowMaximized(callback: (maximized: boolean) => void): () => void;
     // The Plugins view; refresh asks GlistPlugins again rather than using the last answer.
     listPlugins(refresh?: boolean): Promise<GlistPluginList>;
     checkPluginUpdates(): Promise<GlistPlugin[]>;

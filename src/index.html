@@ -57,6 +57,12 @@
             </button>
           </div>
         </div>
+        <!-- Windows and Linux: the window's own buttons, drawn by the page so they zoom with it (renderer.ts). -->
+        <div id="window-buttons" class="window-buttons">
+          <button id="window-minimize" class="window-button" type="button" title="Minimize" data-i18n-title="windowMinimize" aria-label="Minimize" data-i18n-aria-label="windowMinimize"><i data-icon="chrome-minimize"></i></button>
+          <button id="window-maximize" class="window-button" type="button" title="Maximize" data-i18n-title="windowMaximize" aria-label="Maximize" data-i18n-aria-label="windowMaximize"><i data-icon="chrome-maximize"></i></button>
+          <button id="window-close" class="window-button window-close" type="button" title="Close" data-i18n-title="windowClose" aria-label="Close" data-i18n-aria-label="windowClose"><i data-icon="chrome-close"></i></button>
+        </div>
         <div id="menu-popover" class="menu-popover" hidden></div>
       </header>
 

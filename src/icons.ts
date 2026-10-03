@@ -3,6 +3,10 @@ import chevronRight from '@vscode/codicons/src/icons/chevron-right.svg';
 import circleFilled from '@vscode/codicons/src/icons/circle-filled.svg';
 import clearAll from '@vscode/codicons/src/icons/clear-all.svg';
 import close from '@vscode/codicons/src/icons/close.svg';
+import chromeClose from '@vscode/codicons/src/icons/chrome-close.svg';
+import chromeMaximize from '@vscode/codicons/src/icons/chrome-maximize.svg';
+import chromeMinimize from '@vscode/codicons/src/icons/chrome-minimize.svg';
+import chromeRestore from '@vscode/codicons/src/icons/chrome-restore.svg';
 import debugAlt from '@vscode/codicons/src/icons/debug-alt.svg';
 import debugContinue from '@vscode/codicons/src/icons/debug-continue.svg';
 import debugPause from '@vscode/codicons/src/icons/debug-pause.svg';
@@ -87,6 +91,10 @@ const icons = {
   'chevron-down': chevronDown,
   'chevron-right': chevronRight,
   'chevron-up': chevronUp,
+  'chrome-close': chromeClose,
+  'chrome-maximize': chromeMaximize,
+  'chrome-minimize': chromeMinimize,
+  'chrome-restore': chromeRestore,
   'circle-filled': circleFilled,
   'clear-all': clearAll,
   close,

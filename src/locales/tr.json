@@ -826,6 +826,10 @@
     "backendRestarted": "Glist Studio'nun arka plandaki işleri beklenmedik biçimde durdu ve yeniden başlatıldı. Proje yeniden açıldı.",
     "newWindow": "Yeni Pencere",
     "exitApp": "Çıkış",
+    "windowMinimize": "Simge Durumuna Küçült",
+    "windowMaximize": "Ekranı Kapla",
+    "windowRestore": "Önceki Boyutuna Getir",
+    "windowClose": "Kapat",
     "closeProject": "Projeyi Kapat"
   },
   "platforms": {

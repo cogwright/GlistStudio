@@ -13,6 +13,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   windowProject: 'window:project',
   newWindow: 'window:new',
   quitApp: 'app:quit',
+  windowControl: 'window:control',
+  windowMaximized: 'window:is-maximized',
   closeProject: 'window:close-project',
   openProject: 'project:open',
   createProject: 'project:create',
@@ -138,4 +140,5 @@ export const eventChannels: Record<EventMethod, string> = {
   onGitChanged: 'git:changed',
   onGitConsole: 'git:console',
   onMenuCommand: 'app:menu-command',
+  onWindowMaximized: 'window:maximized',
 };
