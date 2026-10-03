@@ -21,6 +21,7 @@ import { errorOutput, outputBanner } from './output-format';
 import { createPluginService } from './plugins';
 import { hiddenFolderList, isHiddenFolder, setHiddenFolders } from './hidden-folders';
 import { imageType } from './images';
+import { glistRoot, studioHome } from './studio-places';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 import { queryPattern } from './text-search';
 import { toolLanguage } from './tool-language';
@@ -40,17 +41,7 @@ export interface StudioHost {
   studioHead(): Promise<RepositoryHead | null>;
 }
 
-// The folder the Glist install scripts set up: the engine, zbin and myglistapps.
-export const glistRoot = (): string => (process.platform === 'win32'
-  ? 'C:\\dev\\glist' : path.join(homedir(), 'dev', 'glist'));
-
-// The myglistapps folder of a default Glist install.
-export const defaultProjectsDirectory = (): string => path.join(glistRoot(), 'myglistapps');
-
-// Glist Studio's own folder in the Glist one: its settings, and the agents and
-// the Node.js runtime Settings installs. GLIST_STUDIO_HOME moves it, for tests.
-export const studioHome = (): string => (process.env.GLIST_STUDIO_HOME
-  ? path.resolve(process.env.GLIST_STUDIO_HOME) : path.join(glistRoot(), 'GlistStudio'));
+export { defaultProjectsDirectory, glistRoot, studioHome } from './studio-places';
 
 // Glist Studio's own .clang-format, Glist Engine's style, for files with none
 // above them. It is written in Glist Studio's folder, not the project's; clangd
