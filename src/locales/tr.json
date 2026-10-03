@@ -714,7 +714,8 @@
     "hiddenFoldersHint": "Virgülle ayrılır; * herhangi bir metin yerine geçer, cmake-build-* gibi. Bir klasörü yeniden görmek için adını silin.",
     "motion": "Hareket",
     "reduceMotion": "Hareketi azalt",
-    "reduceMotionHint": "Düzenleyicide imleci ve kaydırmayı, arayüzde canlandırmaları durgunlaştırır. Başlangıçta sistemdeki ayarı izler."
+    "reduceMotionHint": "Düzenleyicide imleci ve kaydırmayı, arayüzde canlandırmaları durgunlaştırır. Başlangıçta sistemdeki ayarı izler.",
+    "backendRestarted": "Glist Studio'nun arka plandaki işleri beklenmedik biçimde durdu ve yeniden başlatıldı. Proje yeniden açıldı."
   },
   "platforms": {
     "darwin": {

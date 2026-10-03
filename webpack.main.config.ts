@@ -10,11 +10,10 @@ const commit = ((): string => {
 })();
 
 export const mainConfig: Configuration = {
-  /**
-   * This is the main entry point for your application, it's the first file
-   * that runs in the main process.
-   */
-  entry: './src/index.ts',
+  // index.js runs in the main process; backend.js in a utility process for
+  // each window (src/backend.ts), which index.js starts from beside it.
+  entry: { index: './src/index.ts', backend: './src/backend.ts' },
+  output: { filename: '[name].js' },
   // Put your normal webpack config below here
   module: {
     rules,

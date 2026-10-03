@@ -695,6 +695,8 @@ interface Window {
     // The compile commands clangd reads changed, after configuring.
     onCompileCommands(callback: () => void): () => void;
     onSaveAndClose(callback: () => void): () => void;
+    // The window's backend stopped by itself and a new one started, with no project open yet.
+    onBackendRestarted(callback: () => void): () => void;
     onDebugMessage(callback: (message: unknown) => void): () => void;
     onDebugStatus(callback: (status: GlistClangdStatus) => void): () => void;
     onDebuggerInstall(callback: (text: string) => void): () => void;
