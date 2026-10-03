@@ -196,7 +196,7 @@ jobs:
     needs: [version, build]
     runs-on: ubuntu-latest
     # Writes like the release job: it publishes the prerelease and its tag, and
-    # removes the ones before it.
+    # removes the prereleases before it.
     permissions:
       contents: write
     # One at a time, so removing old prereleases never races a newer one.
@@ -206,8 +206,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       VERSION: ${{ needs.version.outputs.version }}
-      # The newest prerelease is enough: older ones are removed with their tags,
-      # and any commit can be built again.
+      # The newest prerelease is enough, so older ones are removed. Their tags
+      # stay: a version someone reports, such as 0.0.8-dev.28, leads to its commit.
       KEEP: 1
     steps:
       - uses: actions/download-artifact@v4
@@ -227,13 +227,5 @@ jobs:
             --jq '[.[] | select(.isPrerelease and (.tagName | test("^v[0-9]+[.][0-9]+[.][0-9]+-dev[.][0-9]+$")))]
               | sort_by(.createdAt) | reverse | .['"$KEEP"':][] | .tagName' |
           while read -r tag; do
-            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
-          done
-          # Prerelease tags whose release is gone already, as earlier runs left them.
-          # Release tags, vX.Y.Z without a -dev part, are never touched.
-          releases=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName --jq '.[].tagName')
-          gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" --paginate --jq '.[].ref | ltrimstr("refs/tags/")' |
-            { grep -E '^v[0-9]+[.][0-9]+[.][0-9]+-dev[.][0-9]+$' || true; } |
-          while read -r tag; do
-            grep -qxF "$tag" <<< "$releases" || gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag"
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes
           done
