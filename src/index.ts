@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, promises as fs } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron';
 import { eventChannels, invokeChannels, type Handler, type InvokeMethod } from './api';
@@ -37,6 +37,20 @@ const useGlistFolder = (): void => {
   }
 };
 useGlistFolder();
+
+// Settings Electron takes only before it starts, which the window's own storage
+// cannot hold: it is not there yet. Settings, under General, writes them.
+const startupFile = (): string => path.join(studioHome(), 'startup.json');
+const readStartup = (): GlistStartupSettings => {
+  try {
+    const saved = JSON.parse(readFileSync(startupFile(), 'utf8')) as Partial<GlistStartupSettings>;
+    return { hardwareAcceleration: saved.hardwareAcceleration !== false };
+  } catch {
+    return { hardwareAcceleration: true };
+  }
+};
+const runningStartup = readStartup();
+if (!runningStartup.hardwareAcceleration) app.disableHardwareAcceleration();
 
 // Tiling compositors such as Hyprland place, size and close windows themselves,
 // so window buttons there only get in the way.
@@ -180,6 +194,13 @@ const registerIpcHandlers = (): void => {
     const options = { title: msg('pathFolderTitle'), properties: ['openDirectory' as const] };
     const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
     return result.canceled ? null : result.filePaths[0] ?? null;
+  });
+  ipcMain.handle(invokeChannels.startupSettings, () => ({ saved: readStartup(), running: runningStartup }));
+  ipcMain.handle(invokeChannels.setStartupSettings, async (_event, next: unknown): Promise<GlistStartupSettings> => {
+    const settings = { hardwareAcceleration: (next as Partial<GlistStartupSettings> | null)?.hardwareAcceleration !== false };
+    await fs.mkdir(studioHome(), { recursive: true });
+    await fs.writeFile(startupFile(), JSON.stringify(settings, null, 2), 'utf8');
+    return settings;
   });
   ipcMain.handle(invokeChannels.updateState, () => updateState());
   ipcMain.handle(invokeChannels.checkForUpdates, (_event, previews?: unknown) => checkForUpdates(previews));

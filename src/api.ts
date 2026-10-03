@@ -74,6 +74,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   updateEngine: 'engine:update',
   usePlugin: 'plugins:use',
   pluginReadme: 'plugins:readme',
+  startupSettings: 'app:startup-settings',
+  setStartupSettings: 'app:set-startup-settings',
   updateState: 'update:state',
   checkForUpdates: 'update:check',
   installUpdate: 'update:install',

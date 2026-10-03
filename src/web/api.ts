@@ -78,6 +78,9 @@ Object.assign(api, {
   setAppMenu: async (): Promise<boolean> => false,
   // There is no folder picker for the server's disk, so ask for a path.
   chooseFolder: async (): Promise<string | null> => window.prompt('Folder on the host') || null,
+  // The browser draws the page; the server has no say in how.
+  startupSettings: async (): Promise<null> => null,
+  setStartupSettings: async (settings: GlistStartupSettings): Promise<GlistStartupSettings> => settings,
   // The browser version runs from source, which updates through git.
   updateState: async (): Promise<GlistUpdateState> => ({ state: 'unavailable' }),
   checkForUpdates: async (): Promise<GlistUpdateState> => ({ state: 'unavailable' }),

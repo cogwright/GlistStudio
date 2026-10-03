@@ -283,6 +283,7 @@
             <h2 data-i18n="settings">Settings</h2>
             <nav class="settings-nav" aria-label="Settings" data-i18n-aria-label="settings">
               <button type="button" class="settings-tab" data-page="general" data-i18n="pageGeneral">General</button>
+              <button type="button" class="settings-tab" data-page="editor" data-i18n="pageEditor">Editor</button>
               <button type="button" class="settings-tab" data-page="appearance" data-i18n="pageAppearance">Appearance</button>
               <button type="button" class="settings-tab" data-page="build" data-i18n="pageBuild">Build</button>
               <button type="button" class="settings-tab" data-page="run" data-i18n="pageRun">Run and Debug</button>
@@ -311,6 +312,33 @@
                   </div>
                   <p class="dialog-hint" data-i18n="scaleHint">Makes everything in the studio larger or smaller, for example on a classroom projector.</p>
                 </div>
+                <fieldset id="update-settings" class="settings-section update-settings" hidden>
+                  <legend data-i18n="updateSettings">Updates</legend>
+                  <label class="checkbox-row"><input id="auto-update" type="checkbox" /><span data-i18n="autoUpdate">Download new versions automatically</span></label>
+                  <p class="dialog-hint" data-i18n="autoUpdateHint">New versions come from Glist Studio's releases on GitHub. One that has been downloaded is installed when Glist Studio restarts.</p>
+                  <label class="checkbox-row"><input id="update-previews" type="checkbox" /><span data-i18n="updatePreviews">Get previews too</span></label>
+                  <p class="dialog-hint" data-i18n="updatePreviewsHint">Previews are built from every change to Glist Studio, before a release: the newest work, less tested.</p>
+                  <p id="update-version" class="dialog-hint"></p>
+                </fieldset>
+                <fieldset id="graphics-settings" class="settings-section" hidden>
+                  <legend data-i18n="graphics">Graphics</legend>
+                  <label class="checkbox-row"><input id="hardware-acceleration" type="checkbox" /><span data-i18n="hardwareAcceleration">Use hardware acceleration</span></label>
+                  <p class="dialog-hint" data-i18n="hardwareAccelerationHint">Turn it off if the window flickers, stays blank or draws wrongly, as it can with some graphics drivers and virtual machines. It changes when Glist Studio starts again.</p>
+                  <p id="hardware-acceleration-restart" class="dialog-hint" data-i18n="hardwareAccelerationRestart" hidden>Restart Glist Studio for this to take effect.</p>
+                </fieldset>
+              </section>
+              <section class="settings-page" data-page="editor" hidden>
+                <fieldset class="settings-section caret-settings">
+                  <legend data-i18n="caretAndScrolling">Caret and Scrolling</legend>
+                  <label for="caret-style" data-i18n="caretStyle">Caret style</label>
+                  <select id="caret-style">
+                    <option value="line" data-i18n="caretLine">Line</option>
+                    <option value="block" data-i18n="caretBlock">Block</option>
+                    <option value="underline" data-i18n="caretUnderline">Underline</option>
+                  </select>
+                  <label class="checkbox-row"><input id="smooth-caret" type="checkbox" /><span data-i18n="smoothCaret">Move the caret smoothly</span></label>
+                  <label class="checkbox-row"><input id="smooth-scrolling" type="checkbox" /><span data-i18n="smoothScrolling">Scroll smoothly</span></label>
+                </fieldset>
                 <fieldset class="settings-section format-settings">
                   <legend data-i18n="codeFormatting">Code Formatting</legend>
                   <label for="code-style-mode" data-i18n="codeStyleMode">Code style</label>
@@ -322,14 +350,6 @@
                   <p class="dialog-hint" data-i18n="codeStyleHint">Glist Engine's style is how the engine itself is written.</p>
                   <label class="checkbox-row"><input id="format-on-save" type="checkbox" /><span data-i18n="formatOnSave">Format the lines you changed in C++ files when saving</span></label>
                   <p class="dialog-hint" data-i18n="formatOnSaveHint">Saving formats only the lines changed since the last save.</p>
-                </fieldset>
-                <fieldset id="update-settings" class="settings-section update-settings" hidden>
-                  <legend data-i18n="updateSettings">Updates</legend>
-                  <label class="checkbox-row"><input id="auto-update" type="checkbox" /><span data-i18n="autoUpdate">Download new versions automatically</span></label>
-                  <p class="dialog-hint" data-i18n="autoUpdateHint">New versions come from Glist Studio's releases on GitHub. One that has been downloaded is installed when Glist Studio restarts.</p>
-                  <label class="checkbox-row"><input id="update-previews" type="checkbox" /><span data-i18n="updatePreviews">Get previews too</span></label>
-                  <p class="dialog-hint" data-i18n="updatePreviewsHint">Previews are built from every change to Glist Studio, before a release: the newest work, less tested.</p>
-                  <p id="update-version" class="dialog-hint"></p>
                 </fieldset>
               </section>
               <section class="settings-page" data-page="appearance" hidden>

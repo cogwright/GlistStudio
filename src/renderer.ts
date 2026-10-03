@@ -13,6 +13,7 @@ import { AgentSettings } from './agent-settings';
 import { applyTheme, getActiveTheme, onThemeChange, setUpThemePicker } from './appearance';
 import { ClangdClient } from './clangd';
 import { registerCmakeLanguage } from './cmake-language';
+import { editorBehaviour, loadEditorSettings, onEditorSettingsChange, setUpEditorSettings } from './editor-settings';
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
 import { changedLines, codeLines, editsWithin, type LineRange } from './format-lines';
 import { formatOutput, newOutputStyle, outputBanner } from './output-format';
@@ -458,8 +459,8 @@ const codeEditorOptions: monaco.editor.IStandaloneEditorConstructionOptions = {
   minimap: { enabled: true, scale: 1 },
   // Room for breakpoints.
   glyphMargin: true,
-  smoothScrolling: true,
-  cursorSmoothCaretAnimation: 'on',
+  // The caret and scrolling as Settings > Editor has them.
+  ...editorBehaviour(loadEditorSettings()),
   padding: { top: 14, bottom: 20 },
   renderWhitespace: 'selection',
   scrollBeyondLastLine: false,
@@ -1235,6 +1236,7 @@ const ensureDiffEditor = (view: GroupView): monaco.editor.IStandaloneDiffEditor 
   });
   pane.editor = viewer;
   onFontsChange((fonts) => viewer.updateOptions(editorFonts(fonts)));
+  onEditorSettingsChange((settings) => viewer.updateOptions(editorBehaviour(settings)));
   [viewer.getOriginalEditor(), viewer.getModifiedEditor()].forEach((side) => {
     side.onContextMenu((event) => showMenu(event.event.browserEvent, editorMenu(side, editorMenuHooks, false)));
     side.onDidFocusEditorWidget(() => focusGroup(groupViews.indexOf(view)));
@@ -1699,12 +1701,13 @@ const editorMenuHooks: EditorMenuHooks = {
     ] : [];
   },
 };
-// What every side's editor has: the code font, breakpoints and Git's marks,
+// What every side's editor has: the code font and caret, breakpoints and Git's marks,
 // its keys, its right-click menu, and making its side the one worked in when
 // it takes focus.
 const setUpEditor = (view: GroupView): void => {
   const target = view.editor;
   onFontsChange((fonts) => target.updateOptions(editorFonts(fonts)));
+  onEditorSettingsChange((settings) => target.updateOptions(editorBehaviour(settings)));
   debug.attach(target);
   gitEditor.attach(target);
   target.onDidFocusEditorWidget(() => focusGroup(groupViews.indexOf(view)));
@@ -3139,6 +3142,27 @@ setUpFontSettings({
   interface: element<HTMLInputElement>('#font-interface'),
   codeList: element<HTMLDataListElement>('#font-code-list'),
   interfaceList: element<HTMLDataListElement>('#font-interface-list'),
+});
+setUpEditorSettings({
+  caretStyle: element<HTMLSelectElement>('#caret-style'),
+  smoothCaret: element<HTMLInputElement>('#smooth-caret'),
+  smoothScrolling: element<HTMLInputElement>('#smooth-scrolling'),
+});
+
+// Settings > General: hardware acceleration, which Electron takes only as it
+// starts. The browser build has none to turn off, so the setting is hidden there.
+void window.glistAPI.startupSettings().then((startup) => {
+  if (!startup) return;
+  const toggle = element<HTMLInputElement>('#hardware-acceleration');
+  const restart = element<HTMLElement>('#hardware-acceleration-restart');
+  const showRestart = (): void => { restart.hidden = toggle.checked === startup.running.hardwareAcceleration; };
+  element<HTMLElement>('#graphics-settings').hidden = false;
+  toggle.checked = startup.saved.hardwareAcceleration;
+  showRestart();
+  toggle.addEventListener('change', () => {
+    void window.glistAPI.setStartupSettings({ hardwareAcceleration: toggle.checked });
+    showRestart();
+  });
 });
 setUpThemePicker({
   options: element<HTMLElement>('#theme-options'),
