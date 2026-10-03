@@ -4,7 +4,7 @@ import { app, shell } from 'electron';
 import { studioHome } from './studio';
 import {
   assetFor, download, heldBack, installMacApp, isNewer, keptAppImage, newerRelease, releaseAt, releases, replaceAppImage,
-  rollBackSquirrel, rollbackChoices as choicesFrom, runWindowsSetup, stageKeptMacApp, stageMacApp, type Release,
+  rollBackSquirrel, rollbackChoices as choicesFrom, runWindowsSetup, squirrelVersion, stageKeptMacApp, stageMacApp, type Release,
 } from './update-release';
 
 // Glist Studio updating itself from its published GitHub releases. A newer
@@ -95,8 +95,9 @@ const keptVersions = (place: Place | null): string[] => {
     return listing(path.dirname(place.file)).filter((name) => name.startsWith(prefix) && name !== `${prefix}update`)
       .map((name) => name.slice(prefix.length)).sort(byVersion);
   }
-  return listing(place.root).filter((name) => /^app-\d/.test(name)).map((name) => name.slice(4))
-    .filter((version) => version !== app.getVersion()).sort(byVersion);
+  // Not the folder this copy runs from, whatever name Squirrel gave it.
+  const running = path.basename(path.dirname(process.execPath));
+  return listing(place.root).filter((name) => /^app-\d/.test(name) && name !== running).map(squirrelVersion).sort(byVersion);
 };
 
 // What was downloaded or kept, to the two newest versions besides those named.
@@ -127,7 +128,8 @@ const stage = async (version: string, place: Place, rollback: boolean, release: 
     if (rollback) {
       if (kept[0] !== version) throw new Error(`Glist Studio ${version} is not kept on this computer`);
       const executable = path.basename(process.execPath);
-      return { version, rollback, install: (relaunch) => { after(); rollBackSquirrel(place.root, current, executable, process.pid, relaunch); } };
+      const folder = path.basename(path.dirname(process.execPath));
+      return { version, rollback, install: (relaunch) => { after(); rollBackSquirrel(place.root, folder, executable, process.pid, relaunch); } };
     }
     if (!asset) throw new Error(`No installer for this computer in ${version}`);
     const setup = path.join(updatesFolder(), version, asset.name);

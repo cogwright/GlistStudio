@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   assetFor, download, feedTags, heldBack, installMacApp, isNewer, keptAppImage, latestTag, newerRelease, releaseAt, releases, replaceAppImage,
-  rollbackChoices, stageKeptMacApp, stageMacApp,
+  rollbackChoices, squirrelVersion, stageKeptMacApp, stageMacApp,
 } from '../src/update-release.ts';
 
 // Updating from GitHub releases, against a local server that answers as
@@ -126,6 +126,10 @@ try {
   assert.equal(heldBack('0.0.5-dev.12', '0.0.5'), true);
   assert.equal(heldBack('0.0.6-dev.1', '0.0.5'), false);
   assert.equal(heldBack('0.0.5', null), false);
+  // Squirrel's folders: a prerelease without its dots, as electron-winstaller names them.
+  assert.equal(squirrelVersion('app-0.0.8-dev29'), '0.0.8-dev.29');
+  assert.equal(squirrelVersion('app-0.0.7'), '0.0.7');
+  assert.equal(squirrelVersion('app-1.2.3-beta'), '1.2.3-beta');
 
   const release = await releaseAt(source, 'v0.0.3');
   assert.equal(release.version, '0.0.3');

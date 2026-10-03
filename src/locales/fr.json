@@ -206,6 +206,7 @@
     "upToDate": "Glist Studio est à jour.",
     "updateDownloading": "Téléchargement de Glist Studio {version}...",
     "rollbackOpen": "Revenir à une version précédente...",
+    "versionRollbackTitle": "Revenir à une version précédente",
     "rollbackTitle": "Restaurer les fichiers cochés",
     "rollbackIntro": "Quand une version plus récente ne vous convient pas : Glist Studio revient à celle choisie au redémarrage.",
     "rollbackWarning": "Les réglages enregistrés par cette version peuvent ne pas fonctionner dans une version précédente, et certains peuvent revenir à leurs valeurs par défaut. Vos projets ne sont pas modifiés. La version quittée n'est pas réinstallée d'elle-même ; une plus récente le sera.",

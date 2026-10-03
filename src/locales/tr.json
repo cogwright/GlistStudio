@@ -206,6 +206,7 @@
     "upToDate": "Glist Studio güncel.",
     "updateDownloading": "Glist Studio {version} indiriliyor...",
     "rollbackOpen": "Önceki Bir Sürüme Dön...",
+    "versionRollbackTitle": "Önceki Bir Sürüme Dön",
     "rollbackTitle": "Seçili Dosyaları Geri Al",
     "rollbackIntro": "Yeni bir sürüm işinize yaramadığında: Glist Studio yeniden başladığında seçilen sürüme döner.",
     "rollbackWarning": "Bu sürümün kaydettiği ayarlar önceki bir sürümde çalışmayabilir ve bazıları varsayılanlarına dönebilir. Projelerinize dokunulmaz. Bıraktığınız sürüm kendiliğinden yeniden kurulmaz; daha yeni bir sürüm kurulur.",

@@ -1216,9 +1216,10 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .update-held { color: var(--ui-warning); }
 .rollback-dialog { width: min(520px, calc(100vw - 48px)); }
 .rollback-list { display: flex; flex-direction: column; gap: 2px; max-height: 260px; margin: 12px 0; overflow: auto; padding: 4px; border: 1px solid var(--ui-border); border-radius: 4px; }
-.rollback-choice { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+/* Over the dialog's own label and input styles. */
+.studio-dialog .rollback-choice { display: flex; align-items: center; gap: 10px; margin: 0; padding: 6px 8px; border-radius: 4px; font-size: 13px; cursor: pointer; }
 .rollback-choice:hover { background: var(--ui-hover); }
-.rollback-choice input { width: auto; height: auto; margin: 0; }
+.studio-dialog .rollback-choice input { width: auto; height: auto; margin: 0; padding: 0; accent-color: var(--ui-accent); }
 .rollback-version { color: var(--ui-fg-strong); font-variant-numeric: tabular-nums; }
 .rollback-facts { margin-left: auto; color: var(--ui-fg-muted); font-size: 12px; }
 .rollback-warning { padding: 8px 10px; border: 1px solid var(--ui-warning); border-radius: 4px; color: var(--ui-fg); font-size: 12.5px; line-height: 1.5; }

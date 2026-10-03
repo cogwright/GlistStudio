@@ -298,14 +298,21 @@ export const replaceAppImage = (staged: string, target: string, relaunch: boolea
 export const keptAppImage = (target: string, version: string): string =>
   path.join(path.dirname(target), `.${path.basename(target)}.${version}`);
 
+// The version in a Squirrel app-<version> folder's name. Squirrel takes the
+// dots out of a prerelease, as NuGet once required (electron-winstaller's
+// convertVersion): app-0.0.8-dev29 holds 0.0.8-dev.29.
+export const squirrelVersion = (folder: string): string =>
+  folder.replace(/^app-/, '').replace(/^(\d+\.\d+\.\d+-[A-Za-z]+)(\d+)$/, '$1.$2');
+
 // Squirrel keeps the version before an update in app-<version>, beside this
 // one, and starts the newest app-<version> there. Going back to it renames
-// this version's folder, once the app has quit, to a name Squirrel passes over:
-// one rename that either happens or does not, never a folder half deleted.
-export const rollBackSquirrel = (root: string, current: string, executable: string, pid: number, relaunch: boolean): void => {
+// this version's folder (the one the app runs from), once the app has quit,
+// to a name Squirrel passes over: one rename that either happens or does not,
+// never a folder half deleted.
+export const rollBackSquirrel = (root: string, folder: string, executable: string, pid: number, relaunch: boolean): void => {
   const script = [
     `Wait-Process -Id ${pid} -ErrorAction SilentlyContinue`,
-    `Rename-Item -LiteralPath '${path.join(root, `app-${current}`).replace(/'/g, "''")}' -NewName 'rolled-back-${current.replace(/'/g, "''")}'`,
+    `Rename-Item -LiteralPath '${path.join(root, folder).replace(/'/g, "''")}' -NewName 'rolled-back-${folder.replace(/^app-/, '').replace(/'/g, "''")}'`,
     relaunch ? `Start-Process -FilePath '${path.join(root, 'Update.exe').replace(/'/g, "''")}' -ArgumentList '--processStart', '"${executable.replace(/'/g, "''")}"'` : '',
   ].filter(Boolean).join('; ');
   spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script], {
