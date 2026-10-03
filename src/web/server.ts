@@ -3,9 +3,12 @@ import { createReadStream, promises as fs, readFileSync } from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import { pipeline } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { eventChannels, type Handlers } from '../api';
 import { appError } from '../backend-protocol';
+import { mediaIdOf, type MediaSource } from '../media';
+import { mediaFile, MediaGrants } from '../media-serve';
 import { readRepositoryHead } from '../repository-head';
 import { initializeStudio } from '../studio';
 import { answer, backendHandlers, stopBackend, type BackendCall } from '../studio-rpc';
@@ -69,6 +72,9 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
   });
 
   const handlers: Handlers = { ...backendHandlers, setTheme: () => undefined };
+  // Videos and sounds play from /media/<name>/<file>, by names given to the
+  // page that asked and forgotten when it goes (media-serve.ts).
+  const media = new MediaGrants<WebSocket>();
   // A promise nothing waited on would stop the server; the page is told of it
   // instead, as the app's window is of its backend's.
   process.on('unhandledRejection', (reason) => {
@@ -90,6 +96,14 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     if (!sameSecret(cookieToken(request), options.token)) {
       response.writeHead(401, { 'Content-Type': 'text/plain' });
       response.end('Open the link printed by npm run web, including its token.\n');
+      return;
+    }
+    const mediaPath = /^\/media\/([^/]*)(?:\/[^/]*)?$/.exec(url.pathname);
+    if (mediaPath) {
+      const answer = await media.open(mediaPath[1], request.headers.range, request.method);
+      response.writeHead(answer.status, answer.headers);
+      if (answer.body) pipeline(answer.body, response, () => undefined);
+      else response.end();
       return;
     }
     let filePath = '';
@@ -127,13 +141,24 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
     // One page drives the backend at a time; a newer one takes over.
     client?.close(4000, 'Glist Studio was opened in another tab.');
     client = socket;
+    const socketHandlers: Handlers = {
+      ...handlers,
+      openMedia: async (filePath: unknown) => {
+        const source = await backendHandlers.openMedia?.(filePath) as MediaSource;
+        return mediaFile(source, '/media', media.grant(socket, source));
+      },
+      releaseMedia: (url: unknown) => media.release(socket, mediaIdOf(url)),
+    };
     socket.on('message', async (data) => {
       let request: BackendCall;
       try { request = JSON.parse(data.toString()); } catch { return; }
-      const reply = await answer(handlers, request);
+      const reply = await answer(socketHandlers, request);
       if (socket === client) send(reply);
     });
-    socket.on('close', () => { if (socket === client) client = null; });
+    socket.on('close', () => {
+      media.releaseOwner(socket);
+      if (socket === client) client = null;
+    });
   });
 
   server.on('close', stopBackend);

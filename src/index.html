@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' blob:; font-src 'self' data:; worker-src 'self' blob:;" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' blob: glist-media:; media-src 'self' glist-media:; font-src 'self' data:; worker-src 'self' blob:;" />
     <title>Glist Studio</title>
     <!-- Nothing shows until the page has its styles, theme and words (renderer.ts adds .ready). -->
     <style>html:not(.ready) body { visibility: hidden; }</style>

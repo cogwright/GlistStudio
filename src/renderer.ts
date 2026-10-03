@@ -70,6 +70,8 @@ import { renderDatabaseDiffPage, type DatabaseDiffPage } from './database-diff-p
 import { isDatabaseFile } from './databases';
 import { renderModelPage, type ModelPage } from './model-page';
 import { modelType } from './models';
+import { renderMediaPage, type MediaPage } from './media-page';
+import { mediaType } from './media';
 import { loadSession, restorableTab, saveSession, type ProjectSession } from './project-session';
 import { renderReadmePage, type ReadmePage } from './readme-page';
 import { setUpRepair } from './repair';
@@ -151,6 +153,16 @@ interface DatabaseTab {
   version: number;
 }
 
+// A video or a sound, played rather than shown as bytes.
+interface MediaTab {
+  kind: 'media';
+  // The tab's key: the file's path.
+  path: string;
+  name: string;
+  page: MediaPage;
+  version: number;
+}
+
 // A database compared between two versions, table by table and row by row,
 // where another file's diff would be compared line by line.
 interface DatabaseDiffTab {
@@ -166,11 +178,12 @@ interface DatabaseDiffTab {
 
 // Tabs drawn in a side's page rather than in its editor; those of a file
 // follow it when it is renamed and close when it is deleted.
-type FilePageTab = ImageTab | ModelTab | DatabaseTab;
+type FilePageTab = ImageTab | ModelTab | DatabaseTab | MediaTab;
 type PageTab = ReadmeTab | FilePageTab | DatabaseDiffTab;
 
 type EditorTab = OpenFile | DiffTab | PageTab;
-const isFilePageTab = (tab: EditorTab): tab is FilePageTab => tab.kind === 'image' || tab.kind === 'model' || tab.kind === 'database';
+const isFilePageTab = (tab: EditorTab): tab is FilePageTab => tab.kind === 'image' || tab.kind === 'model' || tab.kind === 'database'
+  || tab.kind === 'media';
 const isPageTab = (tab: EditorTab): tab is PageTab => tab.kind === 'readme' || tab.kind === 'database-diff' || isFilePageTab(tab);
 
 // Shown regardless after a moment, should setting up stop short of the end.
@@ -830,7 +843,8 @@ const showPageTab = (view: GroupView, tab?: PageTab): void => {
   const render = tab.kind === 'readme' ? renderReadmePage(view.page, tab.page)
     : tab.kind === 'model' ? renderModelPage(view.page, tab.page)
       : tab.kind === 'database' ? renderDatabasePage(view.page, tab.page)
-        : tab.kind === 'database-diff' ? renderDatabaseDiffPage(view.page, tab.page) : renderImagePage(view.page, tab.page);
+        : tab.kind === 'media' ? renderMediaPage(view.page, tab.page)
+          : tab.kind === 'database-diff' ? renderDatabaseDiffPage(view.page, tab.page) : renderImagePage(view.page, tab.page);
   view.pageShown = { key: tab.path, version: tab.version, render };
   view.page.scrollTop = 0;
 };
@@ -1488,6 +1502,7 @@ const openFile = async (filePath: string, name: string, transient = false): Prom
   if (imageType(filePath)) { openImage(filePath, transient); return true; }
   if (modelType(filePath)) { openModel(filePath, transient); return true; }
   if (isDatabaseFile(filePath)) { openDatabase(filePath); return true; }
+  if (mediaType(filePath)) { openMedia(filePath, transient); return true; }
   navigation += 1;
   const ticket = navigation;
   try {
@@ -1887,6 +1902,13 @@ const openDatabase = (filePath: string): void => openPageTab<DatabaseTab>(
     version: 0,
   },
   async (): Promise<void> => undefined,
+);
+
+// A video or a sound, in a tab of its own that plays it as it is shown.
+const openMedia = (filePath: string, transient = false): void => openPageTab<MediaTab>(
+  { kind: 'media', path: filePath, name: baseName(filePath), page: { name: baseName(filePath), path: filePath }, version: 0 },
+  async (): Promise<void> => undefined,
+  transient,
 );
 
 // A README's or an image's tab, brought to the front, to stay or transient;
@@ -2898,6 +2920,7 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
     Object.assign(tab, { path: nextPath, name: baseName(nextPath) });
     tab.page.name = tab.name;
     if (tab.kind === 'database') tab.page.path = nextPath;
+    if (tab.kind === 'media') tab.page.path = nextPath;
     openFiles.set(nextPath, tab);
   });
   showGroups();
@@ -3096,6 +3119,7 @@ const restoreSession = async (session: ProjectSession): Promise<void> => {
         if (imageType(key)) openImage(key);
         else if (modelType(key)) openModel(key);
         else if (isDatabaseFile(key)) openDatabase(key);
+        else if (mediaType(key)) openMedia(key);
         else await loadFile(key);
         // A file open on the other side already gets its tab on this one too.
         layout.add(key, index);

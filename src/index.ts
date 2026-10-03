@@ -8,6 +8,8 @@ import { eventChannels, invokeChannels, type InvokeMethod } from './api';
 import { appError, backendStartArgument, type BackendStart, type FromBackend, type ToBackend } from './backend-protocol';
 import { isLanguage, languages, type Language, type Words } from './languages';
 import { defaultProjectsDirectory, studioHome } from './studio-places';
+import { grantMedia, registerMediaScheme, releaseMedia, serveMedia } from './media-protocol';
+import type { MediaSource } from './media';
 import {
   checkForUpdates, installOnQuit, installUpdate, openUpdatePage, releaseHold, restartingToUpdate, rollBack, rollbackChoices, setUpdateListener,
   source, tidySquirrelFolders, updateState,
@@ -60,6 +62,9 @@ const readStartup = (): GlistStartupSettings => {
 };
 const runningStartup = readStartup();
 if (!runningStartup.hardwareAcceleration) app.disableHardwareAcceleration();
+
+// Videos' and sounds' scheme, which can only be given its privileges before then.
+registerMediaScheme();
 
 // Tiling compositors such as Hyprland place, size and close windows themselves,
 // so window buttons there only get in the way.
@@ -438,6 +443,10 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
   // The renderer's copies (clipboard.ts), which need no focus here.
   copyText: (_event, text: string) => { clipboard.writeText(String(text)); },
   toggleDevTools: (event) => { event.sender.toggleDevTools(); },
+  // A video's or a sound's tab: the backend checks the file may be read, and
+  // the window gets a name to play it by (media-protocol.ts).
+  openMedia: async (event, filePath: unknown) => grantMedia(event.sender, await backendFor(event).call('openMedia', [filePath]) as MediaSource),
+  releaseMedia: (event, url: unknown) => releaseMedia(event.sender, url),
   windowControl: (event, action: unknown) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (action === 'minimize') window?.minimize();
@@ -686,6 +695,7 @@ app.whenReady().then(() => {
   // where the debugger steps into, and Alt would show it. A Mac's is set by the page.
   if (process.platform !== 'darwin') Menu.setApplicationMenu(null);
   registerIpcHandlers();
+  serveMedia();
   restoreWindows();
   void tidySquirrelFolders();
   started = true;

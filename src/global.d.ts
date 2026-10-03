@@ -187,6 +187,20 @@ interface GlistImageFile {
   size: number;
 }
 
+// A video or a sound for its tab, played from the URL its window was given
+// (media-serve.ts): its kind, type and format, its size in bytes and, for a
+// sound, its sample rate and channels as the file says them, when it does.
+interface GlistMediaFile {
+  url: string;
+  kind: 'video' | 'audio';
+  type: string;
+  format: string;
+  size: number;
+  sampleRate?: number;
+  channels?: number;
+  codec?: string;
+}
+
 // A SQLite value as the window gets it: a big integer as text, a BLOB as its size.
 type GlistDatabaseCell = null | number | string | { blob: number };
 interface GlistDatabaseColumn { name: string; type: string; notNull: boolean; primaryKey: number; defaultValue: string | null }
@@ -765,6 +779,9 @@ interface Window {
     readWorkspaceFile(filePath: string): Promise<string>;
     readImage(filePath: string): Promise<GlistImageFile>;
     readModel(filePath: string): Promise<GlistModelFile>;
+    // A video's or a sound's tab: a URL to play it by, and letting go of it.
+    openMedia(filePath: string): Promise<GlistMediaFile>;
+    releaseMedia(url: string): Promise<void>;
     // A SQLite database's tab (database.ts): its tables, a page of rows, SQL
     // run as typed, a row changed, added or deleted, the changes committed to
     // the file or discarded, and the file let go of.
