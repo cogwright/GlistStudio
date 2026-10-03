@@ -21,6 +21,9 @@ import { errorOutput, outputBanner } from './output-format';
 import { createPluginService } from './plugins';
 import { hiddenFolderList, isHiddenFolder, setHiddenFolders } from './hidden-folders';
 import { imageType } from './images';
+import { Databases } from './database';
+import { gatherModel, modelBytes } from './model-files';
+import { modelType } from './models';
 import { glistRoot, studioHome } from './studio-places';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 import { queryPattern } from './text-search';
@@ -1041,6 +1044,7 @@ const listProjects = async (): Promise<GlistProjectSummary[]> => {
 export const openProjectAt = async (projectRoot: string): Promise<GlistProjectInfo> => {
   const root = path.resolve(projectRoot);
   if (!(await fs.stat(root)).isDirectory()) throw new Error(msg('folderRequired'));
+  databases.closeAll();
   activeProjectRoot = root;
   chosenTarget = null;
   runArguments = [];
@@ -1084,6 +1088,35 @@ const readImage = async (filePath: string): Promise<GlistImageFile> => {
   if (stats.size > 50 * 1024 * 1024) throw new Error(msg('imageTooLarge'));
   return { data: (await fs.readFile(safePath)).toString('base64'), type, size: stats.size };
 };
+
+// A 3D model for its tab, with the files it names beside it (model-files.ts),
+// each read only where files may be read.
+const readModel = async (filePath: string): Promise<GlistModelFile> => {
+  const format = modelType(filePath);
+  const readable = (file: string): Promise<string> => assertEditablePath(file).catch(() => workspacePath(file));
+  const safePath = await readable(filePath);
+  const stats = await fs.stat(safePath);
+  if (!format || !stats.isFile()) throw new Error(msg('fileRequired'));
+  if (stats.size > modelBytes) throw new Error(msg('modelTooLarge'));
+  return { format, ...(await gatherModel(safePath, readable)) };
+};
+
+// SQLite databases for their tabs (database.ts): the project's own may be
+// changed, one elsewhere in the Glist workspace only read. A file that is not
+// SQLite is said to be so, rather than opened as a new, empty database.
+const databases = new Databases(async (filePath) => {
+  const editable = await assertEditablePath(filePath).catch((): null => null);
+  const file = editable ?? await workspacePath(filePath);
+  const handle = await fs.open(file, 'r');
+  try {
+    const { buffer, bytesRead } = await handle.read(Buffer.alloc(16), 0, 16, 0);
+    if (bytesRead > 0 && buffer.toString('latin1', 0, bytesRead) !== 'SQLite format 3\0') throw new Error(msg('notDatabase'));
+  } finally {
+    await handle.close();
+  }
+  return { file, readOnly: !editable };
+}, () => msg('databaseUnavailable'));
+export const closeDatabases = (): void => databases.closeAll();
 
 // What an app is built with, for the explorer: the engine, and the plugins its
 // CMakeLists.txt names, from the Glist workspace it reaches as ../..
@@ -1596,6 +1629,13 @@ export const studio: Handlers = {
   readFile: readProjectFile,
   readWorkspaceFile,
   readImage,
+  readModel,
+  databaseSchema: (filePath: unknown) => databases.schema(String(filePath)),
+  databaseRows: (filePath: unknown, table: unknown, options: unknown) =>
+    databases.rows(String(filePath), String(table), (options ?? {}) as GlistDatabaseRowsOptions),
+  databaseQuery: (filePath: unknown, sql: unknown) => databases.query(String(filePath), String(sql)),
+  databaseEdit: (filePath: unknown, change: unknown) => databases.edit(String(filePath), change as GlistDatabaseEdit),
+  databaseClose: (filePath: unknown) => databases.close(String(filePath)),
   // Only style files are read, wherever the file is: clang-format looks as far up.
   // Glist Engine's style unless Settings says the project's, or none.
   codeStyle: (filePath: unknown, mode: unknown) => {

@@ -13,7 +13,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",
-    "test": "node tests/cmake.test.mjs && node tests/locales.test.mjs && node tests/class-template.test.mjs && node tests/themes.test.mjs && node tests/file-icons.test.mjs && node tests/agents.test.mjs && node tests/git.test.mjs && jiti tests/git-service.test.mjs && jiti tests/studio-files.test.mjs && jiti tests/configure.test.mjs && jiti tests/update-release.test.mjs && jiti tests/debugger-download.test.mjs && jiti tests/plugins.test.mjs && jiti tests/checkout-update.test.mjs && jiti tests/arguments.test.mjs && jiti tests/command-search.test.mjs && jiti tests/search.test.mjs && jiti tests/editor-layout.test.mjs && jiti tests/debug-expression.test.mjs && jiti tests/debug-values.test.mjs && jiti tests/debug-crash.test.mjs"
+    "test": "node tests/cmake.test.mjs && node tests/locales.test.mjs && node tests/class-template.test.mjs && node tests/themes.test.mjs && node tests/file-icons.test.mjs && node tests/agents.test.mjs && node tests/git.test.mjs && jiti tests/git-service.test.mjs && jiti tests/studio-files.test.mjs && jiti tests/configure.test.mjs && jiti tests/update-release.test.mjs && jiti tests/debugger-download.test.mjs && jiti tests/plugins.test.mjs && jiti tests/checkout-update.test.mjs && jiti tests/arguments.test.mjs && jiti tests/command-search.test.mjs && jiti tests/search.test.mjs && jiti tests/editor-layout.test.mjs && jiti tests/debug-expression.test.mjs && jiti tests/debug-values.test.mjs && jiti tests/debug-crash.test.mjs && jiti tests/model-files.test.mjs && jiti tests/database.test.mjs"
   },
   "keywords": [
     "glist-engine",
@@ -37,6 +37,7 @@
     "@electron-forge/plugin-webpack": "^7.11.2",
     "@electron/fuses": "^1.8.0",
     "@reforged/maker-appimage": "^5.3.1",
+    "@types/three": "^0.186.0",
     "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
@@ -63,6 +64,7 @@
     "electron-squirrel-startup": "^1.0.1",
     "monaco-editor": "^0.56.0",
     "monaco-editor-webpack-plugin": "^7.1.1",
-    "node-pty": "1.2.0-beta.15"
+    "node-pty": "1.2.0-beta.15",
+    "three": "^0.186.1"
   }
 }

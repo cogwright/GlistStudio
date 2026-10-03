@@ -20,8 +20,9 @@ export const mainConfig: Configuration = {
   },
   plugins: [...plugins, new DefinePlugin({ GLIST_STUDIO_COMMIT: JSON.stringify(commit) })],
   // node-pty finds its binaries and a worker script by path, so it stays out of
-  // the bundle; forge.config.ts copies it into the app.
-  externals: { 'node-pty': 'commonjs node-pty' },
+  // the bundle; forge.config.ts copies it into the app. node:sqlite is Node's
+  // own, which this webpack does not know to be.
+  externals: { 'node-pty': 'commonjs node-pty', 'node:sqlite': 'commonjs node:sqlite' },
   resolve: {
     extensions: ['.js', '.ts', '.jsx', '.tsx', '.css', '.json'],
   },

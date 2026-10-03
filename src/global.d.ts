@@ -187,6 +187,56 @@ interface GlistImageFile {
   size: number;
 }
 
+// A SQLite value as the window gets it: a big integer as text, a BLOB as its size.
+type GlistDatabaseCell = null | number | string | { blob: number };
+interface GlistDatabaseColumn { name: string; type: string; notNull: boolean; primaryKey: number; defaultValue: string | null }
+interface GlistDatabaseTable {
+  name: string;
+  kind: 'table' | 'view';
+  withoutRowid: boolean;
+  sql: string;
+  rows: number | null;
+  columns: GlistDatabaseColumn[];
+  indexes: Array<{ name: string; unique: boolean; automatic: boolean; columns: string[] }>;
+  foreignKeys: Array<{ from: string; table: string; to: string }>;
+}
+interface GlistDatabaseSchema {
+  tables: GlistDatabaseTable[];
+  triggers: Array<{ name: string; table: string; sql: string }>;
+  readOnly: boolean;
+  version: string;
+}
+interface GlistDatabaseRowsOptions { offset?: number; orderBy?: string; descending?: boolean; where?: string }
+interface GlistDatabaseRows {
+  columns: string[];
+  rows: GlistDatabaseCell[][];
+  // What tells each row apart for changing it; null for a view.
+  keys: GlistDatabaseCell[][] | null;
+  keyColumns: string[];
+  total: number;
+  offset: number;
+  pageSize: number;
+}
+type GlistDatabaseResult =
+  | { sql: string; columns: string[]; rows: GlistDatabaseCell[][]; truncated: boolean; milliseconds: number }
+  | { sql: string; changes: number; lastInsertRowid: GlistDatabaseCell; milliseconds: number }
+  | { sql: string; error: string };
+type GlistDatabaseEdit =
+  | { kind: 'update'; table: string; key: GlistDatabaseCell[]; column: string; value: string | null }
+  | { kind: 'insert'; table: string; values: Record<string, string | null> }
+  | { kind: 'delete'; table: string; keys: GlistDatabaseCell[][] };
+
+type GlistModelFormat = 'gltf' | 'glb' | 'obj' | 'fbx' | 'dae' | 'stl' | 'ply' | '3ds';
+// A 3D model in base64, with the files it names (materials, buffers, textures)
+// under the names it gives them, and those it names that could not be read.
+interface GlistModelFile {
+  format: GlistModelFormat;
+  data: string;
+  size: number;
+  files: Record<string, string>;
+  missing: string[];
+}
+
 interface GlistPluginReadme {
   text: string;
   page: string;
@@ -593,6 +643,14 @@ interface Window {
     readFile(filePath: string): Promise<string>;
     readWorkspaceFile(filePath: string): Promise<string>;
     readImage(filePath: string): Promise<GlistImageFile>;
+    readModel(filePath: string): Promise<GlistModelFile>;
+    // A SQLite database's tab (database.ts): its tables, a page of rows, SQL
+    // run as typed, a row changed, added or deleted, and the file let go of.
+    databaseSchema(filePath: string): Promise<GlistDatabaseSchema>;
+    databaseRows(filePath: string, table: string, options: GlistDatabaseRowsOptions): Promise<GlistDatabaseRows>;
+    databaseQuery(filePath: string, sql: string): Promise<GlistDatabaseResult[]>;
+    databaseEdit(filePath: string, change: GlistDatabaseEdit): Promise<{ changes: number }>;
+    databaseClose(filePath: string): Promise<void>;
     // The .clang-format a C or C++ file follows, or null.
     codeStyle(filePath: string, mode?: GlistCodeStyleMode): Promise<GlistCodeStyle | null>;
     listDependencies(): Promise<GlistDependency[]>;
