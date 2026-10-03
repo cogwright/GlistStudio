@@ -28,6 +28,7 @@ import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isLinux, isMac, primaryKey, reformatShortcut, shortcutLabel } from './shortcuts';
+import { dressSelects } from './select-menu';
 import { setUpStarPrompt } from './star-prompt';
 import { setUpGlistInstaller } from './glist-installer';
 import { TargetPicker } from './targets';
@@ -468,6 +469,7 @@ const showZoom = (): void => {
 };
 
 placeIcons();
+dressSelects();
 
 // Windows and Linux: the window's buttons, the page's own (index.html), so they
 // zoom with it. The middle one is Restore Down while the window fills the screen.
