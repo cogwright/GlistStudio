@@ -869,7 +869,7 @@ const closeFile = async (filePath: string, group = layout.focused): Promise<void
   const file = openFiles.get(filePath);
   if (!file) return;
   if (layout.groupsWith(filePath).length <= 1 && file.kind === 'file' && isDirty(file)) {
-    try { await saveFile(file, false); } catch (error) { noticeFailed('saveFailed', error); return; }
+    try { await saveFile(file); } catch (error) { noticeFailed('saveFailed', error); return; }
   }
   const wasInFront = layout.groups[group]?.active === filePath;
   layout.close(filePath, group);
@@ -1202,8 +1202,8 @@ const formatOnSave = (): boolean => {
   try { return window.localStorage.getItem('glist-studio-format-on-save') !== 'off'; } catch { return true; }
 };
 
-// Before a C or C++ file is saved, the lines changed since it was last saved
-// are formatted by its .clang-format, as one step Undo takes back: indents
+// Before a C or C++ file is saved, however the save was asked for, the lines
+// changed since it was last saved are formatted by its .clang-format, as one step Undo takes back: indents
 // with tabs or spaces as it says, spacing, braces. Lines nobody touched stay
 // as they are, and #include lines are left out, so they are never reordered.
 // Without a .clang-format above it, Glist Studio's own, Glist Engine's style,
@@ -1326,18 +1326,29 @@ const addTab = (filePath: string, model: monaco.editor.ITextModel, readOnly: boo
   return file;
 };
 
+// Every save comes here, Ctrl+S's and the automatic ones alike (leaving the
+// editor or the window, closing a tab, Build, Run and the rest), so each is
+// formatted first as Ctrl+S's is. One save of a file at a time: leaving the
+// editor and the window together ask twice, and formatting waits for clangd,
+// so the second waits for the first and saves only what is still changed.
 // The text is taken once, so anything typed while it is written stays unsaved.
-const saveFile = async (file: OpenFile, format = true): Promise<void> => {
-  if (format) await formatForSaving(file);
-  const version = file.model.getAlternativeVersionId();
-  await window.glistAPI.writeFile(file.path, file.model.getValue());
-  file.savedVersion = version;
-  clangd.saved(file.model);
-  refreshDirtyMark(file);
-  if (baseName(file.path) === 'CMakeLists.txt' && isProjectPath(file.path)) void learnDependencies().then(refreshDependencies);
-  // A changed .clang-format: the open files indent as it now says.
-  if (/^[._]clang-format$/.test(file.name)) fileTabs().forEach((tab) => { void applyCodeStyle(tab); });
-  void git.refresh();
+const savesUnderway = new WeakMap<OpenFile, Promise<void>>();
+const saveFile = (file: OpenFile): Promise<void> => {
+  const save = (savesUnderway.get(file) ?? Promise.resolve()).catch((): void => undefined).then(async (): Promise<void> => {
+    if (!isDirty(file)) return;
+    await formatForSaving(file);
+    const version = file.model.getAlternativeVersionId();
+    await window.glistAPI.writeFile(file.path, file.model.getValue());
+    file.savedVersion = version;
+    clangd.saved(file.model);
+    refreshDirtyMark(file);
+    if (baseName(file.path) === 'CMakeLists.txt' && isProjectPath(file.path)) void learnDependencies().then(refreshDependencies);
+    // A changed .clang-format: the open files indent as it now says.
+    if (/^[._]clang-format$/.test(file.name)) fileTabs().forEach((tab) => { void applyCodeStyle(tab); });
+    void git.refresh();
+  });
+  savesUnderway.set(file, save);
+  return save;
 };
 
 // Opening a tab takes a moment; the last one asked for comes to the front,
@@ -1837,7 +1848,7 @@ const newBranch = async (start?: string, label?: string, root?: string): Promise
 };
 
 const cloneProject = async (): Promise<void> => {
-  if (!(await saveProjectFiles(false))) return;
+  if (!(await saveProjectFiles())) return;
   const location = await window.glistAPI.getProjectsDirectory();
   const root = await cloneDialog(location, (update) => window.glistAPI.onGitConsole((entry) => {
     const line = entry.kind === 'output' ? entry.text.split(/[\r\n]/).map((part) => part.trim()).filter(Boolean).pop() : null;
@@ -1967,7 +1978,7 @@ const setUpEditor = (view: GroupView): void => {
   target.onDidChangeCursorPosition(scheduleSessionSave);
   // Leaving the editor, for the terminal or the explorer, saves as leaving the
   // window does, so what is run from there sees what is on screen.
-  target.onDidBlurEditorWidget(() => { if (activeProject) void saveProjectFiles(false); });
+  target.onDidBlurEditorWidget(() => { if (activeProject) void saveProjectFiles(); });
   target.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
   target.addCommand(isLinux ? monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI : monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
     () => { void reformatFile(); }, 'editorLangId =~ /^(cpp|json|yaml|toml|ini)$/');
@@ -2857,7 +2868,7 @@ void window.glistAPI.glistStatus().then((status) => {
 }).catch((): undefined => undefined);
 
 const chooseProject = async (): Promise<void> => {
-  if (!(await saveProjectFiles(false))) return;
+  if (!(await saveProjectFiles())) return;
   await showProjectPicker();
 };
 
@@ -2883,10 +2894,10 @@ const saveActiveFile = async (): Promise<void> => {
 };
 
 // Build and Run compile what is on screen, so every changed tab is saved first.
-const saveProjectFiles = async (format = true): Promise<boolean> => {
+const saveProjectFiles = async (): Promise<boolean> => {
   try {
     for (const file of fileTabs()) {
-      if (!file.readOnly && isDirty(file)) await saveFile(file, format);
+      if (!file.readOnly && isDirty(file)) await saveFile(file);
     }
     return true;
   } catch (error) {
@@ -2895,12 +2906,12 @@ const saveProjectFiles = async (format = true): Promise<boolean> => {
   }
 };
 
-// As in JetBrains' IDEs: leaving the window saves every changed file, as it
-// is, without formatting it under the cursor; coming back reads again the files
+// As in JetBrains' IDEs: leaving the window saves every changed file, formatted
+// as Ctrl+S formats it (saveFile); coming back reads again the files
 // changed on disk meanwhile, other than those with changes not saved yet. Build,
 // Run, Debug, Git and the Plugins view save first too, and so does leaving an
 // editor (setUpEditor): saving needs no setting.
-window.addEventListener('blur', () => { if (activeProject) { void saveProjectFiles(false); saveSessionNow(); } });
+window.addEventListener('blur', () => { if (activeProject) { void saveProjectFiles(); saveSessionNow(); } });
 window.addEventListener('focus', () => { if (activeProject) void reloadOpenFiles(); });
 
 // Keeps a second click from reaching the backend while the first is on its way.
@@ -3564,7 +3575,7 @@ const createAndOpen = async (template: GlistTemplate, name: string): Promise<voi
 };
 element<HTMLFormElement>('#new-project-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (!(await saveProjectFiles(false))) return;
+  if (!(await saveProjectFiles())) return;
   const name = element<HTMLInputElement>('#project-name-input').value.trim();
   const template = element<HTMLSelectElement>('#project-template').value as GlistTemplate;
   const errorHost = element<HTMLElement>('#project-dialog-error');
@@ -3585,7 +3596,7 @@ void window.glistAPI.windowProject().then(async (first) => {
 
 // The project's window closes, saved first; the last window stays, without a project.
 const closeProject = async (): Promise<void> => {
-  if (!activeProject || !(await saveProjectFiles(false))) return;
+  if (!activeProject || !(await saveProjectFiles())) return;
   await window.glistAPI.closeProject();
 };
 fileTree.addEventListener('click', (event) => {
