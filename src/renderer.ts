@@ -3435,6 +3435,8 @@ const configureMenus = (): void => {
           shortcut: 'Ctrl+0', hint: percent(zoomPercentage), disabled: zoomPercentage === defaultZoom,
         }),
         { kind: 'separator' },
+        item(t('repairReload'), () => { void reloadWindowSafely(); }, { shortcut: 'Ctrl+R' }),
+        { kind: 'separator' },
         { kind: 'heading', label: t('preferences') },
         item(t('settings'), () => openSettings()),
       ],
@@ -3468,6 +3470,7 @@ const configureMenus = (): void => {
         ...(canUpdate() ? [item(t('checkForUpdates'), checkForUpdates)] : []),
         { kind: 'separator' },
         item(t('copyDebugInfo'), () => { void copyDebugInfo(); }),
+        ...(window.glistFiles ? [item(t('toggleDevTools'), () => { void window.glistAPI.toggleDevTools(); }, { shortcut: isMac ? 'Cmd+Alt+I' : 'Ctrl+Shift+I' })] : []),
         item(t('repairIde'), () => repair.open()),
         item(t('aboutMenu'), () => openSettings('about')),
       ],
@@ -4085,6 +4088,17 @@ window.addEventListener('keydown', (event) => {
   else if (primaryKey(event) && event.key.toLowerCase() === 'c' && selectedEntries.size > 0 && fileTree.contains(document.activeElement)) { event.preventDefault(); copySelectedEntries(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 'v' && copiedEntryPaths.length > 0 && fileTree.contains(document.activeElement)) { event.preventDefault(); pasteCopiedEntries(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 's') { event.preventDefault(); saveActiveFile(); }
+  // Reload the Window, not the page bare, which came up without its project. A
+  // terminal keeps Ctrl+R, its shell's search of what was typed before.
+  else if (primaryKey(event) && !event.altKey && event.key.toLowerCase() === 'r' && !(event.ctrlKey && document.activeElement?.closest('.xterm'))) {
+    event.preventDefault();
+    void reloadWindowSafely();
+  } else if (window.glistFiles && event.key.toLowerCase() === 'i' && (isMac ? event.metaKey && event.altKey : event.ctrlKey && event.shiftKey)) {
+    // The developer tools, which Electron's own menu opened before the studio had none on Windows and
+    // Linux. In the editor on Linux, Ctrl+Shift+I is Reformat File, which Monaco takes first.
+    event.preventDefault();
+    void window.glistAPI.toggleDevTools();
+  }
   else if (primaryKey(event) && event.key.toLowerCase() === 'o') { event.preventDefault(); chooseProject(); }
   else if (primaryKey(event) && event.shiftKey && event.key.toLowerCase() === 'b') { event.preventDefault(); buildProject(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 'b') { event.preventDefault(); toggleExplorer(); }
@@ -4215,6 +4229,12 @@ const repair = setUpRepair({
   installGlist: () => { void showGlistInstaller(); },
   build: () => { void buildProject(); },
 });
+// View > Reload the Window, and Ctrl+R: as Repair IDE's, saving first and
+// opening the project again.
+const reloadWindowSafely = async (): Promise<void> => {
+  if ((await repair.reload()) === 'unsaved') notify({ text: t('repairReloadUnsaved'), kind: 'error' });
+};
+
 // The backend stopped by itself, and a new one has the window's settings and
 // project again (index.ts): what ran in the old one starts again here, and the
 // tabs stay as they are. The notice has the error that stopped it, when it said.

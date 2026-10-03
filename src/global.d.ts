@@ -797,6 +797,7 @@ interface Window {
     newWindow(): Promise<void>;
     quitApp(): Promise<void>;
     copyText(text: string): Promise<void>;
+    toggleDevTools(): Promise<void>;
     // The window buttons the page draws on Windows and Linux.
     windowControl(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
     windowMaximized(): Promise<boolean>;
