@@ -135,6 +135,10 @@ const bringForward = (window: BrowserWindow): void => {
 // So does closing the last window on Windows and Linux, which quits there: the
 // list still has it, and it opens again with the app. A Mac app runs on with
 // no window, so a window closed there is not opened again.
+//
+// A window closed is only left out of the list a moment later (closedWindow),
+// so windows closed together, as the taskbar's Close all windows closes them
+// one after another, all open again: the app has quit by then.
 let quitting = false;
 let savingWindows: NodeJS.Timeout | null = null;
 const saveWindows = (): void => {
@@ -152,10 +156,11 @@ const saveWindows = (): void => {
     // Glist Studio's folder cannot be written; the windows are not opened again.
   }
 };
-const scheduleSavingWindows = (): void => {
+const scheduleSavingWindows = (delay = 400): void => {
   if (savingWindows) clearTimeout(savingWindows);
-  savingWindows = setTimeout(saveWindows, 400);
+  savingWindows = setTimeout(saveWindows, delay);
 };
+const closedWindow = (): void => scheduleSavingWindows(3000);
 
 // The windows saved, the ones whose project is still there, each once.
 const savedWindows = (): SavedWindow[] => {
@@ -526,7 +531,7 @@ const createWindow = (first?: FirstProject, saved?: SavedWindow): BrowserWindow 
     windowMenus.delete(contentsId);
     // A window closed while quitting, once its files were saved, lets quitting go on.
     if (quitting) app.quit();
-    else saveWindows();
+    else closedWindow();
   });
   return createdWindow;
 };
@@ -552,7 +557,11 @@ app.whenReady().then(() => {
   restoreWindows();
   started = true;
 });
-app.on('before-quit', () => { saveWindows(); quitting = true; });
+app.on('before-quit', () => {
+  if (savingWindows) clearTimeout(savingWindows);
+  saveWindows();
+  quitting = true;
+});
 // On macOS the app stays open without windows, unless it is restarting to update.
 app.on('window-all-closed', () => { if (process.platform !== 'darwin' || restartingToUpdate()) app.quit(); });
 // Quitting waits for every backend to stop what it started, so no clangd,
