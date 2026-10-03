@@ -112,8 +112,6 @@ export const installUpdate = (): void => {
   app.quit();
 };
 
-// Unsaved files kept the app open, so the restart is off.
-export const quitCancelled = (): void => { restartRequested = false; };
 
 export const restartingToUpdate = (): boolean => restartRequested;
 

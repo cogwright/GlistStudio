@@ -711,12 +711,14 @@ const forgetDocument = (tab: EditorTab): void => {
   groupViews.forEach((view) => view.viewStates.delete(tab.path));
 };
 
-// Closes one tab; the file closes with its last tab, asking first about
-// unsaved changes.
+// Closes one tab; the file closes with its last tab, saved first. If it cannot
+// be saved, the tab stays.
 const closeFile = async (filePath: string, group = layout.focused): Promise<void> => {
   const file = openFiles.get(filePath);
   if (!file) return;
-  if (layout.groupsWith(filePath).length <= 1 && isDirty(file) && !(await confirmDialog(`${file.name} ${t('confirmClose')}`))) return;
+  if (layout.groupsWith(filePath).length <= 1 && file.kind === 'file' && isDirty(file)) {
+    try { await saveFile(file, false); } catch (error) { noticeFailed('saveFailed', error); return; }
+  }
   const wasInFront = layout.groups[group]?.active === filePath;
   layout.close(filePath, group);
   showGroups();
@@ -1582,7 +1584,7 @@ const newBranch = async (start?: string, label?: string, root?: string): Promise
 };
 
 const cloneProject = async (): Promise<void> => {
-  if (hasDirtyFiles() && !(await confirmDialog(t('confirmProjectSwitch')))) return;
+  if (!(await saveProjectFiles(false))) return;
   const location = await window.glistAPI.getProjectsDirectory();
   const root = await cloneDialog(location, (update) => window.glistAPI.onGitConsole((entry) => {
     const line = entry.kind === 'output' ? entry.text.split(/[\r\n]/).map((part) => part.trim()).filter(Boolean).pop() : null;
@@ -1708,6 +1710,9 @@ const setUpEditor = (view: GroupView): void => {
   debug.attach(target);
   gitEditor.attach(target);
   target.onDidFocusEditorWidget(() => focusGroup(groupViews.indexOf(view)));
+  // Leaving the editor, for the terminal or the explorer, saves as leaving the
+  // window does, so what is run from there sees what is on screen.
+  target.onDidBlurEditorWidget(() => { if (activeProject) void saveProjectFiles(false); });
   target.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.KeyO, () => { void switchSourceHeader(); }, 'editorLangId == cpp');
   target.addCommand(isLinux ? monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyI : monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF,
     () => { void reformatFile(); }, 'editorLangId == cpp');
@@ -2546,7 +2551,7 @@ void window.glistAPI.glistStatus().then((status) => {
 }).catch((): undefined => undefined);
 
 const chooseProject = async (): Promise<void> => {
-  if (hasDirtyFiles() && !(await confirmDialog(t('confirmProjectSwitch')))) return;
+  if (!(await saveProjectFiles(false))) return;
   await showProjectPicker();
 };
 
@@ -2586,7 +2591,9 @@ const saveProjectFiles = async (format = true): Promise<boolean> => {
 
 // As in JetBrains' IDEs: leaving the window saves every changed file, as it
 // is, without formatting it under the cursor; coming back reads again the files
-// changed on disk meanwhile, other than those with changes not saved yet.
+// changed on disk meanwhile, other than those with changes not saved yet. Build,
+// Run, Debug, Git and the Plugins view save first too, and so does leaving an
+// editor (setUpEditor): saving needs no setting.
 window.addEventListener('blur', () => { if (activeProject) void saveProjectFiles(false); });
 window.addEventListener('focus', () => { if (activeProject) void reloadOpenFiles(); });
 
@@ -3149,7 +3156,7 @@ setUpThemePicker({
 element<HTMLButtonElement>('#project-cancel').addEventListener('click', () => projectDialog.close());
 element<HTMLFormElement>('#new-project-form').addEventListener('submit', async (event) => {
   event.preventDefault();
-  if (hasDirtyFiles() && !(await confirmDialog(t('confirmProjectSwitch')))) return;
+  if (!(await saveProjectFiles(false))) return;
   const name = element<HTMLInputElement>('#project-name-input').value.trim();
   const template = element<HTMLSelectElement>('#project-template').value as GlistTemplate;
   const errorHost = element<HTMLElement>('#project-dialog-error');
@@ -3356,6 +3363,7 @@ window.addEventListener('wheel', (event) => {
   changeZoom(pinchDelta < 0 ? 1 : -1);
   pinchDelta = 0;
 }, { passive: false, capture: true });
+// Closing with changed files waits for them to be saved (app:save-and-close).
 window.addEventListener('beforeunload', (event) => {
   if (hasDirtyFiles()) { event.preventDefault(); event.returnValue = ''; }
 });

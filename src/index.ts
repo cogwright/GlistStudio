@@ -7,7 +7,7 @@ import {
   stopGit, stopTerminal, stopWatchingConfiguration, studio, studioHome,
 } from './studio';
 import {
-  checkForUpdates, installOnQuit, installUpdate, openUpdatePage, quitCancelled, restartingToUpdate, setUpdateListener, source, updateState,
+  checkForUpdates, installOnQuit, installUpdate, openUpdatePage, restartingToUpdate, setUpdateListener, source, updateState,
 } from './updater';
 import { githubCommitPage } from './repository-head';
 
@@ -230,18 +230,9 @@ const createWindow = (): void => {
     return { action: 'deny' };
   });
   // The renderer blocks unloading while tabs are unsaved; Electron would then
-  // silently refuse to close, so ask instead.
-  createdWindow.webContents.on('will-prevent-unload', (event) => {
-    const choice = dialog.showMessageBoxSync(createdWindow, {
-      type: 'warning',
-      message: msg('unsavedChanges'),
-      buttons: [msg('saveAndClose'), msg('closeWithoutSaving'), msg('cancel')],
-      defaultId: 0,
-      cancelId: 2,
-    });
-    if (choice === 0) createdWindow.webContents.send('app:save-and-close', null);
-    else if (choice === 1) event.preventDefault();
-    else quitCancelled();
+  // silently refuse to close, so it is told to save them, and closes after.
+  createdWindow.webContents.on('will-prevent-unload', () => {
+    createdWindow.webContents.send('app:save-and-close', null);
   });
   createdWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== MAIN_WINDOW_WEBPACK_ENTRY) event.preventDefault();
