@@ -329,6 +329,14 @@ export const compareDatabases = async (
   }
 };
 
+// A file's size and when it was last written, and its -wal's, where writes
+// wait in a WAL database: which changes whenever what a diff of it reads does,
+// told without reading it.
+export const fileStamp = async (file: string): Promise<string> => {
+  const stamp = (name: string): Promise<string> => fs.stat(name).then((stats) => `${stats.size}:${stats.mtimeMs}`, () => '-');
+  return `${await stamp(file)}/${await stamp(`${file}-wal`)}`;
+};
+
 // Where the versions come from: the commits' from git, the one on disk from
 // the project.
 export interface DatabaseVersions {

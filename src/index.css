@@ -983,9 +983,10 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
    beside it as in its tab; added as added files are coloured, removed in red,
    changed as changed files are. */
 .database-diff-view { position: absolute; inset: 0; display: flex; flex-direction: column; color: var(--ui-fg); user-select: none; }
-.database-diff-header { display: flex; flex: none; align-items: center; gap: 12px; padding: 7px 12px 7px 16px; border-bottom: 1px solid var(--ui-border); background: var(--ui-chrome); font-size: 12.5px; }
+.database-diff-header { display: flex; flex: none; align-items: center; gap: 2px; min-height: 36px; padding: 0 8px 0 16px; border-bottom: 1px solid var(--ui-border); background: var(--ui-chrome); font-size: 12.5px; }
+.database-diff-header .heading-action { flex: none; }
 .database-diff-name { color: var(--ui-fg-strong); font-weight: 600; white-space: nowrap; }
-.database-diff-versions { min-width: 0; overflow: hidden; color: var(--ui-fg-muted); text-overflow: ellipsis; white-space: pre; }
+.database-diff-versions { min-width: 0; margin-left: 10px; overflow: hidden; color: var(--ui-fg-muted); text-overflow: ellipsis; white-space: pre; }
 .database-diff-space { flex: 1; }
 .database-diff-status { margin: 0; padding: 10px 16px; font-size: 12px; }
 .database-diff-status.error { color: var(--ui-danger); white-space: pre-wrap; user-select: text; }
