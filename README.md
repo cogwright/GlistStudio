@@ -24,6 +24,7 @@ Glist Studio is a lightweight desktop IDE for Glist Engine projects, built with 
 - C++ class generation with matching header and source files
 - New projects from the bundled GlistApp, GlistConsoleApp and GlistGUIApp templates
 - Installing Glist Engine itself, with its own installer, when it is missing
+- Help > Repair IDE checks what could be wrong and fixes what it can: background work that stopped answering, code help that stopped, a lock Git left behind. It says what to do about the rest
 - English, Turkish and French, with git's and the compilers' messages in the same language where they have it; themes including imported VS Code themes, font choices, and a scale setting up to 300% for projectors
 
 ## Installing

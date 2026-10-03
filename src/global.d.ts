@@ -448,6 +448,29 @@ interface GlistAbout {
   repositories: GlistAboutRepository[];
   runtime: Array<{ name: string; version: string }>;
 }
+// Help > Repair IDE: what a window's backend is running, as it knows it.
+interface GlistRepairState {
+  project: string | null;
+  clangd: boolean;
+  // A build folder has compile_commands.json, which clangd needs to know the project's files.
+  compileCommands: boolean;
+  building: boolean;
+  running: boolean;
+  debugging: boolean;
+  // Its terminal sessions: shell, shell-2, agent, install.
+  terminals: string[];
+}
+// A lock git left in a repository: removed, or why not. Stale when only looked at.
+interface GlistRepairLock {
+  repository: string;
+  file: string;
+  state: 'removed' | 'stale' | 'busy' | 'recent' | 'failed';
+  message?: string;
+}
+interface GlistRepairGit {
+  installed: boolean;
+  locks: GlistRepairLock[];
+}
 // Help > Copy Debug Info: what the app's main process, or the browser build's server, runs on.
 interface GlistDebugInfo {
   version: string;
@@ -830,6 +853,16 @@ interface Window {
     glistStatus(): Promise<GlistInstallStatus>;
     aboutInfo(): Promise<GlistAbout>;
     debugInfo(): Promise<GlistDebugInfo>;
+    // Help > Repair IDE. Ping is answered once the backend's work in hand lets it, so a stuck one never does.
+    ping(): Promise<boolean>;
+    // The app's: ends the window's backend and what it started; true once the new one answers.
+    restartBackend(): Promise<boolean>;
+    // The page starts afresh, its project opened again; the app's main process knows which itself.
+    reloadWindow(projectRoot: string | null): Promise<void>;
+    repairState(): Promise<GlistRepairState>;
+    repairGit(fix: boolean): Promise<GlistRepairGit>;
+    // Stops clangd and deletes its index: the folders deleted.
+    clearClangdIndex(): Promise<string[]>;
     // True where the menus went to the system's menu bar, on macOS.
     setAppMenu(menus: GlistAppMenu[], words: GlistAppMenuWords): Promise<boolean>;
     onMenuCommand(callback: (id: string) => void): () => void;

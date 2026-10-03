@@ -337,6 +337,16 @@ export class ClangdClient {
     return this.restartAfterBuild;
   }
 
+  // Repair IDE: whether clangd answers at all. Null when it is not running for
+  // the window (never started, still starting, or stopped); otherwise whether
+  // a reply comes in time. Any reply will do, and one to a method clangd does
+  // not have comes at once, from where it reads every message.
+  async answers(within: number): Promise<boolean | null> {
+    if (!this.capabilities) return null;
+    const reply = this.request('glist/answering', null).then(() => true, (error: Error) => error.message !== 'clangd stopped');
+    return Promise.race([reply, new Promise<boolean>((resolve) => { window.setTimeout(() => resolve(false), within); })]);
+  }
+
   private open(model: monaco.editor.ITextModel): void {
     const uri = model.uri.toString();
     if (!this.capabilities || this.documents.has(uri)) return;
@@ -379,7 +389,9 @@ export class ClangdClient {
   }
 
   private send(message: Message): void {
-    void window.glistAPI.sendClangd({ jsonrpc: '2.0', ...message });
+    // One sent as the backend stopped, as when Repair IDE ends a stuck one, is
+    // lost with its clangd; the window starts another when a new backend is there.
+    window.glistAPI.sendClangd({ jsonrpc: '2.0', ...message }).catch((): undefined => undefined);
   }
 
   private notify(method: string, params: unknown): void {

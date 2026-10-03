@@ -59,6 +59,11 @@ export class MessageProcess {
     });
   }
 
+  // Started, and not exited since.
+  get running(): boolean {
+    return this.child !== null;
+  }
+
   send(message: unknown): void {
     if (!this.child) return;
     const body = Buffer.from(JSON.stringify(message), 'utf8');
@@ -69,6 +74,17 @@ export class MessageProcess {
     const child = this.child;
     this.child = null;
     child?.kill();
+  }
+
+  // Stopped, once it has exited: at most three seconds, then it is ended outright.
+  async stopAndWait(): Promise<void> {
+    const child = this.child;
+    this.stop();
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 3000);
+      child.once('exit', () => { clearTimeout(timer); resolve(); });
+    });
   }
 
   private receive(chunk: Buffer): void {

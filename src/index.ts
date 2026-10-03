@@ -13,6 +13,7 @@ import {
   source, tidySquirrelFolders, updateState,
 } from './updater';
 import { githubCommitPage } from './repository-head';
+import { endProcessTree } from './process-tree';
 
 declare const MAIN_WINDOW_WEBPACK_ENTRY: string;
 declare const MAIN_WINDOW_PRELOAD_WEBPACK_ENTRY: string;
@@ -205,6 +206,10 @@ interface Backend {
   call(method: string, args: unknown[]): Promise<unknown>;
   // Stops what it started, waiting for it at most three seconds.
   shutdown(): Promise<void>;
+  // Help > Repair IDE: ended at once, with what it started, as one that stopped
+  // answering has to be; the window then gets a new one, as after a crash.
+  kill(): void;
+  exited: Promise<void>;
 }
 const backends = new Map<number, Backend>();
 
@@ -265,8 +270,20 @@ const startBackend = (window: BrowserWindow): Backend => {
       }
       return exited;
     },
+    kill: () => {
+      if (stopping) return;
+      if (child.pid === undefined) child.kill();
+      else void endProcessTree(child.pid);
+    },
+    exited,
   };
 };
+
+// Whether a call is answered in time.
+const answersWithin = (call: Promise<unknown>, milliseconds: number): Promise<boolean> => Promise.race([
+  call.then(() => true, () => false),
+  new Promise<boolean>((resolve) => { setTimeout(() => resolve(false), milliseconds).unref(); }),
+]);
 
 const backendFor = (event: IpcMainInvokeEvent): Backend => {
   const backend = backends.get(event.sender.id);
@@ -455,6 +472,29 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
     return result.canceled ? null : result.filePaths[0] ?? null;
   },
   startupSettings: () => ({ saved: readStartup(), running: runningStartup }),
+  // Help > Repair IDE, for a backend that does not answer: it is ended, with
+  // what it started, and the exit handler in startBackend starts the next and
+  // gives it the window's settings and project again. True once that one answers.
+  restartBackend: async (event) => {
+    const backend = backends.get(event.sender.id);
+    if (!backend) return false;
+    backend.kill();
+    if (!(await answersWithin(backend.exited, 10000))) return false;
+    const next = backends.get(event.sender.id);
+    return next !== undefined && next !== backend && answersWithin(next.call('ping', []), 30000);
+  },
+  // Repair IDE's Reload the Window: the page starts afresh, Monaco with it, and
+  // opens its project again, as a window made for a project does
+  // (windowProject). Not yet this window's project meanwhile, or opening it
+  // would only bring this window forward.
+  reloadWindow: (event) => {
+    const memory = memories.get(event.sender.id);
+    if (memory?.projectRoot) {
+      firstProjects.set(event.sender.id, { kind: 'open', root: memory.projectRoot });
+      memory.projectRoot = null;
+    }
+    event.sender.reload();
+  },
   // Help > Copy Debug Info, answered here so that it works while the backend is down.
   debugInfo: (): GlistDebugInfo => ({
     version: app.getVersion(),
