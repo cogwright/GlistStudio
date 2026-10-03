@@ -9,7 +9,7 @@ import { isLanguage, languages, type Language, type Words } from './languages';
 import { defaultProjectsDirectory, studioHome } from './studio-places';
 import {
   checkForUpdates, installOnQuit, installUpdate, openUpdatePage, releaseHold, restartingToUpdate, rollBack, rollbackChoices, setUpdateListener,
-  source, updateState,
+  source, tidySquirrelFolders, updateState,
 } from './updater';
 import { githubCommitPage } from './repository-head';
 
@@ -597,6 +597,7 @@ app.whenReady().then(() => {
   if (!firstInstance) return;
   registerIpcHandlers();
   restoreWindows();
+  void tidySquirrelFolders();
   started = true;
 });
 app.on('before-quit', () => {

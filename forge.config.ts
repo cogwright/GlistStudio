@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { cp, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { ForgeConfig } from '@electron-forge/shared-types';
@@ -14,6 +15,7 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
+import { squirrelPackageVersion } from './src/update-release';
 
 // node-pty stays out of the webpack bundle, since it finds its binaries and
 // scripts by path (webpack.main.config.ts). It is copied into the app with the
@@ -75,6 +77,8 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       setupIcon: './assets/glistengine.ico',
+      // A preview's number in an order Squirrel keeps (squirrelPackageVersion).
+      version: squirrelPackageVersion((JSON.parse(readFileSync(path.join(__dirname, 'package.json'), 'utf8')) as { version: string }).version),
     }),
     // The disk image's window: the background at its size (dmg-background.svg,
     // rendered at 1x and 2x), the app left of the arrow and Applications right.

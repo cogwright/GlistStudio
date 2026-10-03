@@ -4,7 +4,7 @@ import { app, shell } from 'electron';
 import { studioHome } from './studio';
 import {
   assetFor, download, heldBack, installMacApp, isNewer, keptAppImage, newerRelease, releaseAt, releases, replaceAppImage,
-  rollBackSquirrel, rollbackChoices as choicesFrom, runWindowsSetup, squirrelVersion, stageKeptMacApp, stageMacApp, type Release,
+  rollBackSquirrel, rollbackChoices as choicesFrom, runWindowsSetup, squirrelPrefers, squirrelVersion, stageKeptMacApp, stageMacApp, type Release,
 } from './update-release';
 
 // Glist Studio updating itself from its published GitHub releases. A newer
@@ -126,10 +126,12 @@ const stage = async (version: string, place: Place, rollback: boolean, release: 
   const after = (): void => hold(rollback ? current : null);
   if (place.kind === 'windows') {
     if (rollback) {
-      if (kept[0] !== version) throw new Error(`Glist Studio ${version} is not kept on this computer`);
+      const folders = listing(place.root).filter((name) => /^app-\d/.test(name));
+      const target = folders.find((name) => name !== path.basename(path.dirname(process.execPath)) && squirrelVersion(name) === version);
+      if (!target) throw new Error(`Glist Studio ${version} is not kept on this computer`);
       const executable = path.basename(process.execPath);
-      const folder = path.basename(path.dirname(process.execPath));
-      return { version, rollback, install: (relaunch) => { after(); rollBackSquirrel(place.root, folder, executable, process.pid, relaunch); } };
+      const setAside = folders.filter((name) => name !== target);
+      return { version, rollback, install: (relaunch) => { after(); rollBackSquirrel(place.root, setAside, executable, process.pid, relaunch); } };
     }
     if (!asset) throw new Error(`No installer for this computer in ${version}`);
     const setup = path.join(updatesFolder(), version, asset.name);
@@ -205,8 +207,8 @@ export const rollbackChoices = async (previews?: unknown): Promise<GlistRollback
   listed = await releases(source).catch((): Release[] => []);
   return choicesFrom(listed, app.getVersion(), previews === true, kept, (version, release, isKept) => {
     if (!place) return false;
-    // Squirrel starts the newest app-<version> it has, so only that one can be gone back to.
-    if (place.kind === 'windows') return isKept && kept[0] === version;
+    // Every other app-<version> is set aside, so Squirrel can start any one kept.
+    if (place.kind === 'windows') return isKept;
     return isKept || Boolean(release && assetFor(release.assets, process.platform, process.arch));
   });
 };
@@ -233,6 +235,19 @@ export const rollBack = async (version?: unknown): Promise<GlistUpdateState> => 
   } catch (error) {
     return publish({ state: 'failed', message: error instanceof Error ? error.message : String(error) });
   }
+};
+
+// Windows: an older app-<version> that Squirrel would start instead of this
+// one, as it started app-0.0.9-dev6 over app-0.0.9-dev16, is set aside, so the
+// shortcut starts the version that is running now. On each start.
+export const tidySquirrelFolders = async (): Promise<void> => {
+  const place = app.isPackaged ? placeToInstall() : null;
+  if (place?.kind !== 'windows') return;
+  const running = path.basename(path.dirname(process.execPath));
+  const current = squirrelVersion(running);
+  await Promise.all(listing(place.root)
+    .filter((name) => /^app-\d/.test(name) && name !== running && squirrelPrefers(name, running) && isNewer(current, squirrelVersion(name)))
+    .map((name) => fs.rename(path.join(place.root, name), path.join(place.root, `rolled-back-${name.replace(/^app-/, '')}`)).catch((): undefined => undefined)));
 };
 
 // Update Again: the hold let go of, and a check at once.

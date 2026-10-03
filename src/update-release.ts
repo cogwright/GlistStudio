@@ -298,22 +298,49 @@ export const replaceAppImage = (staged: string, target: string, relaunch: boolea
 export const keptAppImage = (target: string, version: string): string =>
   path.join(path.dirname(target), `.${path.basename(target)}.${version}`);
 
-// The version in a Squirrel app-<version> folder's name. Squirrel takes the
-// dots out of a prerelease, as NuGet once required (electron-winstaller's
-// convertVersion): app-0.0.8-dev29 holds 0.0.8-dev.29.
-export const squirrelVersion = (folder: string): string =>
-  folder.replace(/^app-/, '').replace(/^(\d+\.\d+\.\d+-[A-Za-z]+)(\d+)$/, '$1.$2');
+// Squirrel compares the prerelease parts of two versions as text, so a folder
+// app-0.0.9-dev6 came after app-0.0.9-dev16 and an update started the version
+// before it. A preview is packaged for Squirrel as pre and its number in four
+// digits (forge.config.ts): text order is then number order, and pre comes
+// after the dev of the packages made before.
+export const squirrelPackageVersion = (version: string): string =>
+  version.replace(/-dev\.(\d+)$/, (_, number: string) => `-pre${number.padStart(4, '0')}`);
 
-// Squirrel keeps the version before an update in app-<version>, beside this
-// one, and starts the newest app-<version> there. Going back to it renames
-// this version's folder (the one the app runs from), once the app has quit,
-// to a name Squirrel passes over: one rename that either happens or does not,
-// never a folder half deleted.
-export const rollBackSquirrel = (root: string, folder: string, executable: string, pid: number, relaunch: boolean): void => {
+// The version in a Squirrel app-<version> folder's name, either way it was
+// packaged: app-0.0.9-pre0017 and, before, app-0.0.9-dev17 (electron-winstaller
+// takes the dots out of a prerelease) both hold 0.0.9-dev.17.
+export const squirrelVersion = (folder: string): string => {
+  const version = folder.replace(/^app-/, '');
+  const packaged = /^(\d+\.\d+\.\d+)-pre(\d+)$/.exec(version);
+  return packaged ? `${packaged[1]}-dev.${Number(packaged[2])}` : version.replace(/^(\d+\.\d+\.\d+-[A-Za-z]+)(\d+)$/, '$1.$2');
+};
+
+// Whether Squirrel starts the app in one folder rather than another: the higher
+// x.y.z, a release before its prereleases, and of two prereleases the one later
+// as text, case aside (NuGet's ordering).
+export const squirrelPrefers = (folder: string, other: string): boolean => {
+  const parts = (name: string): [number[], string] => {
+    const [core, ...rest] = name.replace(/^app-/, '').split('-');
+    return [core.split('.').map((part) => Number(part) || 0), rest.join('-').toLowerCase()];
+  };
+  const [[numbers, pre], [otherNumbers, otherPre]] = [parts(folder), parts(other)];
+  for (let index = 0; index < Math.max(numbers.length, otherNumbers.length); index += 1) {
+    if ((numbers[index] ?? 0) !== (otherNumbers[index] ?? 0)) return (numbers[index] ?? 0) > (otherNumbers[index] ?? 0);
+  }
+  if (!pre || !otherPre) return !pre && Boolean(otherPre);
+  return pre > otherPre;
+};
+
+// Squirrel starts the app-<version> folder it prefers there. Going back renames
+// every other one, once the app has quit, to a name Squirrel passes over, so it
+// can only start the one chosen: renames either happen or do not, never a
+// folder half deleted.
+export const rollBackSquirrel = (root: string, setAside: string[], executable: string, pid: number, relaunch: boolean): void => {
+  const quoted = (text: string): string => `'${text.replace(/'/g, "''")}'`;
   const script = [
     `Wait-Process -Id ${pid} -ErrorAction SilentlyContinue`,
-    `Rename-Item -LiteralPath '${path.join(root, folder).replace(/'/g, "''")}' -NewName 'rolled-back-${folder.replace(/^app-/, '').replace(/'/g, "''")}'`,
-    relaunch ? `Start-Process -FilePath '${path.join(root, 'Update.exe').replace(/'/g, "''")}' -ArgumentList '--processStart', '"${executable.replace(/'/g, "''")}"'` : '',
+    ...setAside.map((folder) => `Rename-Item -LiteralPath ${quoted(path.join(root, folder))} -NewName ${quoted(`rolled-back-${folder.replace(/^app-/, '')}`)}`),
+    relaunch ? `Start-Process -FilePath ${quoted(path.join(root, 'Update.exe'))} -ArgumentList '--processStart', ${quoted(`"${executable}"`)}` : '',
   ].filter(Boolean).join('; ');
   spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script], {
     detached: true, stdio: 'ignore', windowsHide: true,

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   assetFor, download, feedTags, heldBack, installMacApp, isNewer, keptAppImage, latestTag, newerRelease, releaseAt, releases, replaceAppImage,
-  rollbackChoices, squirrelVersion, stageKeptMacApp, stageMacApp,
+  rollbackChoices, squirrelPackageVersion, squirrelPrefers, squirrelVersion, stageKeptMacApp, stageMacApp,
 } from '../src/update-release.ts';
 
 // Updating from GitHub releases, against a local server that answers as
@@ -130,6 +130,18 @@ try {
   assert.equal(squirrelVersion('app-0.0.8-dev29'), '0.0.8-dev.29');
   assert.equal(squirrelVersion('app-0.0.7'), '0.0.7');
   assert.equal(squirrelVersion('app-1.2.3-beta'), '1.2.3-beta');
+  // Squirrel orders prereleases as text, as it started app-0.0.9-dev6 over app-0.0.9-dev16;
+  // previews are packaged as pre and four digits, whose text order is their number order.
+  assert.equal(squirrelPrefers('app-0.0.9-dev6', 'app-0.0.9-dev16'), true, 'the order that started an older version');
+  assert.equal(squirrelPackageVersion('0.0.9-dev.17'), '0.0.9-pre0017');
+  assert.equal(squirrelPackageVersion('0.0.9'), '0.0.9');
+  assert.equal(squirrelVersion('app-0.0.9-pre0017'), '0.0.9-dev.17');
+  assert.equal(squirrelPrefers('app-0.0.9-pre0017', 'app-0.0.9-pre0006'), true);
+  assert.equal(squirrelPrefers('app-0.0.9-pre0017', 'app-0.0.9-dev16'), true, 'after the dev packages made before');
+  assert.equal(squirrelPrefers('app-0.0.9-pre0017', 'app-0.0.9-dev6'), true);
+  assert.equal(squirrelPrefers('app-0.0.9', 'app-0.0.9-pre0017'), true, 'a release before its prereleases');
+  assert.equal(squirrelPrefers('app-0.0.10-pre0001', 'app-0.0.9'), true);
+  assert.equal(squirrelPrefers('app-0.0.8', 'app-0.0.9-pre0001'), false);
 
   const release = await releaseAt(source, 'v0.0.3');
   assert.equal(release.version, '0.0.3');
