@@ -9,6 +9,7 @@ import { getLanguage, t } from './localization';
 // tables and views beside it; a table's rows a page at a time, sorted, filtered
 // with an SQL condition, changed in place, added and deleted; what it is made
 // of; SQL typed and run; and new tables made from a form that shows their SQL.
+// Changes wait to be committed to the file, or discarded, from a bar over it.
 
 export interface DatabasePage {
   name: string;
@@ -17,12 +18,23 @@ export interface DatabasePage {
   // A new name for a table, asked as renaming a file is.
   askName(initial: string): Promise<string | null>;
   error?: string;
+  // What waits to be committed, as last heard: closing the tab asks about it.
+  pending?: GlistDatabasePending;
 }
 
 type Shown = { kind: 'table'; name: string; view: 'data' | 'structure' } | { kind: 'sql' } | { kind: 'new' };
 
 // What was typed in each database's SQL console, kept while the studio runs.
 const consoles = new Map<string, string>();
+
+// The tabs drawn, each told when what waits to be committed changes, so that a
+// database shown on both sides says the same on each.
+const drawn = new Set<{ page: DatabasePage; changed(ended: boolean): void }>();
+const heard = (page: DatabasePage, pending: GlistDatabasePending): void => {
+  const ended = Boolean(page.pending?.open) && !pending.open;
+  page.pending = pending;
+  drawn.forEach((each) => { if (each.page === page) each.changed(ended); });
+};
 
 const make = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
   const made = document.createElement(tag);
@@ -138,9 +150,41 @@ export const renderDatabasePage = (target: HTMLElement, page: DatabasePage): { d
       ...(schema && !schema.tables.length ? [make('p', 'database-empty', t('databaseEmpty'))] : []), facts);
   };
 
+  // Changes not committed yet, said in a bar over the tab, with Commit to write
+  // them to the file and Discard to undo them.
+  const pendingBar = make('div', 'database-pending');
+  const pendingText = make('span', 'database-pending-text');
+  const discard = button(t('databaseDiscard'));
+  const commit = button(t('databaseCommit'), 'database-button primary');
+  pendingBar.append(pendingText, discard, commit);
+  const drawPending = (): void => {
+    const pending = page.pending;
+    pendingBar.hidden = !pending?.open;
+    pendingText.classList.remove('error');
+    if (!pending?.open) return;
+    pendingText.textContent = pending.changes
+      ? counted('databasePendingOne', 'databasePending', { count: pending.changes, name: page.name })
+      : words('databasePendingOpen', { name: page.name });
+  };
+  const finish = async (save: boolean): Promise<void> => {
+    commit.disabled = true;
+    discard.disabled = true;
+    try {
+      heard(page, await (save ? api.databaseCommit(page.path) : api.databaseDiscard(page.path)));
+    } catch (error) {
+      pendingText.textContent = message(error);
+      pendingText.classList.add('error');
+    }
+    commit.disabled = false;
+    discard.disabled = false;
+  };
+  commit.addEventListener('click', () => { void finish(true); });
+  discard.addEventListener('click', () => { void finish(false); });
+
   const reloadSchema = async (): Promise<void> => {
     schema = await api.databaseSchema(page.path);
     if (disposed) return;
+    heard(page, schema.pending);
     if (shown.kind === 'table' && !schema.tables.some((table) => shown.kind === 'table' && table.name === shown.name)) shown = { kind: 'sql' };
     renderList();
   };
@@ -203,7 +247,7 @@ export const renderDatabasePage = (target: HTMLElement, page: DatabasePage): { d
       const key = keyOf(index);
       if (!key) return;
       try {
-        await api.databaseEdit(page.path, { kind: 'update', table: table.name, key, column, value });
+        heard(page, (await api.databaseEdit(page.path, { kind: 'update', table: table.name, key, column, value })).pending);
         await redraw();
       } catch (error) { say(message(error), true); }
     };
@@ -550,7 +594,7 @@ export const renderDatabasePage = (target: HTMLElement, page: DatabasePage): { d
     shown = next;
     say('');
     renderList();
-    main.replaceChildren();
+    main.replaceChildren(pendingBar);
     if (next.kind === 'sql') { renderSql(); return; }
     if (next.kind === 'new') { renderNew(); return; }
     const table = schema?.tables.find((each) => each.name === next.name);
@@ -569,6 +613,20 @@ export const renderDatabasePage = (target: HTMLElement, page: DatabasePage): { d
     await (next.view === 'data' ? renderData(table) : renderStructure(table));
   };
 
+  // After a commit or a discard, every side showing the tab reads again what
+  // the file now holds; the console keeps its results.
+  const listener = {
+    page,
+    changed: (ended: boolean): void => {
+      drawPending();
+      if (!ended) return;
+      const showing = shown.kind;
+      void reloadSchema().then(() => (showing === 'table' && !disposed ? show(shown) : undefined)).catch((): undefined => undefined);
+    },
+  };
+  drawn.add(listener);
+  drawPending();
+
   main.append(make('p', 'readme-status', t('databaseOpening')));
   void reloadSchema().then(() => {
     const first = schema?.tables[0];
@@ -582,6 +640,7 @@ export const renderDatabasePage = (target: HTMLElement, page: DatabasePage): { d
   return {
     dispose: () => {
       disposed = true;
+      drawn.delete(listener);
       leaveEditor();
     },
   };

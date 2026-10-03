@@ -36,6 +36,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   databaseRows: 'database:rows',
   databaseQuery: 'database:query',
   databaseEdit: 'database:edit',
+  databaseCommit: 'database:commit',
+  databaseDiscard: 'database:discard',
   databaseClose: 'database:close',
   readWorkspaceFile: 'project:read-workspace-file',
   codeStyle: 'project:code-style',

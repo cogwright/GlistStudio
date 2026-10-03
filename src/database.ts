@@ -7,6 +7,12 @@ import { quoteName } from './database-sql';
 // asked for, so a backend started again simply opens it again, and closed with
 // its tab. Values cross to the window as JSON does: big integers as text, and
 // a BLOB as its size.
+//
+// Changes wait in a transaction until the window commits or discards them: the
+// first change begins it, on the database's one connection, so what the tab
+// reads shows them while the file does not have them yet. Only what writes to
+// the file begins one; reading leaves none open, since an open transaction
+// keeps a running Glist app from writing.
 
 const pageRows = 100;
 const queryRows = 1000;
@@ -37,7 +43,26 @@ export const statementStart = (sql: string): string => {
 
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-interface Opened { database: DatabaseSync; readOnly: boolean }
+// Statements that begin and end transactions themselves run as typed.
+const transactionControl = /^(BEGIN|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE)\b/i;
+
+// Whether a statement writes to the file, as SQLite's sqlite3_stmt_readonly
+// says, which node:sqlite does not offer: its program begins a write
+// transaction (a Transaction step with p2 set) on a database other than TEMP.
+// VACUUM and a new journal mode, which SQLite runs only outside a transaction,
+// begin none and run as typed.
+export const writes = (database: DatabaseSync, sql: string): boolean => {
+  if (/^EXPLAIN\b/i.test(sql)) return false;
+  try {
+    const program = database.prepare(`EXPLAIN ${sql}`).all() as Array<Record<string, unknown>>;
+    return program.some((step) => step.opcode === 'Transaction' && Number(step.p2) !== 0 && Number(step.p1) !== 1);
+  } catch {
+    return true;
+  }
+};
+
+// Changes made and not committed yet: how many, while a transaction is open.
+interface Opened { database: DatabaseSync; readOnly: boolean; changes: number }
 
 export class Databases {
   private readonly opened = new Map<string, Opened>();
@@ -58,11 +83,17 @@ export class Databases {
     }
     // A Glist app running beside the studio may hold the file a moment.
     const database = new this.sqlite.DatabaseSync(file, { readOnly, timeout: 3000 });
-    const opened = { database, readOnly };
+    // Node 22.16 and later tell whether a transaction is open.
+    if (typeof database.isTransaction !== 'boolean') {
+      database.close();
+      throw new Error(this.unavailable());
+    }
+    const opened = { database, readOnly, changes: 0 };
     this.opened.set(filePath, opened);
     return opened;
   }
 
+  // Closing rolls back what was not committed: the window asks first.
   close(filePath: string): void {
     const known = this.opened.get(filePath);
     this.opened.delete(filePath);
@@ -71,6 +102,40 @@ export class Databases {
 
   closeAll(): void {
     [...this.opened.keys()].forEach((filePath) => this.close(filePath));
+  }
+
+  // What waits to be committed, as the window shows it.
+  private pending(opened: Opened): GlistDatabasePending {
+    if (!opened.database.isTransaction) opened.changes = 0;
+    return { open: opened.database.isTransaction, changes: opened.changes };
+  }
+
+  // A change joins the transaction, the first beginning it. One that fails
+  // changes nothing, and begins none.
+  private change<T>(opened: Opened, run: () => T): T {
+    const { database } = opened;
+    const begun = !database.isTransaction;
+    if (begun) {
+      opened.changes = 0;
+      database.exec('BEGIN');
+    }
+    try {
+      const result = run();
+      opened.changes += 1;
+      return result;
+    } catch (error) {
+      if (begun && database.isTransaction) database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  // The changes waiting, written to the file or undone. A database not open
+  // has none, and is not opened for it.
+  finish(filePath: string, commit: boolean): GlistDatabasePending {
+    const known = this.opened.get(filePath);
+    if (!known) return { open: false, changes: 0 };
+    if (known.database.isTransaction) known.database.exec(commit ? 'COMMIT' : 'ROLLBACK');
+    return this.pending(known);
   }
 
   // One table or view as the schema lists it; its rows counted only when asked.
@@ -123,12 +188,13 @@ export class Databases {
   }
 
   async schema(filePath: string): Promise<GlistDatabaseSchema> {
-    const { database, readOnly } = await this.open(filePath);
+    const opened = await this.open(filePath);
+    const { database, readOnly } = opened;
     const tables = this.listed(database).map((row) => this.describe(database, row, true));
     const triggers = (database.prepare("SELECT name, tbl_name, sql FROM sqlite_schema WHERE type = 'trigger' ORDER BY name").all() as Array<Record<string, unknown>>)
       .map((row) => ({ name: String(row.name), table: String(row.tbl_name), sql: String(row.sql ?? '') }));
     const version = String(database.prepare('SELECT sqlite_version() AS v').get()?.v ?? '');
-    return { tables, triggers, readOnly, version };
+    return { tables, triggers, readOnly, version, pending: this.pending(opened) };
   }
 
   // A table's or view's rows, a page at a time, with what tells each row apart
@@ -163,12 +229,17 @@ export class Databases {
 
   // Runs what was typed, statement by statement as SQLite itself reads them,
   // each before the next is read (so one can use a table the last made),
-  // stopping at the first that fails.
+  // stopping at the first that fails. One that writes is a change, waiting to
+  // be committed; BEGIN, COMMIT, ROLLBACK and savepoints typed run as typed, on
+  // the transaction the changes wait in when there is one.
   async query(filePath: string, sql: string): Promise<GlistDatabaseResult[]> {
-    const { database } = await this.open(filePath);
+    const opened = await this.open(filePath);
+    const { database } = opened;
     const results: GlistDatabaseResult[] = [];
     let rest = statementStart(sql);
     while (rest) {
+      // COMMIT or ROLLBACK typed ends the transaction, and what it counted.
+      if (!database.isTransaction) opened.changes = 0;
       const started = Date.now();
       let statement: StatementSync;
       try { statement = database.prepare(rest); } catch (error) {
@@ -177,7 +248,7 @@ export class Databases {
       }
       const text = statement.sourceSQL;
       rest = rest.startsWith(text) && text ? statementStart(rest.slice(text.length)) : '';
-      try {
+      const execute = (): GlistDatabaseResult => {
         const columns = statement.columns().map((column) => column.name);
         if (columns.length) {
           statement.setReturnArrays(true);
@@ -188,13 +259,13 @@ export class Databases {
             if (rows.length >= queryRows) { truncated = true; break; }
             rows.push(row.map(cellOf));
           }
-          results.push({ sql: text.trim(), columns, rows, truncated, milliseconds: Date.now() - started });
-        } else {
-          const outcome = statement.run();
-          results.push({
-            sql: text.trim(), changes: Number(outcome.changes), lastInsertRowid: cellOf(outcome.lastInsertRowid), milliseconds: Date.now() - started,
-          });
+          return { sql: text.trim(), columns, rows, truncated, milliseconds: Date.now() - started };
         }
+        const outcome = statement.run();
+        return { sql: text.trim(), changes: Number(outcome.changes), lastInsertRowid: cellOf(outcome.lastInsertRowid), milliseconds: Date.now() - started };
+      };
+      try {
+        results.push(!transactionControl.test(text) && writes(database, text) ? this.change(opened, execute) : execute());
       } catch (error) {
         results.push({ sql: text.trim(), error: message(error) });
         break;
@@ -206,8 +277,12 @@ export class Databases {
   // A row changed, added or deleted from the grid. Values go in as typed, and
   // the column's type decides what SQLite keeps (its type affinity), as it
   // would for the same SQL; NULL is said as null, never as an empty text.
-  async edit(filePath: string, edit: GlistDatabaseEdit): Promise<{ changes: number }> {
-    const { database } = await this.open(filePath);
+  async edit(filePath: string, edit: GlistDatabaseEdit): Promise<{ changes: number; pending: GlistDatabasePending }> {
+    const opened = await this.open(filePath);
+    return { ...this.change(opened, () => this.apply(opened.database, edit)), pending: this.pending(opened) };
+  }
+
+  private apply(database: DatabaseSync, edit: GlistDatabaseEdit): { changes: number } {
     const schema = this.table(database, edit.table);
     if (schema.kind !== 'table') throw new Error(`cannot modify ${edit.table} because it is a view`);
     const names = schema.columns.map((column) => column.name);
