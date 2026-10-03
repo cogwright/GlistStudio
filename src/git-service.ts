@@ -656,6 +656,14 @@ exit 1
     return { text: text(result) };
   };
 
+  // A file's bytes as a commit has it, however large, for what is compared
+  // other than as text (database-diff.ts); null if the commit has no such file.
+  const blobAt = async (value: unknown, filePath: unknown): Promise<Buffer | null> => {
+    const repo = await repositoryOf(filePath);
+    const result = await run(['cat-file', 'blob', `${revision(value)}:${toGit(repo, filePath)}`], { cwd: repo.folder });
+    return result.code === 0 ? result.stdout : null;
+  };
+
   // Against what is in the editor, so lines typed since the last save count as not committed.
   const blame = async (filePath: unknown, contents: unknown): Promise<GlistGitBlameLine[]> => {
     const repo = await repositoryOf(filePath);
@@ -1157,6 +1165,7 @@ exit 1
     projectChanged: (): Promise<void> => rewatch(),
     // Whether a remote's branch is protected, for updates of the engine and plugins.
     protects: (folder: string, remote: string, branch: string): Promise<boolean> => isProtected(folder, remote, branch, true),
+    blobAt,
     stop: stopWatching,
   };
 };
