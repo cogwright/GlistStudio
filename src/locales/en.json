@@ -867,7 +867,7 @@
     "copyByHand": "It could not be put on the clipboard. Select it and copy it yourself.",
     "unexpectedError": "Glist Studio ran into an unexpected error",
     "copyDebugInfo": "Copy Debug Info",
-    "toggleDevTools": "Toggle Developer Tools",
+    "toggleDevTools": "Toggle Browser Dev Tools",
     "debugInfoCopied": "Debug info copied. Paste it into your report.",
     "newWindow": "New Window",
     "exitApp": "Exit",
