@@ -18,6 +18,7 @@ import { defaultHiddenFolders } from './hidden-folders';
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
 import { changedLines, codeLines, editsWithin, type LineRange } from './format-lines';
 import { formatOutput, newOutputStyle, outputBanner } from './output-format';
+import { OutputHistory, type OutputRun, type OutputSection } from './output-history';
 import { fileIconElement } from './file-icons';
 import { icon, placeIcons, type IconName } from './icons';
 import { Debugger } from './debugger';
@@ -363,6 +364,7 @@ const showPanel = (view: PanelView): void => {
   agentSelect.hidden = view !== 'agent';
   terminalSelect.hidden = view !== 'terminal';
   closeTerminalButton.hidden = view !== 'terminal';
+  outputHistorySelect.hidden = view !== 'output' || outputHistory.size === 0;
   newTerminalButton.hidden = view === 'output' || view === 'git';
   // The Git tab's views have tools of their own.
   clearOutputButton.hidden = view === 'git';
@@ -621,13 +623,17 @@ const groupViews: GroupView[] = [{
 // The editor of the side being worked in.
 const currentEditor = (): monaco.editor.IStandaloneCodeEditor => (groupViews[layout.focused] ?? groupViews[0]).editor;
 
-// Appends a text node; rewriting textContent made long builds quadratic.
-let outputStyle = newOutputStyle();
-
-const clearOutput = (text = ''): void => {
-  output.textContent = text;
-  outputStyle = newOutputStyle();
+// Settings > Build: each build and run in the output by itself, the ones
+// before it in the list beside the Output tab's tools (output-history.ts).
+const clearsOutputOnRun = (): boolean => {
+  try { return window.localStorage.getItem('glist-studio-clear-output') !== 'off'; } catch { return true; }
 };
+const outputHistorySelect = element<HTMLSelectElement>('#output-history');
+const outputHistory = new OutputHistory(output, outputHistorySelect, clearsOutputOnRun, (size) => {
+  outputHistorySelect.hidden = panelView !== 'output' || size === 0;
+});
+
+const clearOutput = (text = ''): void => outputHistory.reset(text);
 
 // Opens a file named in the output, relative to the project when not absolute.
 const openOutputLocation = (filePath: string, line: number): void => {
@@ -636,17 +642,22 @@ const openOutputLocation = (filePath: string, line: number): void => {
   void revealLocation(pathUri(absolute), { lineNumber: line, column: 1 });
 };
 
-// Appends nodes; rewriting textContent made long builds quadratic.
-const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'normal'): void => {
-  if (kind === 'normal') output.append(...formatOutput(text, outputStyle, openOutputLocation));
+// Appends nodes; rewriting textContent made long builds quadratic. To the
+// newest build or run unless said otherwise, or to the output itself when
+// Clear Output took the one it was for.
+const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'normal', section: OutputSection = outputHistory.current): void => {
+  const to = section.element.isConnected ? section : outputHistory.current;
+  // A section's first line at its top, without the blank line it came with.
+  const fresh = !to.element.hasChildNodes();
+  if (kind === 'normal') to.element.append(...formatOutput(fresh ? text.replace(/^\n/, '') : text, to.style, openOutputLocation));
   else {
     const message = document.createElement('span');
     message.className = kind === 'success' ? 'ansi-green' : 'ansi-red';
     // The mark on the text's own line, however many line breaks it came with.
     message.append(...formatOutput(`${kind === 'success' ? '✓' : '✕'} ${text.replace(/^\s*\n|\n\s*$/g, '')}`, newOutputStyle(), openOutputLocation));
-    output.append('\n', message, '\n');
+    to.element.append(...(fresh ? [] : ['\n']), message, '\n');
   }
-  output.scrollTop = output.scrollHeight;
+  if (outputHistory.isShown(to)) output.scrollTop = output.scrollHeight;
 };
 
 // What a file operation did, or why it could not, as a notification rather
@@ -1326,11 +1337,21 @@ const clangd = new ClangdClient({
   },
 });
 
+// Debug's entry in the output's list, and the exit code its program ended with.
+let debugRun: OutputRun | null = null;
+let debugExit: number | undefined;
 const debug = new Debugger({
   currentEditor,
   openLocation: (filePath, line) => revealLocation(pathUri(filePath), { lineNumber: line, column: 1 }),
-  log: (text, kind) => appendOutput(text, kind),
-  changed: () => updateButtons(),
+  log: (text, kind) => appendOutput(text, kind, debugRun ?? outputHistory.current),
+  changed: () => {
+    updateButtons();
+    if (debugRun && debug.state === 'idle') {
+      outputHistory.finishWithExit(debugRun, debugExit);
+      debugRun = null;
+    }
+  },
+  exited: (exitCode) => { debugExit = exitCode; },
   missingDebugger: () => notify({
     text: t('debuggerMissingNotice'), kind: 'error',
     actions: [{ label: t('installDebugger'), run: () => { void installGdb(); } }],
@@ -2808,6 +2829,9 @@ const whileStarting = async (task: () => Promise<void>): Promise<void> => {
 
 // What the last build printed, to find its first error in.
 let buildLog = '';
+// Run's entry in the output's list while it builds, then while its program runs.
+let startingRun: OutputRun | null = null;
+let launchedRun: OutputRun | null = null;
 
 // A failed build says so, with the first compiler error and the way to it.
 const noticeBuildFailed = (message: string): void => {
@@ -2831,14 +2855,16 @@ const buildProject = async (clean = false): Promise<void> => {
   await whileStarting(async () => {
     if (!(await saveProjectFiles())) return;
     showPanel('output');
-    appendOutput(outputBanner(t(clean ? 'cleanBuild' : 'outputBuild')));
+    const run = outputHistory.begin(clean ? 'cleanBuild' : 'build');
+    appendOutput(outputBanner(t(clean ? 'cleanBuild' : 'outputBuild')), 'normal', run);
     buildLog = '';
     const result = await window.glistAPI.buildProject(clean);
     clangd.buildFinished();
     void targetPicker.refresh();
     // A build can change open files, such as CMakeLists.txt when sources were added.
     void reloadOpenFiles();
-    appendOutput(result.message, result.success ? 'success' : 'error');
+    appendOutput(result.message, result.success ? 'success' : 'error', run);
+    outputHistory.finish(run, result.success ? 'succeeded' : run.stopRequested ? 'stopped' : 'failed');
     setProcessStatus(t(result.success ? 'buildSucceeded' : 'buildFailed'), false, !result.success);
     if (!result.success) noticeBuildFailed(result.message);
   });
@@ -2849,13 +2875,19 @@ const runProject = async (): Promise<void> => {
   await whileStarting(async () => {
     if (!(await saveProjectFiles())) return;
     showPanel('output');
+    const run = outputHistory.begin('run');
+    startingRun = run;
     buildLog = '';
     const result = await window.glistAPI.runProject();
     clangd.buildFinished();
     void targetPicker.refresh();
     void reloadOpenFiles();
-    appendOutput(result.message, result.success ? 'success' : 'error');
-    if (!result.success) noticeBuildFailed(result.message);
+    appendOutput(result.message, result.success ? 'success' : 'error', run);
+    if (!result.success) {
+      if (startingRun === run) startingRun = null;
+      outputHistory.finish(run, run.stopRequested ? 'stopped' : 'failed');
+      noticeBuildFailed(result.message);
+    }
   });
 };
 
@@ -2865,7 +2897,10 @@ const debugProject = async (): Promise<void> => {
     if (!(await saveProjectFiles())) return;
     showView('debug');
     showPanel('output');
-    appendOutput(outputBanner(t('outputDebug')));
+    const run = outputHistory.begin('debug');
+    debugRun = run;
+    debugExit = undefined;
+    appendOutput(outputBanner(t('outputDebug')), 'normal', run);
     await debug.start();
     clangd.buildFinished();
     void targetPicker.refresh();
@@ -2874,6 +2909,7 @@ const debugProject = async (): Promise<void> => {
 };
 
 const stopProject = async (): Promise<void> => {
+  outputHistory.running().forEach((run) => { run.stopRequested = true; });
   // A running debug session goes first; while it builds, stopping the build ends it.
   const debugging = debug.active && debug.state !== 'starting';
   if (debugging) await debug.stop();
@@ -3359,6 +3395,7 @@ settingsLanguage.addEventListener('change', () => {
   agentSettings.render();
   listShells();
   void listShellChoices();
+  outputHistory.render();
   commitPane.render();
   gitPanel.reload();
   // The Plugins and Engine views draw their words when they load; once the backend speaks the language too.
@@ -3698,6 +3735,12 @@ terminalShellInput.addEventListener('change', () => {
 const showTargetsInput = element<HTMLInputElement>('#show-targets');
 showTargetsInput.checked = targetPicker.shown;
 showTargetsInput.addEventListener('change', () => { targetPicker.shown = showTargetsInput.checked; });
+const clearOutputOnRunInput = element<HTMLInputElement>('#clear-output-on-run');
+clearOutputOnRunInput.checked = clearsOutputOnRun();
+clearOutputOnRunInput.addEventListener('change', () => {
+  try { window.localStorage.setItem('glist-studio-clear-output', clearOutputOnRunInput.checked ? 'on' : 'off'); } catch { /* Storage may be unavailable. */ }
+  outputHistory.modeChanged();
+});
 // A failure says where to look.
 window.glistAPI.onConfigured((result) => {
   clangd.buildFinished();
@@ -3708,7 +3751,7 @@ window.glistAPI.onConfigured((result) => {
 window.glistAPI.onBuildStatus((status) => {
   isBuildRunning = status.running; setProcessStatus(status.label, status.running); updateButtons();
 });
-window.glistAPI.onRunOutput((text) => appendOutput(text));
+window.glistAPI.onRunOutput((text) => appendOutput(text, 'normal', launchedRun ?? outputHistory.current));
 // The backend stopped by itself, and a new one has the window's settings and
 // project again (index.ts): what ran in the old one starts again here, and the
 // tabs stay as they are.
@@ -3727,6 +3770,9 @@ window.glistAPI.onSaveAndClose(async () => {
 });
 window.glistAPI.onRunStatus((status) => {
   isRunRunning = status.running;
+  // The program started, or ended: its run in the list says how.
+  if (status.running && startingRun) { launchedRun = startingRun; startingRun = null; }
+  else if (!status.running && launchedRun) { outputHistory.finishWithExit(launchedRun, status.exitCode); launchedRun = null; }
   const suffix = status.exitCode !== undefined ? ` · ${t('exit')} ${status.exitCode}` : '';
   setProcessStatus(status.running ? t('running') : `${t('ready')}${suffix}`, status.running);
   updateButtons();
