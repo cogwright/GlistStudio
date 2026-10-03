@@ -595,7 +595,8 @@ interface Window {
     openProjectPath(root: string): Promise<GlistProjectInfo>;
     getPlatform(): Promise<string>;
     writeFile(filePath: string, contents: string): Promise<boolean>;
-    buildProject(): Promise<GlistProcessResult>;
+    // Clean deletes _build first, CMake's cache with it.
+    buildProject(clean?: boolean): Promise<GlistProcessResult>;
     runProject(): Promise<GlistProcessResult>;
     // The build's targets, configuring once if the build folder does not describe them yet.
     listTargets(): Promise<GlistTarget[]>;
@@ -616,6 +617,8 @@ interface Window {
     setZoomFactor(factor: number): Promise<number>;
     // Whether CMake configures again when its files change.
     setAutoConfigure(on: boolean): Promise<void>;
+    // Settings > General's hidden folders, comma-separated, for the explorer and search.
+    setHiddenFolders(list: string): Promise<void>;
     openEngineSite(): Promise<void>;
     // GlistEngine/GlistEngine on GitHub, to star.
     openEngineRepository(): Promise<void>;

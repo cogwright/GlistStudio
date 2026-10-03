@@ -49,6 +49,7 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   setTheme: 'settings:set-theme',
   setZoomFactor: 'view:set-zoom-factor',
   setAutoConfigure: 'build:auto-configure',
+  setHiddenFolders: 'project:hidden-folders',
   openEngineSite: 'app:open-engine-site',
   openEngineRepository: 'app:open-engine-repository',
   startClangd: 'clangd:start',

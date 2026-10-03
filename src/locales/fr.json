@@ -704,7 +704,19 @@
     "reformatOff": "La mise en forme du code est désactivée: Paramètres > Mise en forme du code permet de choisir un style.",
     "movedInto": "{name} déplacé dans {folder}",
     "movedItemsInto": "{count} éléments déplacés dans {folder}",
-    "moveFailed": "Impossible de déplacer l'élément"
+    "moveFailed": "Impossible de déplacer l'élément",
+    "cleanBuild": "Compilation propre",
+    "buildMenuTitle": "Autres façons de compiler",
+    "editorView": "Affichage",
+    "wordWrap": "Renvoyer les longues lignes à la ligne",
+    "showMinimap": "Afficher la minicarte à côté du code",
+    "stickyScroll": "Garder la première ligne de la fonction, de la classe ou du bloc en haut pendant le défilement",
+    "filesSettings": "Fichiers",
+    "hiddenFolders": "Dossiers masqués dans l'explorateur et la recherche",
+    "hiddenFoldersHint": "Séparés par des virgules ; * remplace n'importe quel texte, comme dans cmake-build-*. Effacez un nom pour revoir ce dossier.",
+    "motion": "Mouvement",
+    "reduceMotion": "Réduire les animations",
+    "reduceMotionHint": "Fige le curseur et le défilement dans l'éditeur, et les animations de l'interface. Au départ, il suit le réglage du système."
   },
   "platforms": {
     "darwin": {

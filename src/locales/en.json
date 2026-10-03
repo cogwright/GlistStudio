@@ -704,7 +704,19 @@
     "reformatOff": "Code formatting is off: Settings > Code Formatting chooses a style.",
     "movedInto": "{name} moved into {folder}",
     "movedItemsInto": "{count} items moved into {folder}",
-    "moveFailed": "Could not move item"
+    "moveFailed": "Could not move item",
+    "cleanBuild": "Clean Build",
+    "buildMenuTitle": "More ways to build",
+    "editorView": "View",
+    "wordWrap": "Wrap long lines",
+    "showMinimap": "Show the minimap beside the code",
+    "stickyScroll": "Keep the first line of the function, class or block at the top while scrolling",
+    "filesSettings": "Files",
+    "hiddenFolders": "Folders hidden in the explorer and search",
+    "hiddenFoldersHint": "Separated by commas; * stands for any text, as in cmake-build-*. Clear a name to see that folder again.",
+    "motion": "Motion",
+    "reduceMotion": "Reduce motion",
+    "reduceMotionHint": "Stills the caret and scrolling in the editor and the interface's animations. It starts as the system has it."
   },
   "platforms": {
     "darwin": {

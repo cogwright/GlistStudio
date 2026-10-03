@@ -34,6 +34,9 @@
             <button id="build-project" class="run-control build-control" type="button" disabled title="Build (Ctrl+Shift+B)" data-i18n-title="buildTitle">
               <i data-icon="tools"></i><span data-i18n="build">Build</span>
             </button>
+            <button id="build-menu" class="run-control build-menu" type="button" disabled title="More ways to build" data-i18n-title="buildMenuTitle" aria-label="More ways to build" data-i18n-aria-label="buildMenuTitle">
+              <i data-icon="chevron-down"></i>
+            </button>
             <button id="run-project" class="run-control run-control-primary" type="button" disabled title="Build and Run (F5)" data-i18n-title="runTitle">
               <i data-icon="play"></i><span data-i18n="run">Run</span>
             </button>
@@ -320,6 +323,12 @@
                   <p class="dialog-hint" data-i18n="updatePreviewsHint">Previews are built from every change to Glist Studio, before a release: the newest work, less tested.</p>
                   <p id="update-version" class="dialog-hint"></p>
                 </fieldset>
+                <fieldset class="settings-section">
+                  <legend data-i18n="filesSettings">Files</legend>
+                  <label for="hidden-folders" data-i18n="hiddenFolders">Folders hidden in the explorer and search</label>
+                  <input id="hidden-folders" type="text" autocomplete="off" spellcheck="false" />
+                  <p class="dialog-hint" data-i18n="hiddenFoldersHint">Separated by commas; * stands for any text, as in cmake-build-*. Clear a name to see that folder again.</p>
+                </fieldset>
                 <fieldset id="graphics-settings" class="settings-section" hidden>
                   <legend data-i18n="graphics">Graphics</legend>
                   <label class="checkbox-row"><input id="hardware-acceleration" type="checkbox" /><span data-i18n="hardwareAcceleration">Use hardware acceleration</span></label>
@@ -338,6 +347,12 @@
                   </select>
                   <label class="checkbox-row"><input id="smooth-caret" type="checkbox" /><span data-i18n="smoothCaret">Move the caret smoothly</span></label>
                   <label class="checkbox-row"><input id="smooth-scrolling" type="checkbox" /><span data-i18n="smoothScrolling">Scroll smoothly</span></label>
+                </fieldset>
+                <fieldset class="settings-section">
+                  <legend data-i18n="editorView">View</legend>
+                  <label class="checkbox-row"><input id="word-wrap" type="checkbox" /><span data-i18n="wordWrap">Wrap long lines</span></label>
+                  <label class="checkbox-row"><input id="show-minimap" type="checkbox" /><span data-i18n="showMinimap">Show the minimap beside the code</span></label>
+                  <label class="checkbox-row"><input id="sticky-scroll" type="checkbox" /><span data-i18n="stickyScroll">Keep the first line of the function, class or block at the top while scrolling</span></label>
                 </fieldset>
                 <fieldset class="settings-section format-settings">
                   <legend data-i18n="codeFormatting">Code Formatting</legend>
@@ -377,6 +392,11 @@
                   <datalist id="font-code-list"></datalist>
                   <datalist id="font-interface-list"></datalist>
                   <p class="dialog-hint" data-i18n="fontsHint">Pick a font from the list or type the name of one installed on this computer.</p>
+                </fieldset>
+                <fieldset class="settings-section">
+                  <legend data-i18n="motion">Motion</legend>
+                  <label class="checkbox-row"><input id="reduce-motion" type="checkbox" /><span data-i18n="reduceMotion">Reduce motion</span></label>
+                  <p class="dialog-hint" data-i18n="reduceMotionHint">Stills the caret and scrolling in the editor and the interface's animations. It starts as the system has it.</p>
                 </fieldset>
               </section>
               <section class="settings-page" data-page="build" hidden>

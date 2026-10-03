@@ -19,6 +19,7 @@ import { createCheckouts, githubForks, gitRunner } from './checkout-update';
 import { isLanguage, languages, type Language, type Words } from './languages';
 import { errorOutput, outputBanner } from './output-format';
 import { createPluginService } from './plugins';
+import { hiddenFolderList, isHiddenFolder, setHiddenFolders } from './hidden-folders';
 import { imageType } from './images';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
 import { queryPattern } from './text-search';
@@ -103,9 +104,6 @@ let language: Language = 'en';
 
 export const msg = (key: keyof Words['studio']): string => languages[language].studio[key];
 
-const ignoredDirectories = new Set([
-  '.git', '.webpack', 'node_modules', 'out', 'build',
-]);
 
 let host: StudioHost;
 let activeProjectRoot: string | null = null;
@@ -161,7 +159,7 @@ const listDirectory = async (directoryPath: string): Promise<FileEntry[]> =>
 const listEntries = async (safeDirectory: string, directoryPath: string): Promise<FileEntry[]> => {
   const entries = await fs.readdir(safeDirectory, { withFileTypes: true });
   return entries
-    .filter((entry) => !entry.isDirectory() || !ignoredDirectories.has(entry.name))
+    .filter((entry) => !entry.isDirectory() || !isHiddenFolder(entry.name))
     .map((entry) => ({
       name: entry.name,
       path: path.join(directoryPath, entry.name),
@@ -755,6 +753,19 @@ const programFor = async (projectRoot: string, buildType: BuildType): Promise<Pr
     ? { success: true, message: '', program: target.artifact } : { success: false, message: msg('executableMissing') };
 };
 
+// Clean Build: everything built so far goes, CMake's cache with it, and the
+// project is configured and built from scratch.
+const cleanAndBuild = async (): Promise<ProcessResult> => {
+  if (building) return { success: false, message: msg('buildRunning') };
+  if (runProcess) return { success: false, message: msg('appRunning') };
+  try {
+    await fs.rm(path.join(requireProjectRoot(), '_build'), { recursive: true, force: true });
+  } catch (error) {
+    return { success: false, message: `${msg('buildStartFailed')}: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  return configureAndBuild('Release');
+};
+
 const configureAndBuild = async (buildType: BuildType = 'Release'): Promise<ProcessResult> => {
   if (building) return { success: false, message: msg('buildRunning') };
   building = true;
@@ -891,6 +902,11 @@ const configureNow = async (projectRoot: string): Promise<void> => {
   if (generation !== buildGeneration || projectRoot !== activeProjectRoot) return;
   await rememberConfiguration(projectRoot);
   sendToRenderer('build:configured', { success: code === 0, message: code === 0 ? msg('configured') : `${msg('configureFailed')}: ${code}.` });
+};
+
+// Settings > General's list, for the explorer and search.
+const setHiddenFolderList = (text: unknown): void => {
+  if (typeof text === 'string') setHiddenFolders(hiddenFolderList(text));
 };
 
 const setAutoConfigure = (on: unknown): void => {
@@ -1571,7 +1587,7 @@ export const studio: Handlers = {
   },
   getPlatform: () => process.platform,
   writeFile: writeProjectFile,
-  buildProject: () => configureAndBuild('Release'),
+  buildProject: (clean?: unknown) => (clean === true ? cleanAndBuild() : configureAndBuild('Release')),
   runProject,
   listTargets,
   setTarget,
@@ -1582,6 +1598,7 @@ export const studio: Handlers = {
   setCustomEnvironment,
   setRunArguments,
   setAutoConfigure,
+  setHiddenFolders: setHiddenFolderList,
   startClangd,
   sendClangd: (message: unknown) => clangd.send(message),
   startDebugging,
