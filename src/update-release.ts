@@ -31,6 +31,8 @@ export interface Release {
   version: string;
   page: string;
   assets: ReleaseAsset[];
+  // A preview: GitHub's prerelease.
+  preview?: boolean;
 }
 
 const numbers = (version: string): number[] =>
@@ -103,19 +105,58 @@ export const releaseAt = async (source: ReleaseSource, tag: string): Promise<Rel
   });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
-  const release = await response.json() as {
-    tag_name: string;
-    html_url: string;
-    assets?: Array<{ name: string; browser_download_url: string; digest?: string | null; size: number }>;
-  };
-  return {
-    version: release.tag_name.replace(/^v/, ''),
-    page: release.html_url,
-    assets: (release.assets ?? []).map((asset) => ({
-      name: asset.name, url: asset.browser_download_url, digest: asset.digest ?? undefined, size: asset.size,
-    })),
-  };
+  return fromApi(await response.json() as ApiRelease);
 };
+
+interface ApiRelease {
+  tag_name: string;
+  html_url: string;
+  prerelease?: boolean;
+  assets?: Array<{ name: string; browser_download_url: string; digest?: string | null; size: number }>;
+}
+const fromApi = (release: ApiRelease): Release => ({
+  version: release.tag_name.replace(/^v/, ''),
+  page: release.html_url,
+  preview: Boolean(release.prerelease),
+  assets: (release.assets ?? []).map((asset) => ({
+    name: asset.name, url: asset.browser_download_url, digest: asset.digest ?? undefined, size: asset.size,
+  })),
+});
+
+// The published releases, newest first, as the API lists them; for rolling
+// back, asked only when someone wants to. Drafts are not shown to anyone else.
+export const releases = async (source: ReleaseSource): Promise<Release[]> => {
+  const response = await fetch(`${source.api}/repos/${source.repository}/releases?per_page=50`, {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': userAgent },
+  });
+  if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
+  return ((await response.json()) as ApiRelease[]).map(fromApi)
+    .sort((left, right) => (isNewer(left.version, right.version) ? -1 : isNewer(right.version, left.version) ? 1 : 0));
+};
+
+// The versions before this one that it can go back to, newest first: releases,
+// and previews too when previews are chosen or this is one. A version already
+// on the computer (kept) is offered even when GitHub no longer lists it near
+// the top; one this computer cannot install itself goes to its release page.
+export const rollbackChoices = (
+  listed: Release[], current: string, previews: boolean, kept: string[],
+  installable: (version: string, release: Release | null, kept: boolean) => boolean,
+): GlistRollbackChoice[] => {
+  const withPreviews = previews || prereleaseOf(current) !== '';
+  const older = listed.filter((release) => isNewer(current, release.version) && (withPreviews || !release.preview)).slice(0, 15);
+  const keptOnly = kept.filter((version) => isNewer(current, version) && !older.some((release) => release.version === version));
+  return [...older.map((release) => ({ version: release.version, preview: Boolean(release.preview), page: release.page })),
+    ...keptOnly.map((version) => ({ version, preview: prereleaseOf(version) !== '', page: '' }))]
+    .sort((left, right) => (isNewer(left.version, right.version) ? -1 : 1))
+    .map((choice) => {
+      const isKept = kept.includes(choice.version);
+      return { ...choice, kept: isKept, installable: installable(choice.version, listed.find((release) => release.version === choice.version) ?? null, isKept) };
+    });
+};
+
+// After rolling back from a version, that version and those before it are not
+// installed again by themselves; a newer one is.
+export const heldBack = (version: string, held: string | null): boolean => Boolean(held) && !isNewer(version, held as string);
 
 // The newest release after this version that can be downloaded: the latest
 // published one, or with previews the newest in the feed. The feed lists a
@@ -203,22 +244,37 @@ export const stageMacApp = async (image: string, version: string): Promise<strin
 };
 
 // Waits for the app to quit, puts the new bundle where the old one was, and
-// opens it if asked. When the new one cannot be moved in, the old one goes back.
+// opens it if asked. When the new one cannot be moved in, the old one goes
+// back. The old one is kept where asked, to roll back to; otherwise removed.
 const macSwap = `
-pid=$1 bundle=$2 staged=$3 relaunch=$4
+pid=$1 bundle=$2 staged=$3 relaunch=$4 keep=$5
 while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
 old="$bundle.previous"
 rm -rf "$old"
 if mv "$bundle" "$old"; then
-  if mv "$staged" "$bundle"; then rm -rf "$old"; else mv "$old" "$bundle"; fi
+  if mv "$staged" "$bundle"; then
+    if [ -n "$keep" ]; then mkdir -p "$(dirname "$keep")"; rm -rf "$keep"; mv "$old" "$keep" || rm -rf "$old"; else rm -rf "$old"; fi
+  else mv "$old" "$bundle"; fi
 fi
 if [ -n "$relaunch" ]; then open "$bundle"; fi
 `;
 
-export const installMacApp = (staged: string, bundle: string, pid: number, relaunch: boolean): void => {
-  spawn('/bin/sh', ['-c', macSwap, 'glist-studio-update', String(pid), bundle, staged, relaunch ? '1' : ''], {
+export const installMacApp = (staged: string, bundle: string, pid: number, relaunch: boolean, keep = ''): void => {
+  spawn('/bin/sh', ['-c', macSwap, 'glist-studio-update', String(pid), bundle, staged, relaunch ? '1' : '', keep], {
     detached: true, stdio: 'ignore',
   }).unref();
+};
+
+// A kept app copied out to take the running app's place, the kept one staying
+// for another time. It must be the version it was kept as.
+export const stageKeptMacApp = async (kept: string, version: string, folder: string): Promise<string> => {
+  await fs.mkdir(folder, { recursive: true });
+  const staged = path.join(folder, path.basename(kept));
+  await fs.rm(staged, { recursive: true, force: true });
+  await run('ditto', [kept, staged]);
+  const { stdout } = await run('plutil', ['-extract', 'CFBundleShortVersionString', 'raw', path.join(staged, 'Contents', 'Info.plist')]);
+  if (stdout.trim() !== version) throw new Error(`The kept app is version ${stdout.trim()}, not ${version}`);
+  return staged;
 };
 
 // Squirrel's setup program over an installed app is an update: it installs the
@@ -228,8 +284,31 @@ export const runWindowsSetup = (setup: string): void => {
 };
 
 // The new AppImage was downloaded beside the running one, so one rename puts it
-// in place; the running one keeps working from the file it already opened.
-export const replaceAppImage = (staged: string, target: string, relaunch: boolean): void => {
+// in place; the running one keeps working from the file it already opened. The
+// old one is renamed aside first when asked, beside it, to roll back to.
+export const replaceAppImage = (staged: string, target: string, relaunch: boolean, keep = ''): void => {
+  if (keep) {
+    try { renameSync(target, keep); } catch { /* Then it is not kept. */ }
+  }
   renameSync(staged, target);
   if (relaunch) spawn(target, [], { detached: true, stdio: 'ignore' }).unref();
+};
+
+// The AppImages kept beside the running one, by version: .<name>.<version>.
+export const keptAppImage = (target: string, version: string): string =>
+  path.join(path.dirname(target), `.${path.basename(target)}.${version}`);
+
+// Squirrel keeps the version before an update in app-<version>, beside this
+// one, and starts the newest app-<version> there. Going back to it renames
+// this version's folder, once the app has quit, to a name Squirrel passes over:
+// one rename that either happens or does not, never a folder half deleted.
+export const rollBackSquirrel = (root: string, current: string, executable: string, pid: number, relaunch: boolean): void => {
+  const script = [
+    `Wait-Process -Id ${pid} -ErrorAction SilentlyContinue`,
+    `Rename-Item -LiteralPath '${path.join(root, `app-${current}`).replace(/'/g, "''")}' -NewName 'rolled-back-${current.replace(/'/g, "''")}'`,
+    relaunch ? `Start-Process -FilePath '${path.join(root, 'Update.exe').replace(/'/g, "''")}' -ArgumentList '--processStart', '"${executable.replace(/'/g, "''")}"'` : '',
+  ].filter(Boolean).join('; ');
+  spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', script], {
+    detached: true, stdio: 'ignore', windowsHide: true,
+  }).unref();
 };

@@ -8,7 +8,8 @@ import { backendStartArgument, type BackendStart, type FromBackend, type ToBacke
 import { isLanguage, languages, type Language, type Words } from './languages';
 import { defaultProjectsDirectory, studioHome } from './studio-places';
 import {
-  checkForUpdates, installOnQuit, installUpdate, openUpdatePage, restartingToUpdate, setUpdateListener, source, updateState,
+  checkForUpdates, installOnQuit, installUpdate, openUpdatePage, releaseHold, restartingToUpdate, rollBack, rollbackChoices, setUpdateListener,
+  source, updateState,
 } from './updater';
 import { githubCommitPage } from './repository-head';
 
@@ -417,6 +418,9 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
   checkForUpdates: (_event, previews?: unknown) => checkForUpdates(previews),
   installUpdate: () => installUpdate(),
   openUpdatePage: () => openUpdatePage(),
+  rollbackChoices: (_event, previews?: unknown) => rollbackChoices(previews),
+  rollBack: (_event, version?: unknown) => rollBack(version),
+  releaseHold: (_event, previews?: unknown) => releaseHold(previews),
   setZoomFactor: (event, factor: number) => {
     const safeFactor = Number.isFinite(factor) ? Math.min(3, Math.max(0.5, factor)) : 1;
     event.sender.setZoomFactor(safeFactor);
