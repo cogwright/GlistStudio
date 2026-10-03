@@ -1,6 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal, type ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
+import { copyText } from './clipboard';
 import { t, type TranslationKey } from './localization';
 import { isMac, primaryKey } from './shortcuts';
 
@@ -220,7 +221,7 @@ export class StudioTerminal {
     if (!isMac && event.ctrlKey && !event.altKey) {
       const key = event.key.toLowerCase();
       if (key === 'c' && this.terminal.hasSelection()) {
-        void navigator.clipboard.writeText(this.terminal.getSelection());
+        void copyText(this.terminal.getSelection());
         this.terminal.clearSelection();
         return false;
       }

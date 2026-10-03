@@ -2,7 +2,7 @@ import { cpSync, existsSync, mkdirSync, promises as fs, readFileSync, writeFileS
 import { homedir, release } from 'node:os';
 import path from 'node:path';
 import {
-  app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions,
+  app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeTheme, screen, shell, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions,
 } from 'electron';
 import { eventChannels, invokeChannels, type InvokeMethod } from './api';
 import { appError, backendStartArgument, type BackendStart, type FromBackend, type ToBackend } from './backend-protocol';
@@ -418,6 +418,8 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
   newWindow: () => { createWindow(); },
   // File > Exit: every window closes, saving its files, and opens again on the next start.
   quitApp: () => { app.quit(); },
+  // The renderer's copies (clipboard.ts), which need no focus here.
+  copyText: (_event, text: string) => { clipboard.writeText(String(text)); },
   windowControl: (event, action: unknown) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (action === 'minimize') window?.minimize();

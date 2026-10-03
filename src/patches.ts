@@ -1,3 +1,4 @@
+import { copyText } from './clipboard';
 import type { GitClient } from './git-client';
 import { t } from './localization';
 import { notify } from './notifications';
@@ -18,7 +19,7 @@ const nothing = (made: GlistGitPatch): boolean => {
 
 export const copyPatch = async (made: GlistGitPatch): Promise<void> => {
   if (nothing(made)) return;
-  await navigator.clipboard.writeText(made.patch);
+  await copyText(made.patch);
   notify({ text: made.commits > 1 ? t('patchCopiedCommits').replace('{count}', String(made.commits)) : t('patchCopied'), kind: 'success' });
 };
 

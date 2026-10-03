@@ -1,3 +1,4 @@
+import { copyText } from './clipboard';
 import { t } from './localization';
 import { notify } from './notifications';
 
@@ -12,7 +13,7 @@ export class AboutView {
 
   constructor(private readonly host: HTMLElement, copy: HTMLButtonElement) {
     copy.addEventListener('click', () => {
-      void navigator.clipboard.writeText(this.text).then(() => notify({ text: t('aboutCopied'), kind: 'success' }));
+      void copyText(this.text).then(() => notify({ text: t('aboutCopied'), kind: 'success' }));
     });
   }
 

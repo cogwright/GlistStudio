@@ -35,7 +35,7 @@ const copyButton = (error: ReportError): HTMLButtonElement => {
   button.textContent = t('copyDetails');
   let timer = 0;
   button.addEventListener('click', () => {
-    void copyReport(error).then(() => t('copied'), () => t('copyDetailsFailed')).then((label) => {
+    void copyReport(error).then((copied) => t(copied ? 'copied' : 'copyDetailsFailed'), () => t('copyDetailsFailed')).then((label) => {
       button.textContent = label;
       window.clearTimeout(timer);
       timer = window.setTimeout(() => { button.textContent = t('copyDetails'); }, 2000);
