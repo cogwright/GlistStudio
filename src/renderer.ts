@@ -17,7 +17,7 @@ import { checkDataFiles } from './data-checks';
 import { DataFormatError, formatIni, formatToml, formatYaml, isDataLanguage } from './data-format';
 import { registerTomlLanguage } from './toml-language';
 import { editorBehaviour, loadEditorSettings, onEditorSettingsChange, setUpEditorSettings } from './editor-settings';
-import { defaultHiddenFolders } from './hidden-folders';
+import { defaultHiddenFolders, hiddenFolderList, setHiddenFolders } from './hidden-folders';
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
 import { changedLines, codeLines, editsWithin, type LineRange } from './format-lines';
 import { formatOutput, newOutputStyle, outputBanner } from './output-format';
@@ -3479,8 +3479,11 @@ setUpEditorSettings({
 const hiddenFoldersInput = element<HTMLInputElement>('#hidden-folders');
 hiddenFoldersInput.value = ((): string => { try { return window.localStorage.getItem('glist-studio-hidden-folders') ?? defaultHiddenFolders.join(', '); } catch { return defaultHiddenFolders.join(', '); } })();
 void window.glistAPI.setHiddenFolders(hiddenFoldersInput.value);
+// The commit view keeps hidden files' changes out of a commit, here in the page.
+setHiddenFolders(hiddenFolderList(hiddenFoldersInput.value));
 hiddenFoldersInput.addEventListener('change', () => {
   try { window.localStorage.setItem('glist-studio-hidden-folders', hiddenFoldersInput.value); } catch { /* Storage may be unavailable. */ }
+  setHiddenFolders(hiddenFolderList(hiddenFoldersInput.value));
   void window.glistAPI.setHiddenFolders(hiddenFoldersInput.value).then(() => loadProjectTree());
 });
 

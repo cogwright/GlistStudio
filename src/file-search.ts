@@ -52,7 +52,7 @@ export const filesIn = async (folders: SearchFolder[], limit = 50000, cancelled 
         if (entry.isDirectory()) {
           // Hidden ones too, and the explorer's hidden folders (hidden-folders.ts).
           if (!entry.name.startsWith('.') && !isHiddenFolder(entry.name)) await walk(path.join(directory, entry.name), inner);
-        } else if (entry.isFile()) {
+        } else if (entry.isFile() && !isHiddenFolder(entry.name)) {
           found.push({ path: path.join(directory, entry.name), relative: inner, owner: folder.name, kind: folder.kind });
         }
       }

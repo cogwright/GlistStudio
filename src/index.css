@@ -1223,3 +1223,6 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .rollback-version { color: var(--ui-fg-strong); font-variant-numeric: tabular-nums; }
 .rollback-facts { margin-left: auto; color: var(--ui-fg-muted); font-size: 12px; }
 .rollback-warning { padding: 8px 10px; border: 1px solid var(--ui-warning); border-radius: 4px; color: var(--ui-fg); font-size: 12.5px; line-height: 1.5; }
+
+/* A change to a file the explorer hides: listed, but out of a commit until ticked (git-commit-view.ts). */
+.change-row.hidden-change .change-name, .change-row.hidden-change .change-dir { opacity: 0.6; }
