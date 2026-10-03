@@ -1,6 +1,6 @@
 import type { Handler, Handlers } from './api';
 import {
-  openProjectAt, stopClangd, stopDebugging, stopGit, stopProcesses, stopTerminal, stopWatchingConfiguration, studio,
+  closeDatabases, openProjectAt, stopClangd, stopDebugging, stopGit, stopProcesses, stopTerminal, stopWatchingConfiguration, studio,
 } from './studio';
 
 // The backend as a window reaches it from elsewhere, over messages: the
@@ -32,5 +32,5 @@ export const answer = async (handlers: Handlers, { id, method, args }: BackendCa
 // Everything the backend started, stopped: the program, builds, the debugger,
 // clangd, terminals, git and the watchers.
 export const stopBackend = (): void => {
-  stopProcesses(); stopClangd(); stopDebugging(); stopTerminal(); stopGit(); stopWatchingConfiguration();
+  stopProcesses(); stopClangd(); stopDebugging(); stopTerminal(); stopGit(); stopWatchingConfiguration(); closeDatabases();
 };

@@ -58,6 +58,8 @@ import { confirmDialog } from './confirm-dialog';
 import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './localization';
 import { renderImagePage, type ImagePage } from './image-page';
 import { imageType } from './images';
+import { renderDatabasePage, type DatabasePage } from './database-page';
+import { isDatabaseFile } from './databases';
 import { renderModelPage, type ModelPage } from './model-page';
 import { modelType } from './models';
 import { loadSession, restorableTab, saveSession, type ProjectSession } from './project-session';
@@ -130,13 +132,23 @@ interface ModelTab {
   version: number;
 }
 
+// A SQLite database, opened to look in and change rather than as bytes.
+interface DatabaseTab {
+  kind: 'database';
+  // The tab's key: the file's path.
+  path: string;
+  name: string;
+  page: DatabasePage;
+  version: number;
+}
+
 // Tabs drawn in a side's page rather than in its editor; those of a file
 // follow it when it is renamed and close when it is deleted.
-type FilePageTab = ImageTab | ModelTab;
+type FilePageTab = ImageTab | ModelTab | DatabaseTab;
 type PageTab = ReadmeTab | FilePageTab;
 
 type EditorTab = OpenFile | DiffTab | PageTab;
-const isFilePageTab = (tab: EditorTab): tab is FilePageTab => tab.kind === 'image' || tab.kind === 'model';
+const isFilePageTab = (tab: EditorTab): tab is FilePageTab => tab.kind === 'image' || tab.kind === 'model' || tab.kind === 'database';
 const isPageTab = (tab: EditorTab): tab is PageTab => tab.kind === 'readme' || isFilePageTab(tab);
 
 const element = <T extends HTMLElement>(selector: string): T => {
@@ -446,7 +458,7 @@ const requestName = (titleKey: TranslationKey, labelKey: TranslationKey, initial
     const submit = inputForm.querySelector<HTMLButtonElement>('button[type="submit"]');
     title.textContent = t(titleKey);
     label.textContent = t(labelKey);
-    if (submit) submit.textContent = titleKey === 'rename' ? t('rename') : t('create');
+    if (submit) submit.textContent = titleKey === 'rename' || titleKey === 'databaseRenameTable' ? t('rename') : t('create');
     inputValue.value = initial;
     const cleanup = (value: string | null): void => {
       inputForm.removeEventListener('submit', onSubmit);
@@ -656,7 +668,8 @@ const showPageTab = (view: GroupView, tab?: PageTab): void => {
   if (!tab || (view.pageShown?.key === tab.path && view.pageShown.version === tab.version)) return;
   view.pageShown?.render.dispose();
   const render = tab.kind === 'readme' ? renderReadmePage(view.page, tab.page)
-    : tab.kind === 'model' ? renderModelPage(view.page, tab.page) : renderImagePage(view.page, tab.page);
+    : tab.kind === 'model' ? renderModelPage(view.page, tab.page)
+      : tab.kind === 'database' ? renderDatabasePage(view.page, tab.page) : renderImagePage(view.page, tab.page);
   view.pageShown = { key: tab.path, version: tab.version, render };
   view.page.scrollTop = 0;
 };
@@ -725,6 +738,8 @@ const activateFile = (filePath: string, group = layout.focused): void => {
 };
 
 const disposeTab = (tab: EditorTab): void => {
+  // A database's tab lets go of the file, which Windows would not let be moved or deleted.
+  if (tab.kind === 'database') void window.glistAPI.databaseClose(tab.path);
   if (isPageTab(tab)) return;
   if (tab.kind === 'file') { tab.model.dispose(); return; }
   groupViews.forEach((view) => { if (view.diff.editor?.getModel()?.modified === tab.modified) view.diff.editor.setModel(null); });
@@ -1183,6 +1198,7 @@ let navigation = 0;
 const openFile = async (filePath: string, name: string): Promise<boolean> => {
   if (imageType(filePath)) { openImage(filePath); return true; }
   if (modelType(filePath)) { openModel(filePath); return true; }
+  if (isDatabaseFile(filePath)) { openDatabase(filePath); return true; }
   navigation += 1;
   const ticket = navigation;
   try {
@@ -1424,6 +1440,18 @@ const openImage = (filePath: string): void => openPageTab<ImageTab>(
 const openModel = (filePath: string): void => openPageTab<ModelTab>(
   { kind: 'model', path: filePath, name: baseName(filePath), page: { name: baseName(filePath) }, version: 0 },
   async (tab) => { tab.page.model = await window.glistAPI.readModel(filePath); },
+);
+
+// A SQLite database, in a tab of its own that reads it as it is shown.
+const openDatabase = (filePath: string): void => openPageTab<DatabaseTab>(
+  {
+    kind: 'database',
+    path: filePath,
+    name: baseName(filePath),
+    page: { name: baseName(filePath), path: filePath, askName: (initial) => requestName('databaseRenameTable', 'databaseTableName', initial) },
+    version: 0,
+  },
+  async (): Promise<void> => undefined,
 );
 
 // A README's or an image's tab, brought to the front; what it shows is asked
@@ -2410,6 +2438,7 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
     groupViews.forEach((view) => { if (view.shown === tab.path) view.shown = nextPath; });
     Object.assign(tab, { path: nextPath, name: baseName(nextPath) });
     tab.page.name = tab.name;
+    if (tab.kind === 'database') tab.page.path = nextPath;
     openFiles.set(nextPath, tab);
   });
   showGroups();
@@ -2418,8 +2447,16 @@ const relocateOpenFiles = (oldPath: string, newPath: string): void => {
 
 // Renames or moves an entry: changed files in it are saved first, and open
 // tabs, copied paths and open folders in it follow it to its new path.
+// Databases open in tabs let go of their files first: Windows moves and deletes
+// no file that is open. They open again when next asked for.
+const releaseDatabases = async (entryPath: string): Promise<void> => {
+  await Promise.all([...openFiles.values()].filter((tab) => tab.kind === 'database' && isWithin(tab.path, entryPath))
+    .map((tab) => window.glistAPI.databaseClose(tab.path)));
+};
+
 const relocateEntry = async (entryPath: string, change: () => Promise<string>): Promise<string> => {
   await saveOpenCmake();
+  await releaseDatabases(entryPath);
   for (const file of fileTabs()) {
     if (isWithin(file.path, entryPath) && isDirty(file)) await saveFile(file);
   }
@@ -2485,6 +2522,7 @@ const deleteSelectedEntries = async (): Promise<void> => {
     const cmakePath = activeProject ? joinPath(activeProject.root, 'CMakeLists.txt') : null;
     if (cmakePath && !entries.some((entry) => isWithin(cmakePath, entry.path))) await saveOpenCmake();
     for (const entry of entries) {
+      await releaseDatabases(entry.path);
       await window.glistAPI.deleteEntry(entry.path);
       deleted.push(entry);
       copiedEntryPaths = copiedEntryPaths.filter((copiedPath) => !isWithin(copiedPath, entry.path));
@@ -2567,6 +2605,7 @@ const restoreSession = async (session: ProjectSession): Promise<void> => {
       try {
         if (imageType(key)) openImage(key);
         else if (modelType(key)) openModel(key);
+        else if (isDatabaseFile(key)) openDatabase(key);
         else await loadFile(key);
         // A file open on the other side already gets its tab on this one too.
         layout.add(key, index);
