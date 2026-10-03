@@ -17,6 +17,8 @@ const studioKey = (event: KeyboardEvent): boolean => {
 export class StudioTerminal {
   private readonly terminal: Terminal;
   private readonly fit = new FitAddon();
+  private readonly resizes = new ResizeObserver(() => this.fitToHost());
+  private readonly unsubscribe: Array<() => void> = [];
   private opened = false;
   private running = false;
   private starting: Promise<void> | null = null;
@@ -45,13 +47,28 @@ export class StudioTerminal {
     this.terminal.onResize(({ cols, rows }) => {
       if (this.running) void window.glistAPI.resizeTerminal(this.session, cols, rows);
     });
-    window.glistAPI.onTerminalData(({ session, data }) => { if (session === this.session) this.terminal.write(data); });
-    window.glistAPI.onTerminalExit(({ session, exitCode }) => {
-      if (session !== this.session) return;
-      this.running = false;
-      if (this.restartOnKey) this.terminal.write(`\r\n\x1b[2m${t(this.exitedMessage)} ${exitCode}. ${t('terminalRestartHint')}\x1b[0m\r\n`);
-    });
-    new ResizeObserver(() => this.fitToHost()).observe(host);
+    this.unsubscribe.push(
+      window.glistAPI.onTerminalData(({ session, data }) => { if (session === this.session) this.terminal.write(data); }),
+      window.glistAPI.onTerminalExit(({ session, exitCode }) => {
+        if (session !== this.session) return;
+        this.running = false;
+        if (this.restartOnKey) this.terminal.write(`\r\n\x1b[2m${t(this.exitedMessage)} ${exitCode}. ${t('terminalRestartHint')}\x1b[0m\r\n`);
+      }),
+    );
+    this.resizes.observe(host);
+  }
+
+  // A terminal closed for good: its program ends, and nothing of it is left listening.
+  dispose(): void {
+    this.stop();
+    this.unsubscribe.forEach((stop) => stop());
+    this.resizes.disconnect();
+    this.terminal.dispose();
+  }
+
+  // Whether it was ever shown, and so started a program.
+  get used(): boolean {
+    return this.opened;
   }
 
   // Shows the terminal, with a shell the first time.

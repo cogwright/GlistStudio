@@ -252,18 +252,69 @@ const agentTab = element<HTMLButtonElement>('#agent-tab');
 const agentSelect = element<HTMLSelectElement>('#agent-select');
 const newTerminalButton = element<HTMLButtonElement>('#new-terminal');
 const clearOutputButton = element<HTMLButtonElement>('#clear-output');
-const studioTerminal = new StudioTerminal(terminalHost, 'shell');
+const terminalSelect = element<HTMLSelectElement>('#terminal-select');
+const closeTerminalButton = element<HTMLButtonElement>('#close-terminal');
 const agentTerminal = new StudioTerminal(agentHost, 'agent', 'agentExited');
 // Glist Engine's installer, in its dialog; it runs once per click, never on a key.
 const installTerminal = new StudioTerminal(element<HTMLDivElement>('#install-terminal'), 'install', 'terminalExited', false);
-[studioTerminal, agentTerminal, installTerminal].forEach((panelTerminal) => {
-  onThemeChange((theme) => panelTerminal.setTheme(terminalTheme(theme.palette, theme.kind)));
-  onFontsChange((fonts) => panelTerminal.setFont(codeFontStack(fonts), panelFontSize(fonts)));
+
+// The Terminal tab's shells, as many as New Terminal opens (shell, shell-2 and
+// so on), one shown at a time, chosen in the list beside the tab's tools as
+// the Agent tab's agent is. Closing the last one leaves a fresh one.
+interface ShellTab { session: GlistTerminalSession; number: number; terminal: StudioTerminal; host: HTMLDivElement }
+const shellTabs: ShellTab[] = [];
+let terminalLook: { theme?: ReturnType<typeof terminalTheme>; family?: string; size?: number; scale?: number } = {};
+const panelTerminals = (): StudioTerminal[] => [...shellTabs.map((tab) => tab.terminal), agentTerminal, installTerminal];
+onThemeChange((theme) => {
+  terminalLook = { ...terminalLook, theme: terminalTheme(theme.palette, theme.kind) };
+  panelTerminals().forEach((each) => each.setTheme(terminalTheme(theme.palette, theme.kind)));
 });
+onFontsChange((fonts) => {
+  terminalLook = { ...terminalLook, family: codeFontStack(fonts), size: panelFontSize(fonts) };
+  panelTerminals().forEach((each) => each.setFont(codeFontStack(fonts), panelFontSize(fonts)));
+});
+const addShell = (): ShellTab => {
+  const number = shellTabs.reduce((most, tab) => Math.max(most, tab.number), 0) + 1;
+  const host = document.createElement('div');
+  host.className = 'terminal-instance';
+  terminalHost.append(host);
+  const session = (number === 1 ? 'shell' : `shell-${number}`) as GlistTerminalSession;
+  const terminal = new StudioTerminal(host, session);
+  if (terminalLook.theme) terminal.setTheme(terminalLook.theme);
+  if (terminalLook.family) terminal.setFont(terminalLook.family, terminalLook.size ?? 12);
+  if (terminalLook.scale) terminal.setScale(terminalLook.scale);
+  const tab: ShellTab = { session, number, terminal, host };
+  shellTabs.push(tab);
+  return tab;
+};
+let shellTab = addShell();
+const listShells = (): void => {
+  terminalSelect.replaceChildren(...shellTabs.map((each) => new Option(t('terminalNumbered').replace('{number}', String(each.number)), each.session)));
+  terminalSelect.value = shellTab.session;
+};
+const showShell = (tab: ShellTab): void => {
+  shellTab = tab;
+  shellTabs.forEach((each) => { each.host.hidden = each !== tab; });
+  listShells();
+  if (panelShowing('terminal')) tab.terminal.show();
+};
+const closeShell = (): void => {
+  const closing = shellTab;
+  closing.terminal.dispose();
+  closing.host.remove();
+  shellTabs.splice(shellTabs.indexOf(closing), 1);
+  showShell(shellTabs[shellTabs.length - 1] ?? addShell());
+};
+// Opened before the panel shows it, so only the new one starts a shell.
+const newShell = (): void => {
+  showShell(addShell());
+  showPanel('terminal');
+};
 const terminalFor = (view: PanelView): StudioTerminal | null =>
-  (view === 'terminal' ? studioTerminal : view === 'agent' ? agentTerminal : null);
+  (view === 'terminal' ? shellTab.terminal : view === 'agent' ? agentTerminal : null);
 
 const panelShowing = (view: PanelView): boolean => !appShell.classList.contains('output-hidden') && panelView === view;
+showShell(shellTab);
 
 const setOutputVisible = (visible: boolean): void => {
   appShell.classList.toggle('output-hidden', !visible);
@@ -281,6 +332,8 @@ const showPanel = (view: PanelView): void => {
   agentHost.hidden = view !== 'agent';
   gitPanelElement.hidden = view !== 'git';
   agentSelect.hidden = view !== 'agent';
+  terminalSelect.hidden = view !== 'terminal';
+  closeTerminalButton.hidden = view !== 'terminal';
   newTerminalButton.hidden = view === 'output' || view === 'git';
   // The Git tab's views have tools of their own.
   clearOutputButton.hidden = view === 'git';
@@ -381,7 +434,8 @@ const setZoom = (percentage: number): void => {
   void window.glistAPI.setZoomFactor(closest / 100);
   document.documentElement.style.setProperty('--window-zoom', String(closest / 100));
   scheduleMenuSync();
-  studioTerminal.setScale(pageZoom());
+  terminalLook = { ...terminalLook, scale: pageZoom() };
+  shellTabs.forEach((tab) => tab.terminal.setScale(pageZoom()));
   showZoom();
 };
 
@@ -2338,7 +2392,10 @@ const showInExplorer = async (): Promise<void> => {
 const openIntegratedTerminal = async (): Promise<void> => {
   const target = selectedEntry?.path ?? activeProject?.root;
   if (!target) return;
-  const opening = studioTerminal.openAt(target);
+  // In a terminal of its own, unless the one showing has not been used yet.
+  const tab = shellTab.terminal.used ? addShell() : shellTab;
+  const opening = tab.terminal.openAt(target);
+  showShell(tab);
   showPanel('terminal');
   try { await opening; }
   catch (error) { noticeFailed('showFailed', error); }
@@ -2508,7 +2565,7 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   projectRootLabel.textContent = selected.name.toUpperCase();
   closeProjectButton.hidden = false;
   document.title = `${selected.name} - Glist Studio`;
-  studioTerminal.projectChanged();
+  shellTabs.forEach((tab) => tab.terminal.projectChanged());
   agentTerminal.projectChanged();
   dependencyFolders = [];
   warnedShared.clear();
@@ -2842,6 +2899,7 @@ const configureMenus = (): void => {
         item(t(panelShowing('terminal') ? 'hideTerminal' : 'showTerminal'), () => togglePanel('terminal'), {
           shortcut: isMac ? 'Control+`' : 'Ctrl+`',
         }),
+        item(t('newTerminal'), newShell, { shortcut: isMac ? 'Control+Shift+`' : 'Ctrl+Shift+`' }),
         ...(agentTab.hidden ? [] : [item(t(panelShowing('agent') ? 'hideAgent' : 'showAgent'), () => togglePanel('agent'))]),
         { kind: 'separator' },
         { kind: 'heading', label: t('zoom') },
@@ -3153,7 +3211,16 @@ clearOutputButton.addEventListener('click', () => {
   if (panelTerminal) panelTerminal.clear();
   else clearOutput();
 });
-newTerminalButton.addEventListener('click', () => { void terminalFor(panelView)?.restart(); });
+// New Terminal opens another shell beside the others; on the Agent tab it starts the agent again.
+newTerminalButton.addEventListener('click', () => {
+  if (panelView === 'terminal') newShell();
+  else void agentTerminal.restart();
+});
+closeTerminalButton.addEventListener('click', closeShell);
+terminalSelect.addEventListener('change', () => {
+  const chosen = shellTabs.find((tab) => tab.session === terminalSelect.value);
+  if (chosen) showShell(chosen);
+});
 document.querySelectorAll<HTMLButtonElement>('.output-tab').forEach((tab) => {
   const view = tab.dataset.panel === 'terminal' || tab.dataset.panel === 'agent' || tab.dataset.panel === 'git' ? tab.dataset.panel : 'output';
   tab.addEventListener('click', () => showPanel(view));
@@ -3220,6 +3287,8 @@ settingsLanguage.addEventListener('change', () => {
   // Monaco's own words follow at the next start; saying so once is enough.
   if (next !== editorLanguage) notify({ text: t('editorLanguageRestart') });
   agentSettings.render();
+  listShells();
+  void listShellChoices();
   commitPane.render();
   gitPanel.reload();
   // The Plugins and Engine views draw their words when they load; once the backend speaks the language too.
@@ -3481,6 +3550,7 @@ window.addEventListener('keydown', (event) => {
   else if (primaryKey(event) && event.key.toLowerCase() === 'b') { event.preventDefault(); toggleExplorer(); }
   else if (primaryKey(event) && event.key.toLowerCase() === 'j') { event.preventDefault(); togglePanel('output'); }
   // By the key's place left of 1, which types a different character on some layouts.
+  else if (event.ctrlKey && event.shiftKey && event.code === 'Backquote') { event.preventDefault(); newShell(); }
   else if (event.ctrlKey && event.code === 'Backquote') { event.preventDefault(); togglePanel('terminal'); }
   else if (event.shiftKey && event.key === 'F5') { event.preventDefault(); stopProject(); }
   else if (event.key === 'F5') { event.preventDefault(); if (debug.state === 'paused') debug.continue(); else runProject(); }
@@ -3537,6 +3607,24 @@ autoConfigureInput.addEventListener('change', () => {
   void window.glistAPI.setAutoConfigure(autoConfigureInput.checked);
 });
 window.glistAPI.onCompileCommands(() => clangd.compileCommandsChanged());
+// Settings > Environment: the shell new terminals start, of those on the computer.
+const terminalShellInput = element<HTMLSelectElement>('#terminal-shell');
+const chosenShell = ((): string => { try { return window.localStorage.getItem('glist-studio-terminal-shell') ?? ''; } catch { return ''; } })();
+void window.glistAPI.setTerminalShell(chosenShell);
+const listShellChoices = async (): Promise<void> => {
+  const { default: fallback, shells } = await window.glistAPI.terminalShells();
+  const chosen = terminalShellInput.value || chosenShell;
+  terminalShellInput.replaceChildren(
+    new Option(t('shellDefaultNamed').replace('{name}', fallback), ''),
+    ...shells.map((shell) => new Option(shell.name, shell.id)),
+  );
+  terminalShellInput.value = shells.some((shell) => shell.id === chosen) ? chosen : '';
+};
+void listShellChoices();
+terminalShellInput.addEventListener('change', () => {
+  try { window.localStorage.setItem('glist-studio-terminal-shell', terminalShellInput.value); } catch { /* Storage may be unavailable. */ }
+  void window.glistAPI.setTerminalShell(terminalShellInput.value);
+});
 const showTargetsInput = element<HTMLInputElement>('#show-targets');
 showTargetsInput.checked = targetPicker.shown;
 showTargetsInput.addEventListener('change', () => { targetPicker.shown = showTargetsInput.checked; });
@@ -3559,7 +3647,7 @@ window.glistAPI.onBackendRestarted(() => {
   if (!activeProject) return;
   void debug.stop();
   void clangd.start(activeProject.root);
-  studioTerminal.projectChanged();
+  shellTabs.forEach((tab) => tab.terminal.projectChanged());
   agentTerminal.projectChanged();
   void git.projectChanged();
   void targetPicker.refresh();

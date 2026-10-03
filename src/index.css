@@ -531,6 +531,9 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
    (StudioTerminal.setScale). --page-zoom is unset in Electron, which zooms natively. */
 .terminal-host { flex: 1; min-height: 0; background: var(--ui-bg); zoom: calc(1 / var(--page-zoom, 1)); }
 .terminal-host[hidden], .heading-action[hidden] { display: none; }
+/* The Terminal tab's shells, one showing. */
+.terminal-instance { height: 100%; }
+.terminal-instance[hidden] { display: none; }
 /* The padding goes on xterm.js's own element: its fit addon subtracts that
    padding, but measures the host with its own, so padding there made rows
    run past the bottom of the panel. */
