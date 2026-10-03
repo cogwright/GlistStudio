@@ -37,9 +37,19 @@ export interface ModelScene {
   dispose(): void;
 }
 
-const bytesOf = (base64: string): Uint8Array => Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+// Read with the browser's own base64 decoder where it has one, which TypeScript
+// does not know of yet: tens of megabytes in a few milliseconds, where reading
+// atob's string a character at a time takes seconds and stops the window.
+const decoder = Uint8Array as unknown as { fromBase64?(base64: string): Uint8Array<ArrayBuffer> };
+const bytesOf = (base64: string): Uint8Array<ArrayBuffer> => {
+  if (decoder.fromBase64) return decoder.fromBase64(base64);
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+};
 const textOf = (base64: string): string => new TextDecoder().decode(bytesOf(base64));
-const bufferOf = (base64: string): ArrayBuffer => bytesOf(base64).buffer as ArrayBuffer;
+const bufferOf = (base64: string): ArrayBuffer => bytesOf(base64).buffer;
 const mimeTypes: Record<string, string> = {
   png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp',
 };
@@ -96,14 +106,15 @@ const load = async (
     }
     case 'obj': {
       const objects = new OBJLoader(manager);
-      const library = /^\s*mtllib\s+(.+?)\s*$/m.exec(textOf(model.data))?.[1];
+      const text = textOf(model.data);
+      const library = /^\s*mtllib\s+(.+?)\s*$/m.exec(text)?.[1];
       const materialFile = library && Object.keys(model.files).find((name) => name === library || library.split(/\s+/).includes(name));
       if (materialFile) {
         const materials = new MTLLoader(manager).parse(textOf(model.files[materialFile]), '');
         materials.preload();
         objects.setMaterials(materials);
       }
-      return { object: objects.parse(textOf(model.data)), clips: [] };
+      return { object: objects.parse(text), clips: [] };
     }
     case 'fbx': {
       const group = new FBXLoader(manager).parse(bufferOf(model.data), '');
@@ -210,8 +221,13 @@ const factsOf = (object: Object3D, box: Box3): ModelFacts => {
   return { meshes, triangles, vertices, materials: materialsOf(object).length, size: [size.x, size.y, size.z] };
 };
 
+// Waits until the page has been drawn, so what it says by then is seen, and a
+// click or a key pressed meanwhile is answered before the next long step.
+const painted = (): Promise<void> => new Promise((resolve) => { requestAnimationFrame(() => setTimeout(resolve)); });
+
 export const showModel = async (host: HTMLElement, model: GlistModelFile): Promise<ModelScene> => {
   const loaders = await addOns();
+  await painted();
   const { OrbitControls, TGALoader } = loaders;
   const urls = fileUrls(model.files);
   const manager = new LoadingManager();
@@ -246,9 +262,6 @@ export const showModel = async (host: HTMLElement, model: GlistModelFile): Promi
     mixer?.update(delta);
     draw();
   };
-  // Textures arrive after the model; each one draws it again.
-  manager.onLoad = draw;
-  manager.onProgress = draw;
   const loaded = await load(model, manager, loaders).catch((error: unknown) => {
     renderer.dispose();
     renderer.forceContextLoss();
@@ -256,6 +269,7 @@ export const showModel = async (host: HTMLElement, model: GlistModelFile): Promi
     throw error;
   });
   const { object, clips } = loaded;
+  await painted();
   mendSkins(object);
   scene.add(object);
   // Measured as posed: a skinned mesh's size comes from where its bones are.
@@ -288,11 +302,21 @@ export const showModel = async (host: HTMLElement, model: GlistModelFile): Promi
     camera.updateProjectionMatrix();
     draw();
   };
+  // Its shaders are made before it is first drawn: beside the page where the
+  // graphics can do that, else in a step of their own.
+  if (renderer.extensions.has('KHR_parallel_shader_compile')) await renderer.compileAsync(scene, camera);
+  else {
+    renderer.compile(scene, camera);
+    await painted();
+  }
   const resizes = new ResizeObserver(resize);
   renderer.domElement.className = 'model-canvas';
   host.append(renderer.domElement);
   resizes.observe(host);
   controls.addEventListener('change', draw);
+  // Textures arrive after the model; each one draws it again.
+  manager.onLoad = draw;
+  manager.onProgress = draw;
   resize();
   resetView();
   return {

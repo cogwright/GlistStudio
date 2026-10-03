@@ -48,7 +48,11 @@ export const renderModelPage = (target: HTMLElement, page: ModelPage): { dispose
   };
   if (page.error) { failed(page.error); return { dispose: (): undefined => undefined }; }
   const { model } = page;
-  if (!model) { target.replaceChildren(); return { dispose: (): undefined => undefined }; }
+  const facts = document.createElement('div');
+  facts.className = 'image-facts model-facts';
+  facts.textContent = t('modelLoading');
+  // Said as soon as the tab opens, while the file is still being read.
+  if (!model) { target.replaceChildren(facts); return { dispose: (): undefined => undefined }; }
   let scene: ModelScene | null = null;
   let disposed = false;
   const stage = document.createElement('div');
@@ -56,9 +60,6 @@ export const renderModelPage = (target: HTMLElement, page: ModelPage): { dispose
   const hint = document.createElement('div');
   hint.className = 'model-hint';
   hint.textContent = t('modelHint');
-  const facts = document.createElement('div');
-  facts.className = 'image-facts model-facts';
-  facts.textContent = t('modelLoading');
   const tools = document.createElement('div');
   tools.className = 'model-tools';
   tools.hidden = true;
