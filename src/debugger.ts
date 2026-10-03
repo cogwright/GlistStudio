@@ -20,6 +20,8 @@ export interface DebuggerHost {
   log(text: string, kind?: 'normal' | 'success' | 'error'): void;
   // The session state changed; toolbars and menus follow.
   changed(): void;
+  // The program being debugged ended with this code.
+  exited?(exitCode: number): void;
   // There is no debugger, and Settings can install one.
   missingDebugger?(): void;
   // The GDB Settings installed did not start; it can be installed again.
@@ -344,9 +346,12 @@ export class Debugger {
         }
         break;
       }
-      case 'exited':
-        this.host.log(`\n${t('programExited')} ${(event as DebugProtocol.ExitedEvent).body.exitCode}.\n`, 'normal');
+      case 'exited': {
+        const { exitCode } = (event as DebugProtocol.ExitedEvent).body;
+        this.host.log(`\n${t('programExited')} ${exitCode}.\n`, 'normal');
+        this.host.exited?.(exitCode);
         break;
+      }
       case 'terminated':
         this.finish();
         break;
