@@ -108,8 +108,9 @@ const config: ForgeConfig = {
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       mainConfig,
-      // Forge's default, plus the blob workers Monaco starts and a plugin README's images.
-      devContentSecurityPolicy: "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline' data:; worker-src 'self' blob:; img-src 'self' data: https:",
+      // Forge's default, plus the blob workers Monaco starts, a plugin README's
+      // images, and videos and sounds by their scheme (media-protocol.ts).
+      devContentSecurityPolicy: "default-src 'self' 'unsafe-inline' data:; script-src 'self' 'unsafe-eval' 'unsafe-inline' data:; worker-src 'self' blob:; img-src 'self' data: https:; media-src 'self' glist-media:; connect-src 'self' data: glist-media:",
       renderer: {
         config: rendererConfig,
         entryPoints: [

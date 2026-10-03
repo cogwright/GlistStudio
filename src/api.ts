@@ -34,6 +34,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   readFile: 'project:read-file',
   readImage: 'project:read-image',
   readModel: 'project:read-model',
+  openMedia: 'media:open',
+  releaseMedia: 'media:release',
   databaseSchema: 'database:schema',
   databaseRows: 'database:rows',
   databaseQuery: 'database:query',

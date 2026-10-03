@@ -21,6 +21,8 @@ import { errorOutput, outputBanner } from './output-format';
 import { createPluginService } from './plugins';
 import { hiddenFolderList, isHiddenFolder, setHiddenFolders } from './hidden-folders';
 import { imageType } from './images';
+import { mediaType, type MediaSource } from './media';
+import { readAudioFacts } from './media-serve';
 import { Databases } from './database';
 import { diffDatabase, fileStamp } from './database-diff';
 import { gatherModel, modelBytes } from './model-files';
@@ -1091,6 +1093,18 @@ const readImage = async (filePath: string): Promise<GlistImageFile> => {
   return { data: (await fs.readFile(safePath)).toString('base64'), type, size: stats.size };
 };
 
+// A video or a sound for its tab: checked where files may be read, as an image
+// is, then streamed from where it is rather than sent (media-serve.ts). A
+// sound's rate and channels are read from its headers.
+const openMedia = async (filePath: unknown): Promise<MediaSource> => {
+  const media = mediaType(String(filePath));
+  const safePath = await assertEditablePath(String(filePath)).catch(() => workspacePath(String(filePath)));
+  const stats = await fs.stat(safePath);
+  if (!media || !stats.isFile()) throw new Error(msg('fileRequired'));
+  const facts = media.kind === 'audio' ? await readAudioFacts(safePath, stats.size) : {};
+  return { path: safePath, ...media, size: stats.size, ...facts };
+};
+
 // A 3D model for its tab, with the files it names beside it (model-files.ts),
 // each read only where files may be read.
 const readModel = async (filePath: string): Promise<GlistModelFile> => {
@@ -1667,6 +1681,7 @@ export const studio: Handlers = {
   readWorkspaceFile,
   readImage,
   readModel,
+  openMedia,
   databaseSchema: (filePath: unknown) => databases.schema(String(filePath)),
   databaseRows: (filePath: unknown, table: unknown, options: unknown) =>
     databases.rows(String(filePath), String(table), (options ?? {}) as GlistDatabaseRowsOptions),
