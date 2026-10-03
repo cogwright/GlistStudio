@@ -650,9 +650,10 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .studio-dialog label { display: block; margin: 12px 0 6px; color: var(--ui-fg); font-size: 12px; }
 .studio-dialog input, .studio-dialog select { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; outline: none; color: var(--ui-fg-strong); background: var(--ui-bg); font: inherit; }
 .studio-dialog input:focus, .studio-dialog select:focus { border-color: var(--ui-accent); }
+/* Every group of settings is a fieldset with a legend, drawn without the browser's frame. */
+fieldset.settings-section { min-width: 0; margin-inline: 0; padding: 0; border: 0; }
+fieldset.settings-section legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .settings-section + .settings-section { margin-top: 22px; padding-top: 20px; border-top: 1px solid var(--ui-border-strong); }
-.theme-settings { padding-right: 0; padding-bottom: 0; padding-left: 0; border: 0; }
-.theme-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 /* --page-zoom: the browser build's CSS zoom, under which viewport units do not shrink. */
 #settings-dialog { width: min(860px, calc((100vw - 32px) / var(--page-zoom, 1))); height: min(620px, calc((100vh - 48px) / var(--page-zoom, 1))); padding: 0; overflow: hidden; }
 #settings-dialog[open] { display: flex; flex-direction: column; }
@@ -671,17 +672,11 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .settings-pages { min-height: 0; flex: 1; padding: 18px 20px 16px; overflow-y: auto; }
 .settings-main .dialog-actions { margin: 0; padding: 10px 16px; border-top: 1px solid var(--ui-border); }
 .settings-page[hidden] { display: none; }
-.env-settings { min-width: 0; padding: 0; border: 0; }
-.env-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
-.run-settings { min-width: 0; padding: 0; border: 0; }
-.run-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .env-entries { display: grid; gap: 6px; margin-top: 10px; }
 .env-entries:empty { display: none; }
 .env-row { display: grid; align-items: center; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) 22px; gap: 6px; }
 .studio-dialog .env-row input { height: 28px; font-family: var(--font-code); font-size: 12px; }
 .studio-dialog .env-row.refused .env-name { border-color: var(--ui-danger); }
-.font-settings { padding: 0; border: 0; }
-.font-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .font-grid { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 14px; margin-top: 10px; }
 .studio-dialog .font-grid label { margin: 0; }
 .studio-dialog .checkbox-row { display: flex; align-items: center; gap: 8px; margin: 12px 0 0; cursor: pointer; }
@@ -736,18 +731,12 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .scale-reset:disabled { cursor: default; opacity: .4; }
 .zoom-indicator { font-size: 11px; font-variant-numeric: tabular-nums; }
 .zoom-indicator[hidden] { display: none; }
-.debugger-settings { padding: 0; border: 0; }
 .debugger-settings[hidden] { display: none; }
-.debugger-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .debugger-install { display: inline-flex; height: 26px; align-items: center; margin-top: 8px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); cursor: pointer; }
 .debugger-install:hover:not(:disabled) { background: var(--ui-hover-strong); }
 .debugger-install[hidden] { display: none; }
-.agent-settings, .update-settings { padding: 0; border: 0; }
-.agent-settings legend, .update-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .update-settings[hidden] { display: none; }
 .agent-options { display: grid; gap: 6px; margin-top: 12px; }
-.path-settings { min-width: 0; padding: 0; border: 0; }
-.path-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .path-entries { max-height: 220px; margin: 10px 0 0; padding: 0; overflow: auto; border: 1px solid var(--ui-border); border-radius: 4px; list-style: none; }
 .path-entry { display: flex; min-height: 26px; align-items: center; gap: 8px; padding: 0 8px; border-bottom: 1px solid var(--ui-border); font-size: 12px; }
 .path-entry:last-child { border-bottom: 0; }
@@ -1026,10 +1015,8 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .push-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .push-time { color: var(--ui-fg-muted); font-size: 11px; }
 .push-commits li.push-nothing { display: block; color: var(--ui-fg-muted); line-height: 24px; }
-.git-settings, .build-settings, .format-settings { padding: 0; border: 0; }
-.build-settings legend, .format-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
+
 .studio-dialog .build-settings .checkbox-row, .studio-dialog .format-settings .checkbox-row { margin-top: 10px; }
-.git-settings legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
 .studio-dialog .git-toggle { margin-top: 10px; }
 .studio-dialog .git-options .git-protect { margin-top: 16px; }
 .git-version.missing { color: var(--ui-warning); }
