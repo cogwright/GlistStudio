@@ -1,3 +1,5 @@
+import { isDatabaseSideFile } from './databases';
+
 // Files and folders the explorer and search leave out, by name: builds, tools'
 // own and packages', from Settings > General. * stands for any text, so
 // cmake-build-* covers CLion's cmake-build-debug and cmake-build-release; case
@@ -18,7 +20,8 @@ export const setHiddenFolders = (names: string[]): void => {
 };
 setHiddenFolders(defaultHiddenFolders);
 
-export const isHiddenFolder = (name: string): boolean => patterns.some((pattern) => pattern.test(name));
+// SQLite's journal and write-ahead files too, whatever the list says.
+export const isHiddenFolder = (name: string): boolean => isDatabaseSideFile(name) || patterns.some((pattern) => pattern.test(name));
 
 // A path with a hidden file or folder in it, below the folder given.
 export const isHiddenPath = (filePath: string, root: string): boolean => {
