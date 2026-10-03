@@ -823,6 +823,10 @@
     "backendRestarted": "Glist Studio's background work stopped unexpectedly and was started again. The project is open again.",
     "newWindow": "New Window",
     "exitApp": "Exit",
+    "windowMinimize": "Minimize",
+    "windowMaximize": "Maximize",
+    "windowRestore": "Restore Down",
+    "windowClose": "Close",
     "closeProject": "Close Project"
   },
   "platforms": {
