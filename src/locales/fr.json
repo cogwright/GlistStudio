@@ -859,6 +859,7 @@
     "backendRestarted": "Le travail en arrière-plan de Glist Studio s'est arrêté de façon inattendue et a redémarré. Le projet est de nouveau ouvert.",
     "copyDetails": "Copier les détails",
     "copyDetailsFailed": "Copie impossible",
+    "copyByHand": "Impossible de le mettre dans le presse-papiers. Sélectionnez-le et copiez-le vous-même.",
     "unexpectedError": "Glist Studio a rencontré une erreur inattendue",
     "copyDebugInfo": "Copier les infos de débogage",
     "debugInfoCopied": "Infos de débogage copiées. Collez-les dans votre rapport.",

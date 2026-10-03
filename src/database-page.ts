@@ -1,5 +1,6 @@
 // eslint-disable-next-line import/no-unresolved
 import * as monaco from 'monaco-editor/editor/editor.api';
+import { copyText } from './clipboard';
 import { confirmDialog } from './confirm-dialog';
 import { createTableSql, quoteName, type NewColumn } from './database-sql';
 import { showMenu } from './context-menu';
@@ -294,7 +295,7 @@ export const renderDatabasePage = (target: HTMLElement, page: DatabasePage): { d
       cell.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         showMenu(event, [
-          { label: t('databaseCopyValue'), run: () => { void navigator.clipboard.writeText(plain(value)); } },
+          { label: t('databaseCopyValue'), run: () => { void copyText(plain(value)); } },
           ...(editable ? [
             { label: t('databaseEditValue'), run: () => startEditing(cell, index, column), disabled: isBlob(value) },
             { label: t('databaseSetNull'), run: () => { void update(index, column, null); }, disabled: value === null },
@@ -375,7 +376,7 @@ export const renderDatabasePage = (target: HTMLElement, page: DatabasePage): { d
     remove.addEventListener('click', () => { void deleteRows([...rowsState.selected].sort((a, b) => a - b)); });
     refresh.addEventListener('click', () => { void reloadSchema().then(redraw); });
     copy.addEventListener('click', () => {
-      void navigator.clipboard.writeText([data.columns.map((name) => csvField(name)), ...data.rows.map((row) => row.map(csvField))]
+      void copyText([data.columns.map((name) => csvField(name)), ...data.rows.map((row) => row.map(csvField))]
         .map((row) => row.join(',')).join('\n'));
     });
     filter.addEventListener('keydown', (event) => {

@@ -859,6 +859,7 @@
     "backendRestarted": "Glist Studio's background work stopped unexpectedly and was started again. The project is open again.",
     "copyDetails": "Copy Details",
     "copyDetailsFailed": "Could not copy",
+    "copyByHand": "It could not be put on the clipboard. Select it and copy it yourself.",
     "unexpectedError": "Glist Studio ran into an unexpected error",
     "copyDebugInfo": "Copy Debug Info",
     "debugInfoCopied": "Debug info copied. Paste it into your report.",

@@ -1,3 +1,4 @@
+import { copyText } from './clipboard';
 import { showMenu, type MenuEntry } from './context-menu';
 import { fileIconElement } from './file-icons';
 import { stateLetter, stateText, type GitClient } from './git-client';
@@ -410,7 +411,7 @@ class LogView {
     copy.type = 'button';
     copy.title = t('copyHash');
     copy.append(icon('copy'), details.short);
-    copy.addEventListener('click', () => { void navigator.clipboard.writeText(details.hash); });
+    copy.addEventListener('click', () => { void copyText(details.hash); });
     const author = element('span', undefined, `${details.author} <${details.email}>`);
     const date = element('span', undefined, fullTime(details.date * 1000));
     meta.append(copy, author, date);
@@ -434,7 +435,7 @@ class LogView {
     const { root } = this.place;
     const branch = this.client.repositoryAt(root)?.branch;
     return [
-      { label: t('copyHash'), run: () => { void navigator.clipboard.writeText(commit.hash); } },
+      { label: t('copyHash'), run: () => { void copyText(commit.hash); } },
       { label: t('copyAsPatch'), run: () => { void this.patchOf([commit.hash], false); } },
       { label: t('saveAsPatch'), run: () => { void this.patchOf([commit.hash], true); } },
       'separator',

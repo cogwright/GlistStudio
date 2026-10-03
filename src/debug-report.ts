@@ -1,3 +1,5 @@
+import { copyText, showTextToCopy } from './clipboard';
+
 // Help > Copy Debug Info, and Copy Details on an error notice: what someone
 // fixing a problem asks first, as text to paste into an issue. Which Glist
 // Studio this is and what it runs on, the engine and plugins, the window and
@@ -229,5 +231,15 @@ export const debugReport = async (error?: ReportError): Promise<string> => {
   });
 };
 
-// The report, put on the clipboard.
-export const copyReport = async (error?: ReportError): Promise<void> => navigator.clipboard.writeText(await debugReport(error));
+// The report, put on the clipboard; if it will not take it, shown to be
+// copied by hand, and false.
+export const copyReport = async (error?: ReportError): Promise<boolean> => {
+  const report = await debugReport(error);
+  try {
+    await copyText(report);
+    return true;
+  } catch {
+    showTextToCopy(report);
+    return false;
+  }
+};
