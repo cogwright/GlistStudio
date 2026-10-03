@@ -27,6 +27,7 @@ import { gatherModel, modelBytes } from './model-files';
 import { modelType } from './models';
 import { glistRoot, studioHome } from './studio-places';
 import { readRepositoryHead, type RepositoryHead } from './repository-head';
+import { createRepairChecks } from './repair-checks';
 import { queryPattern } from './text-search';
 import { toolLanguage } from './tool-language';
 
@@ -1604,6 +1605,22 @@ const git = createGitService({
 
 export const stopGit = (): void => git.stop();
 
+// Help > Repair IDE: what this backend runs, Git's locks left behind, clangd's index (repair-checks.ts).
+const repair = createRepairChecks({
+  projectRoot: () => activeProjectRoot,
+  dependencies: () => listDependencies(),
+  environment: (directory) => processEnvironment(resolveToolchain(directory)),
+  processes: () => ({
+    clangd: clangd.running,
+    building: building || buildProcess !== null,
+    running: runProcess !== null,
+    debugging: debugAdapter.running,
+    terminals: [...terminalSessions.keys()],
+  }),
+  buildFolders: (projectRoot) => (['Release', 'Debug'] as const).map((type) => buildDirectoryFor(projectRoot, type)),
+  stopClangd: () => clangd.stopAndWait(),
+});
+
 // The engine, updated from GlistEngine the way plugins are from GlistPlugins:
 // the open project's, or the one where Glist is installed.
 const engineSource = 'GlistEngine/GlistEngine';
@@ -1717,6 +1734,9 @@ export const studio: Handlers = {
   glistStatus,
   aboutInfo,
   debugInfo,
+  // Answered in turn with everything else, so a backend whose work in hand never lets go never answers.
+  ping: () => true,
+  ...repair,
   engineCheckout,
   updateEngine,
   installAgent: installAgentFromSettings,

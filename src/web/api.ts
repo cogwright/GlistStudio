@@ -62,6 +62,7 @@ Object.entries(eventChannels).forEach(([method, channel]) => {
 });
 
 const lastProjectKey = 'glist-studio-web-project';
+const reopenKey = 'glist-studio-reopen';
 Object.assign(api, {
   // There is no folder picker for the server's disk, so ask for a path.
   openProject: async () => {
@@ -78,8 +79,19 @@ Object.assign(api, {
   setAppMenu: async (): Promise<boolean> => false,
   // There is no folder picker for the server's disk, so ask for a path.
   chooseFolder: async (): Promise<string | null> => window.prompt('Folder on the host') || null,
-  // A page is one window: it opens no others, and closing its project starts it afresh.
-  windowProject: async (): Promise<null> => null,
+  // A page is one window: it opens no others, and closing its project starts it
+  // afresh. After Repair IDE's Reload the Window it opens its project again.
+  windowProject: async (): Promise<GlistFirstProject | null> => {
+    const root = window.sessionStorage.getItem(reopenKey);
+    window.sessionStorage.removeItem(reopenKey);
+    return root ? { kind: 'open', root } : null;
+  },
+  reloadWindow: async (root: string | null): Promise<void> => {
+    if (root) window.sessionStorage.setItem(reopenKey, root);
+    window.location.reload();
+  },
+  // The server is the backend here, and only where it runs can it be started again.
+  restartBackend: async (): Promise<boolean> => false,
   newWindow: async (): Promise<void> => undefined,
   closeProject: async (): Promise<void> => { window.location.reload(); },
   // The browser draws the page; the server has no say in how.

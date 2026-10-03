@@ -72,6 +72,7 @@ import { renderModelPage, type ModelPage } from './model-page';
 import { modelType } from './models';
 import { loadSession, restorableTab, saveSession, type ProjectSession } from './project-session';
 import { renderReadmePage, type ReadmePage } from './readme-page';
+import { setUpRepair } from './repair';
 import './index.css';
 
 interface OpenFile {
@@ -3378,6 +3379,7 @@ const configureMenus = (): void => {
         ...(canUpdate() ? [item(t('checkForUpdates'), checkForUpdates)] : []),
         { kind: 'separator' },
         item(t('copyDebugInfo'), () => { void copyDebugInfo(); }),
+        item(t('repairIde'), () => repair.open()),
         item(t('aboutMenu'), () => openSettings('about')),
       ],
     };
@@ -4095,19 +4097,57 @@ window.glistAPI.onBuildStatus((status) => {
   isBuildRunning = status.running; setProcessStatus(status.label, status.running); updateButtons();
 });
 window.glistAPI.onRunOutput((text) => appendOutput(text, 'normal', launchedRun ?? outputHistory.current));
+// What the window shows building and running, made to match the backend: a
+// new one runs nothing, and Repair IDE asks the one there is.
+const matchProcesses = (building: boolean, running: boolean): void => {
+  isBuildRunning = building;
+  if (isRunRunning && !running && launchedRun) { outputHistory.finishWithExit(launchedRun, undefined); launchedRun = null; }
+  isRunRunning = running;
+  if (!building && !running) setProcessStatus(t('ready'), false);
+  updateButtons();
+};
+// Help > Repair IDE (repair.ts), with what it needs of the window.
+const repair = setUpRepair({
+  projectRoot: () => activeProject?.root ?? null,
+  gitEnabled: () => git.enabled,
+  saveFiles: () => saveProjectFiles(),
+  unsavedFiles: () => hasDirtyFiles(),
+  pendingDatabases: () => [...openFiles.values()].filter(hasPending).map((tab) => tab.name),
+  settleDatabases: () => databasesSettled(),
+  saveSession: () => saveSessionNow(),
+  clangd,
+  restartClangd: () => (activeProject ? clangd.start(activeProject.root) : Promise.resolve()),
+  processes: () => ({
+    building: isBuildRunning, running: isRunRunning, debugging: debug.state === 'running' || debug.state === 'paused', terminals: panelTerminals(),
+  }),
+  matchProcesses,
+  stopDebugging: () => debug.stop(),
+  showView: (view) => showView(view),
+  installGlist: () => { void showGlistInstaller(); },
+  build: () => { void buildProject(); },
+});
 // The backend stopped by itself, and a new one has the window's settings and
 // project again (index.ts): what ran in the old one starts again here, and the
 // tabs stay as they are. The notice has the error that stopped it, when it said.
 window.glistAPI.onBackendRestarted((error) => {
-  notify({ text: t('backendRestarted'), kind: 'error', ...(error ? { detail: errorMessage(error), error } : {}) });
+  // Repair IDE says itself what it restarted, and asked first about databases.
+  const asked = repair.restarting();
+  if (!asked) {
+    notify({
+      text: t('backendRestarted'), kind: 'error', ...(error ? { detail: errorMessage(error), error } : {}),
+      actions: [{ label: t('repairIde'), run: () => repair.open() }],
+    });
+  }
   // Changes waiting in databases were in the backend that stopped: gone, and
   // their tabs read their files again.
   const lost = [...openFiles.values()].filter(hasPending);
   lost.forEach((tab) => { tab.page.pending = undefined; tab.version += 1; });
   if (lost.length) {
-    notify({ text: t('databaseChangesLost').replace('{name}', lost.map((tab) => tab.name).join(', ')), kind: 'error' });
+    if (!asked) notify({ text: t('databaseChangesLost').replace('{name}', lost.map((tab) => tab.name).join(', ')), kind: 'error' });
     showGroups();
   }
+  // A build or a program the old one ran ended with it.
+  matchProcesses(false, false);
   if (!activeProject) return;
   void debug.stop();
   void clangd.start(activeProject.root);

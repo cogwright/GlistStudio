@@ -33,7 +33,7 @@ export class StudioTerminal {
 
   constructor(
     private readonly host: HTMLElement,
-    private readonly session: GlistTerminalSession,
+    readonly session: GlistTerminalSession,
     private readonly exitedMessage: TranslationKey = 'terminalExited',
     // Whether a key press after the program exits starts it again.
     private readonly restartOnKey = true,
@@ -41,12 +41,13 @@ export class StudioTerminal {
     this.terminal = new Terminal({ cursorBlink: true, scrollback: 5000 });
     this.terminal.loadAddon(this.fit);
     this.terminal.attachCustomKeyEventHandler((event) => this.handleKey(event));
+    // Typed as the backend stopped, as when Repair IDE ends a stuck one, it is lost with the shell.
     this.terminal.onData((data) => {
-      if (this.running) void window.glistAPI.writeTerminal(this.session, data);
+      if (this.running) window.glistAPI.writeTerminal(this.session, data).catch((): undefined => undefined);
       else if (this.restartOnKey) void this.start();
     });
     this.terminal.onResize(({ cols, rows }) => {
-      if (this.running) void window.glistAPI.resizeTerminal(this.session, cols, rows);
+      if (this.running) window.glistAPI.resizeTerminal(this.session, cols, rows).catch((): undefined => undefined);
     });
     this.unsubscribe.push(
       window.glistAPI.onTerminalData(({ session, data }) => { if (session === this.session) this.terminal.write(data); }),
@@ -78,6 +79,19 @@ export class StudioTerminal {
   // Whether it was ever shown, and so started a program.
   get used(): boolean {
     return this.opened;
+  }
+
+  // Whether its program is running, as far as the window knows, and not just starting.
+  get started(): boolean {
+    return this.running && !this.starting;
+  }
+
+  // Repair IDE: a program the backend no longer has is shown as ended, as one
+  // that exited is, and a key starts a new one.
+  ended(): void {
+    if (!this.started) return;
+    this.running = false;
+    if (this.restartOnKey) this.terminal.write(`\r\n\x1b[2m${t('terminalRestartHint')}\x1b[0m\r\n`);
   }
 
   // Shows the terminal, with a shell the first time.
