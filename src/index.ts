@@ -396,6 +396,8 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
     return first;
   },
   newWindow: () => { createWindow(); },
+  // File > Exit: every window closes, saving its files, and opens again on the next start.
+  quitApp: () => { app.quit(); },
   // The project's window closes, unless it is the last: that one stays, with
   // a new backend and no project.
   closeProject: (event) => {

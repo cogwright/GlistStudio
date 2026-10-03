@@ -821,6 +821,7 @@
     "reduceMotionHint": "Stills the caret and scrolling in the editor and the interface's animations. It starts as the system has it.",
     "backendRestarted": "Glist Studio's background work stopped unexpectedly and was started again. The project is open again.",
     "newWindow": "New Window",
+    "exitApp": "Exit",
     "closeProject": "Close Project"
   },
   "platforms": {

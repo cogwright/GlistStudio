@@ -3034,7 +3034,10 @@ const configureMenus = (): void => {
         { kind: 'separator' },
         // The browser build is one page, which opens no other windows.
         ...(window.glistFiles ? [item(t('newWindow'), () => { void window.glistAPI.newWindow(); })] : []),
-        item(t('closeProject'), () => { void closeProject(); }, { disabled: !activeProject }),
+        // Exit closes every window, as closing Glist Studio from the taskbar does;
+        // a Mac's app menu has Quit for it. The explorer closes a project.
+        ...(window.glistFiles && !isMac ? [item(t('exitApp'), () => { void window.glistAPI.quitApp(); })]
+          : [item(t('closeProject'), () => { void closeProject(); }, { disabled: !activeProject })]),
       ],
       edit: [
         item(t('undo'), () => currentEditor().trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFile(), role: 'undo' }),
