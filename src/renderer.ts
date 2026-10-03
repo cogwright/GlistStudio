@@ -795,11 +795,15 @@ const updateButtons = (): void => {
 };
 
 // Draws a README, an image or a model tab in a side, again only once it
-// changed; without one, hides it, and lets go of what a closed tab drew there.
+// changed; without one, hides it, and lets go of what a tab no longer in the
+// side drew there: closed, a model gives back its WebGL context at once, not
+// when another page is next shown. (A tab closed is out of the layout before
+// it is out of openFiles.)
 const showPageTab = (view: GroupView, tab?: PageTab): void => {
   view.page.hidden = !tab;
-  if (!tab && view.pageShown && !openFiles.has(view.pageShown.key)) {
-    view.pageShown.render.dispose();
+  const shown = view.pageShown;
+  if (!tab && shown && (!openFiles.has(shown.key) || !layout.groupsWith(shown.key).includes(groupViews.indexOf(view)))) {
+    shown.render.dispose();
     view.pageShown = undefined;
   }
   if (!tab || (view.pageShown?.key === tab.path && view.pageShown.version === tab.version)) return;
