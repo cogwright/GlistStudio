@@ -976,6 +976,51 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .database-new-columns td { padding: 2px; max-width: none; }
 .database-check { text-align: center; }
 .database-remove { height: 24px; padding: 0 8px; }
+/* A database's diff (database-diff-page.ts): the versions over it, its tables
+   beside it as in its tab; added as added files are coloured, removed in red,
+   changed as changed files are. */
+.database-diff-view { position: absolute; inset: 0; display: flex; flex-direction: column; color: var(--ui-fg); user-select: none; }
+.database-diff-header { display: flex; flex: none; align-items: center; gap: 12px; padding: 7px 12px 7px 16px; border-bottom: 1px solid var(--ui-border); background: var(--ui-chrome); font-size: 12.5px; }
+.database-diff-name { color: var(--ui-fg-strong); font-weight: 600; white-space: nowrap; }
+.database-diff-versions { min-width: 0; overflow: hidden; color: var(--ui-fg-muted); text-overflow: ellipsis; white-space: pre; }
+.database-diff-space { flex: 1; }
+.database-diff-status { margin: 0; padding: 10px 16px; font-size: 12px; }
+.database-diff-status.error { color: var(--ui-danger); white-space: pre-wrap; user-select: text; }
+.database-diff-problem { margin: 0; padding: 12px 16px 0; color: var(--ui-fg); font-size: 12.5px; user-select: text; }
+.database-diff-body { display: grid; flex: 1; min-height: 0; grid-template-columns: minmax(190px, 260px) 1fr; }
+.database-diff-item.unchanged { color: var(--ui-fg-faint); }
+.database-diff-item.unchanged.active { color: var(--ui-fg); }
+.database-diff-fold { padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.database-diff-fold::before { display: inline-block; width: 12px; content: "▸"; }
+.database-diff-fold.open::before { content: "▾"; }
+.database-diff-counts { display: inline-flex; flex: none; gap: 6px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.database-diff-item .database-diff-state { flex: none; font-size: 11px; }
+.database-diff-count.added, .database-diff-state.added, .database-diff-row.added .database-diff-mark { color: var(--git-added); }
+.database-diff-count.removed, .database-diff-state.removed, .database-diff-row.removed .database-diff-mark { color: var(--ansi-red); }
+.database-diff-count.changed, .database-diff-state.changed, .database-diff-row.changed .database-diff-mark { color: var(--git-modified); }
+.database-badge.database-diff-state:not(.unchanged) { border-color: currentColor; }
+.database-main .database-header .database-diff-counts { font-size: 12px; }
+.database-diff-detail { flex: 1; min-height: 0; overflow: auto; padding: 0 16px 24px; }
+.database-diff-note { margin: 4px 0; color: var(--ui-fg-muted); font-size: 12px; }
+.database-diff-related { margin: 14px 0 0; color: var(--ui-fg); font-size: 12px; font-weight: 600; }
+.database-diff-sql-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; margin-top: 6px; }
+.database-diff-sql-label { margin-bottom: 4px; color: var(--ui-fg-muted); font-size: 11px; }
+.database-diff-sql { padding: 6px 0; }
+.database-diff-line { min-height: 1.55em; padding: 0 12px; }
+.database-diff-line.removed { background: color-mix(in srgb, var(--ansi-red) 18%, transparent); }
+.database-diff-line.added { background: color-mix(in srgb, var(--git-added) 18%, transparent); }
+.database-diff-missing { margin: 0; padding: 10px 12px; border: 1px dashed var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg-muted); font-size: 12px; }
+.database-diff-grid { margin-top: 4px; border-top: 1px solid var(--ui-border); border-left: 1px solid var(--ui-border); }
+.database-diff-grid th.database-diff-key { text-decoration: underline; text-decoration-color: var(--ui-fg-faint); text-underline-offset: 3px; }
+.database-diff-grid td.database-diff-mark { min-width: 22px; font-weight: 700; text-align: center; cursor: default; }
+.database-diff-row.added td { background: color-mix(in srgb, var(--git-added) 12%, transparent); }
+.database-diff-row.removed td { background: color-mix(in srgb, var(--ansi-red) 12%, transparent); }
+.database-diff-grid td.database-diff-changed { max-width: 560px; background: color-mix(in srgb, var(--git-modified) 18%, transparent); }
+.database-diff-old { color: var(--ui-fg-muted); text-decoration: line-through; }
+.database-diff-arrow { margin: 0 6px; color: var(--ui-fg-faint); }
+.database-diff-new { color: var(--ui-fg-strong); }
+.database-diff-new .database-null, .database-diff-new .database-blob { color: var(--ui-fg); }
+.database-diff-more { margin: 8px 0 0; color: var(--ui-fg-muted); font-size: 12px; }
 /* A 3D model's tab (model-page.ts): the model fills it, its buttons over its top right corner. */
 .model-stage { position: absolute; inset: 0 0 28px; overflow: hidden; }
 .model-canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }

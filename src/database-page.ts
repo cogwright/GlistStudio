@@ -36,27 +36,27 @@ const heard = (page: DatabasePage, pending: GlistDatabasePending): void => {
   drawn.forEach((each) => { if (each.page === page) each.changed(ended); });
 };
 
-const make = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
+export const make = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] => {
   const made = document.createElement(tag);
   if (className) made.className = className;
   if (text) made.textContent = text;
   return made;
 };
-const button = (label: string, className = 'database-button'): HTMLButtonElement => {
+export const button = (label: string, className = 'database-button'): HTMLButtonElement => {
   const made = make('button', className, label);
   made.type = 'button';
   return made;
 };
-const numbers = (): Intl.NumberFormat => new Intl.NumberFormat(getLanguage());
+export const numbers = (): Intl.NumberFormat => new Intl.NumberFormat(getLanguage());
 const bytes = (size: number): string => {
   const [unit, value] = size >= 1024 * 1024 ? ['megabyte', size / 1024 / 1024] : size >= 1024 ? ['kilobyte', size / 1024] : ['byte', size];
   return new Intl.NumberFormat(getLanguage(), { style: 'unit', unit, maximumFractionDigits: 1 }).format(value as number);
 };
 type Words = Parameters<typeof t>[0];
-const words = (key: Words, values: Record<string, string | number>): string =>
+export const words = (key: Words, values: Record<string, string | number>): string =>
   Object.entries(values).reduce((text, [name, value]) => text.replace(`{${name}}`, typeof value === 'number' ? numbers().format(value) : value), t(key));
 // "1 row", "3 rows", as the language counts.
-const counted = (one: Words, many: Words, values: Record<string, string | number> & { count: number }): string =>
+export const counted = (one: Words, many: Words, values: Record<string, string | number> & { count: number }): string =>
   words(new Intl.PluralRules(getLanguage()).select(values.count) === 'one' ? one : many, values);
 const isBlob = (value: GlistDatabaseCell): value is { blob: number } => value !== null && typeof value === 'object';
 const plain = (value: GlistDatabaseCell): string => (value === null ? '' : isBlob(value) ? `BLOB ${value.blob}` : String(value));
@@ -66,7 +66,7 @@ const csvField = (value: GlistDatabaseCell): string => {
 };
 
 // A grid of values: NULL and BLOBs said as such, numbers to the right.
-const cellView = (value: GlistDatabaseCell): HTMLTableCellElement => {
+export const cellView = (value: GlistDatabaseCell): HTMLTableCellElement => {
   const cell = make('td');
   if (value === null) cell.append(make('span', 'database-null', 'NULL'));
   else if (isBlob(value)) cell.append(make('span', 'database-blob', `BLOB · ${bytes(value.blob)}`));
@@ -80,7 +80,7 @@ const cellView = (value: GlistDatabaseCell): HTMLTableCellElement => {
 
 // SQL coloured as the editor colours it, with plain spaces where Monaco writes
 // non-breaking ones, so that copied it still runs.
-const colored = (sql: string): Promise<string> => monaco.editor.colorize(sql, 'sql', {}).then((html) => html.replace(/&nbsp;|&#160;|\u00a0/g, ' '));
+export const colored = (sql: string): Promise<string> => monaco.editor.colorize(sql, 'sql', {}).then((html) => html.replace(/&nbsp;|&#160;|\u00a0/g, ' '));
 
 const resultGrid = (columns: string[], rows: GlistDatabaseCell[][]): HTMLTableElement => {
   const table = make('table', 'database-grid');

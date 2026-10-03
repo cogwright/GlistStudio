@@ -22,6 +22,7 @@ import { createPluginService } from './plugins';
 import { hiddenFolderList, isHiddenFolder, setHiddenFolders } from './hidden-folders';
 import { imageType } from './images';
 import { Databases } from './database';
+import { diffDatabase } from './database-diff';
 import { gatherModel, modelBytes } from './model-files';
 import { modelType } from './models';
 import { glistRoot, studioHome } from './studio-places';
@@ -1653,6 +1654,14 @@ export const studio: Handlers = {
   databaseCommit: (filePath: unknown) => databases.finish(String(filePath), true),
   databaseDiscard: (filePath: unknown) => databases.finish(String(filePath), false),
   databaseClose: (filePath: unknown) => databases.close(String(filePath)),
+  // A database's diff: a commit's version from git, the one on disk read where
+  // it is, if the studio may read it, as the database tab would.
+  databaseDiff: (filePath: unknown, base: unknown, target: unknown, from: unknown) => diffDatabase({
+    blob: (revision, file) => git.blobAt(revision, file),
+    working: async (file) => (await fs.stat(file).then(() => true, () => false)
+      ? assertEditablePath(file).catch(() => workspacePath(file)) : null),
+    unavailable: () => msg('databaseUnavailable'),
+  }, String(filePath), typeof base === 'string' ? base : null, typeof target === 'string' ? target : null, typeof from === 'string' ? from : undefined),
   // Only style files are read, wherever the file is: clang-format looks as far up.
   // Glist Engine's style unless Settings says the project's, or none.
   codeStyle: (filePath: unknown, mode: unknown) => {

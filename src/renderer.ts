@@ -65,6 +65,7 @@ import { applyLanguage, getLanguage, percent, t, type TranslationKey } from './l
 import { renderImagePage, type ImagePage } from './image-page';
 import { imageType } from './images';
 import { renderDatabasePage, type DatabasePage } from './database-page';
+import { renderDatabaseDiffPage, type DatabaseDiffPage } from './database-diff-page';
 import { isDatabaseFile } from './databases';
 import { renderModelPage, type ModelPage } from './model-page';
 import { modelType } from './models';
@@ -148,14 +149,27 @@ interface DatabaseTab {
   version: number;
 }
 
+// A database compared between two versions, table by table and row by row,
+// where another file's diff would be compared line by line.
+interface DatabaseDiffTab {
+  kind: 'database-diff';
+  // The tab's key, as a diff's: diff:<base>:<target>:<file>.
+  path: string;
+  name: string;
+  file: string;
+  page: DatabaseDiffPage;
+  // Goes up when a comparison arrives, so a side showing the tab draws it again.
+  version: number;
+}
+
 // Tabs drawn in a side's page rather than in its editor; those of a file
 // follow it when it is renamed and close when it is deleted.
 type FilePageTab = ImageTab | ModelTab | DatabaseTab;
-type PageTab = ReadmeTab | FilePageTab;
+type PageTab = ReadmeTab | FilePageTab | DatabaseDiffTab;
 
 type EditorTab = OpenFile | DiffTab | PageTab;
 const isFilePageTab = (tab: EditorTab): tab is FilePageTab => tab.kind === 'image' || tab.kind === 'model' || tab.kind === 'database';
-const isPageTab = (tab: EditorTab): tab is PageTab => tab.kind === 'readme' || isFilePageTab(tab);
+const isPageTab = (tab: EditorTab): tab is PageTab => tab.kind === 'readme' || tab.kind === 'database-diff' || isFilePageTab(tab);
 
 // Shown regardless after a moment, should setting up stop short of the end.
 window.setTimeout(() => document.documentElement.classList.add('ready'), 4000);
@@ -810,7 +824,8 @@ const showPageTab = (view: GroupView, tab?: PageTab): void => {
   view.pageShown?.render.dispose();
   const render = tab.kind === 'readme' ? renderReadmePage(view.page, tab.page)
     : tab.kind === 'model' ? renderModelPage(view.page, tab.page)
-      : tab.kind === 'database' ? renderDatabasePage(view.page, tab.page) : renderImagePage(view.page, tab.page);
+      : tab.kind === 'database' ? renderDatabasePage(view.page, tab.page)
+        : tab.kind === 'database-diff' ? renderDatabaseDiffPage(view.page, tab.page) : renderImagePage(view.page, tab.page);
   view.pageShown = { key: tab.path, version: tab.version, render };
   view.page.scrollTop = 0;
 };
@@ -942,8 +957,9 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   tab.dataset.path = file.path;
   tab.classList.toggle('active', file.path === layout.groups[group]?.active);
   tab.classList.toggle('read-only', file.kind === 'file' && file.readOnly);
-  tab.classList.toggle('diff', file.kind === 'diff');
+  tab.classList.toggle('diff', file.kind === 'diff' || file.kind === 'database-diff');
   if (file.kind === 'diff') tab.title = `${file.file}\n${file.leftLabel} / ${file.rightLabel}`;
+  else if (file.kind === 'database-diff') tab.title = `${file.file}\n${file.page.left} / ${file.page.right}`;
   else if (file.kind === 'readme') tab.title = `${file.name} README`;
   else if (isFilePageTab(file)) tab.title = file.path;
   else tab.title = file.readOnly ? `${file.path} (${t('readOnly')})` : file.path;
@@ -960,10 +976,10 @@ const tabElement = (file: EditorTab, group: number): HTMLButtonElement => {
   close.append(icon('close'));
   close.addEventListener('click', (event) => { event.stopPropagation(); closeFile(file.path, group); });
   let kind = fileIconElement(file.name);
-  if (file.kind === 'diff' || file.kind === 'readme') {
+  if (file.kind === 'diff' || file.kind === 'database-diff' || file.kind === 'readme') {
     kind = document.createElement('span');
-    kind.className = `file-icon ${file.kind === 'diff' ? 'diff' : 'dependency'}`;
-    kind.append(icon(file.kind === 'diff' ? 'diff' : 'extensions'));
+    kind.className = `file-icon ${file.kind === 'readme' ? 'dependency' : 'diff'}`;
+    kind.append(icon(file.kind === 'readme' ? 'extensions' : 'diff'));
   }
   tab.append(kind, label, dirty, close);
   tab.addEventListener('click', () => { if (!suppressTabClick) activateFile(file.path, group); });
@@ -1600,6 +1616,8 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
   navigation += 1;
   const ticket = navigation;
   const key = `diff:${request.base ?? ''}:${request.target ?? ''}:${request.file}`;
+  // A database is compared by its tables and rows, in a page of its own.
+  if (isDatabaseFile(request.file)) { openDatabaseDiff(key, request); return; }
   const existing = openFiles.get(key);
   if (existing?.kind === 'diff') {
     await fillDiff(existing);
@@ -1626,6 +1644,48 @@ const openGitDiff = async (request: DiffRequest): Promise<void> => {
   await fillDiff(tab);
   if (ticket === navigation) activateFile(key);
   else renderTabs();
+};
+
+// A database between two versions, compared when its tab opens and again when
+// it is opened again or refreshed. What waits in the database's own tab is not
+// in the file, so the page says so while there is any.
+const openDatabaseDiff = (key: string, request: DiffRequest): void => {
+  const existing = openFiles.get(key);
+  if (existing?.kind === 'database-diff') {
+    void existing.page.refresh();
+    activateFile(key);
+    return;
+  }
+  const load = async (tab: DatabaseDiffTab): Promise<void> => {
+    Object.assign(tab.page, { diff: undefined, error: undefined });
+    const diff = await window.glistAPI.databaseDiff(request.file, request.base, request.target, request.from);
+    tab.page.left = request.base ? versionLabel(request.base, { text: diff.base.missing ? null : '' }, request.file) : t('diffMissing');
+    tab.page.right = versionLabel(request.target, { text: diff.target.missing ? null : '' }, request.file);
+    tab.page.diff = diff;
+    // The tab's tooltip names the versions.
+    if (openFiles.get(key) === tab) renderTabs();
+  };
+  const tab: DatabaseDiffTab = {
+    kind: 'database-diff',
+    path: key,
+    name: baseName(request.file),
+    file: request.file,
+    version: 0,
+    page: {
+      name: baseName(request.file),
+      left: '',
+      right: '',
+      refresh: () => load(tab).catch((error: unknown) => { tab.page.error = remoteError(error); }).finally(() => {
+        tab.version += 1;
+        if (openFiles.get(key) === tab) showGroups();
+      }),
+      waiting: () => {
+        const database = openFiles.get(request.file);
+        return database !== undefined && hasPending(database);
+      },
+    },
+  };
+  openPageTab(tab, load);
 };
 
 // A plugin's README in a tab of its own, asked for when the tab first opens.

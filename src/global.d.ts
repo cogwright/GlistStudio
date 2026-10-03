@@ -230,6 +230,63 @@ type GlistDatabaseEdit =
   | { kind: 'insert'; table: string; values: Record<string, string | null> }
   | { kind: 'delete'; table: string; keys: GlistDatabaseCell[][] };
 
+// A SQLite database compared between two versions, for its diff
+// (database-diff.ts): each version's state, and its tables and views.
+interface GlistDatabaseDiffVersion {
+  // Not in that version: the file was added, or deleted.
+  missing: boolean;
+  // Why it could not be compared: a Git LFS pointer, or not SQLite at all.
+  problem?: 'lfs' | 'notDatabase';
+}
+type GlistDatabaseDiffState = 'added' | 'removed' | 'changed' | 'unchanged';
+// SQL as each version has it; null where a version has none.
+interface GlistDatabaseDiffSql { kind: 'index' | 'trigger'; name: string; before: string | null; after: string | null }
+interface GlistDatabaseDiffRow {
+  state: 'added' | 'removed' | 'changed';
+  // The cells, in the order of the columns: before for a removed or changed
+  // row, after for an added or changed one.
+  before: GlistDatabaseCell[] | null;
+  after: GlistDatabaseCell[] | null;
+  // The cells of a changed row that differ.
+  changed: number[];
+}
+interface GlistDatabaseDiffRows {
+  // What tells rows apart: the primary key, the row number (rowid), or every
+  // column there is when neither is the same in both versions.
+  match: 'key' | 'rowid' | 'columns';
+  // The key's columns first (keyCount of them), then the others compared.
+  columns: string[];
+  keyCount: number;
+  // Counted by SQLite, however many there are.
+  added: number;
+  removed: number;
+  changed: number;
+  // The first that differ, by key; at most GlistDatabaseDiff.rowLimit.
+  rows: GlistDatabaseDiffRow[];
+}
+interface GlistDatabaseDiffTable {
+  name: string;
+  kind: 'table' | 'view';
+  state: GlistDatabaseDiffState;
+  // CREATE TABLE or CREATE VIEW, as each version has it.
+  before: string | null;
+  after: string | null;
+  // Its indexes and triggers whose SQL differs.
+  related: GlistDatabaseDiffSql[];
+  addedColumns: string[];
+  removedColumns: string[];
+  // A table's rows; a view has none of its own.
+  rows?: GlistDatabaseDiffRows;
+  // Why its rows could not be compared.
+  error?: string;
+}
+interface GlistDatabaseDiff {
+  base: GlistDatabaseDiffVersion;
+  target: GlistDatabaseDiffVersion;
+  tables: GlistDatabaseDiffTable[];
+  rowLimit: number;
+}
+
 type GlistModelFormat = 'gltf' | 'glb' | 'obj' | 'fbx' | 'dae' | 'stl' | 'ply' | '3ds';
 // A 3D model in base64, with the files it names (materials, buffers, textures)
 // under the names it gives them, and those it names that could not be read.
@@ -695,6 +752,10 @@ interface Window {
     databaseCommit(filePath: string): Promise<GlistDatabasePending>;
     databaseDiscard(filePath: string): Promise<GlistDatabasePending>;
     databaseClose(filePath: string): Promise<void>;
+    // A database compared between two commits, or a commit and the file on
+    // disk (target null); no base when the file is new. From: where a renamed
+    // file was at the base.
+    databaseDiff(filePath: string, base: string | null, target: string | null, from?: string): Promise<GlistDatabaseDiff>;
     // The .clang-format a C or C++ file follows, or null.
     codeStyle(filePath: string, mode?: GlistCodeStyleMode): Promise<GlistCodeStyle | null>;
     listDependencies(): Promise<GlistDependency[]>;
