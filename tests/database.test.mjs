@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Databases, cellOf, statementStart, writes } from '../src/database.ts';
 import { createTableSql, quoteName } from '../src/database-sql.ts';
+import { isDatabaseSideFile } from '../src/databases.ts';
+import { isHiddenFolder } from '../src/hidden-folders.ts';
 
 // What crosses to the window: big integers as text, BLOBs as their size.
 assert.equal(cellOf(BigInt(42)), 42);
@@ -205,5 +207,12 @@ try {
   databases.closeAll();
   rmSync(root, { recursive: true, force: true });
 }
+
+// SQLite's journal and write-ahead files beside a database, left out of the explorer and commits.
+for (const name of ['game.db-journal', 'game.db-wal', 'game.db-shm', 'save.sqlite3-journal', 'GAME.DB-WAL', 'assets/level.s3db-shm']) {
+  assert.ok(isDatabaseSideFile(name), name);
+}
+for (const name of ['game.db', 'travel-journal', 'notes.txt-journal', 'game.dbx-wal', 'game.db-journal.txt', 'wal']) assert.ok(!isDatabaseSideFile(name), name);
+assert.ok(isHiddenFolder('game.db-journal') && isHiddenFolder('game.db-wal') && !isHiddenFolder('game.db'));
 
 console.log('Database tests passed.');

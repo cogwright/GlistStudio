@@ -7,6 +7,7 @@ import {
   branchFormat, logFormat, parseBlame, parseBranches, parseLog, parseNameStatus, parseRemotes, parseStashes, parseStatus,
   parseTags, stashFormat, tagFormat, type GitFileChange, type GitStatus,
 } from './git';
+import { isDatabaseSideFile } from './databases';
 import { createHostProtection, defaultProtection, matchesBranch, protectionFrom } from './git-protection';
 import { languages, type Language, type Words } from './languages';
 import { toolLanguage } from './tool-language';
@@ -412,7 +413,10 @@ exit 1
     const result = await run(['-c', 'core.fsmonitor=false', 'status', '--porcelain=v2', '--branch', '-z',
       '--untracked-files=all', '--ignored=matching', '--', '.'], { cwd: repo.folder });
     if (result.code !== 0) throw new Error(result.stderr.trim());
-    return parseStatus(text(result));
+    const status = parseStatus(text(result));
+    // A database's journal while changes wait in its tab, and its write-ahead
+    // files: SQLite's, never the project's, so not offered for a commit.
+    return { ...status, changes: status.changes.filter((change) => change.state !== 'untracked' || !isDatabaseSideFile(change.path)) };
   };
 
   const describe = async (repo: Repository, kind: GlistGitRepository['kind'], name: string): Promise<GlistGitRepository> => {
