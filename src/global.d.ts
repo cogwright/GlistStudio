@@ -723,8 +723,9 @@ interface Window {
     debuggerStatus(): Promise<GlistDebuggerStatus>;
     // Again: removes the installed one first.
     installDebugger(again?: boolean): Promise<GlistProcessResult>;
+    // A shell terminal may run a shell of its own (terminalShells' id) instead of Settings' choice.
     startTerminal(
-      session: GlistTerminalSession, columns: number, rows: number, directory?: string, agent?: GlistAgentId,
+      session: GlistTerminalSession, columns: number, rows: number, directory?: string, agent?: GlistAgentId, shell?: string,
     ): Promise<GlistProcessResult>;
     writeTerminal(session: GlistTerminalSession, data: string): Promise<void>;
     resizeTerminal(session: GlistTerminalSession, columns: number, rows: number): Promise<void>;

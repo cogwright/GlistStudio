@@ -1226,3 +1226,7 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 
 /* A change to a file the explorer hides: listed, but out of a commit until ticked (git-commit-view.ts). */
 .change-row.hidden-change .change-name, .change-row.hidden-change .change-dir { opacity: 0.6; }
+
+/* New Terminal's list of shells, close beside its button. */
+.heading-action.new-terminal-menu { width: 16px; margin-left: -4px; }
+.heading-action.new-terminal-menu svg { width: 12px; height: 12px; }
