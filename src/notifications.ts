@@ -1,3 +1,4 @@
+import { copyReport, type ReportError } from './debug-report';
 import { icon } from './icons';
 import { t } from './localization';
 
@@ -14,6 +15,8 @@ export interface Notice {
   kind?: 'info' | 'success' | 'error';
   // A second line in smaller type.
   detail?: string;
+  // What failed, for Copy Details: an Error's stack goes into the report.
+  error?: unknown;
   actions?: NoticeAction[];
 }
 
@@ -23,7 +26,25 @@ host.setAttribute('role', 'status');
 host.setAttribute('aria-live', 'polite');
 document.body.append(host);
 
-export const notify = ({ text, kind = 'info', detail, actions = [] }: Notice): void => {
+// Copy Details on an error notice puts a report on the clipboard
+// (debug-report.ts) and says Copied for a moment; the notice stays.
+const copyButton = (error: ReportError): HTMLButtonElement => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'notice-copy';
+  button.textContent = t('copyDetails');
+  let timer = 0;
+  button.addEventListener('click', () => {
+    void copyReport(error).then(() => t('copied'), () => t('copyDetailsFailed')).then((label) => {
+      button.textContent = label;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => { button.textContent = t('copyDetails'); }, 2000);
+    });
+  });
+  return button;
+};
+
+export const notify = ({ text, kind = 'info', detail, error, actions = [] }: Notice): void => {
   const notice = document.createElement('div');
   notice.className = `notice ${kind}`;
   const mark = document.createElement('span');
@@ -42,7 +63,7 @@ export const notify = ({ text, kind = 'info', detail, actions = [] }: Notice): v
     body.append(more);
   }
   const dismiss = (): void => notice.remove();
-  if (actions.length > 0) {
+  if (actions.length > 0 || kind === 'error') {
     const buttons = document.createElement('div');
     buttons.className = 'notice-actions';
     actions.forEach((action) => {
@@ -52,6 +73,7 @@ export const notify = ({ text, kind = 'info', detail, actions = [] }: Notice): v
       button.addEventListener('click', () => { dismiss(); action.run(); });
       buttons.append(button);
     });
+    if (kind === 'error') buttons.append(copyButton({ text, detail, error }));
     body.append(buttons);
   }
   const close = document.createElement('button');

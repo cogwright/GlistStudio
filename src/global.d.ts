@@ -387,6 +387,28 @@ interface GlistAbout {
   repositories: GlistAboutRepository[];
   runtime: Array<{ name: string; version: string }>;
 }
+// Help > Copy Debug Info: what the app's main process, or the browser build's server, runs on.
+interface GlistDebugInfo {
+  version: string;
+  // The commit Glist Studio was built from, when known.
+  commit: string | null;
+  // False for the app run from source, and for the browser build's server.
+  packaged: boolean;
+  platform: string;
+  arch: string;
+  // The kernel's release, such as 25.0.0; the system's own version, such as 26.0, only where Electron gives it.
+  release: string;
+  systemVersion: string | null;
+  versions: { electron?: string; chrome?: string; node: string; v8: string };
+  // Written ~ in the report.
+  home: string;
+}
+// An error nothing caught in the main process or the window's backend.
+interface GlistAppError {
+  source: 'main' | 'backend';
+  message: string;
+  stack?: string;
+}
 interface GlistInstallStatus {
   installed: boolean;
   // Where the install scripts put Glist: C:\dev\glist or ~/dev/glist.
@@ -736,6 +758,7 @@ interface Window {
     listAgents(): Promise<GlistAgentStatus[]>;
     glistStatus(): Promise<GlistInstallStatus>;
     aboutInfo(): Promise<GlistAbout>;
+    debugInfo(): Promise<GlistDebugInfo>;
     // True where the menus went to the system's menu bar, on macOS.
     setAppMenu(menus: GlistAppMenu[], words: GlistAppMenuWords): Promise<boolean>;
     onMenuCommand(callback: (id: string) => void): () => void;
@@ -798,8 +821,11 @@ interface Window {
     // The compile commands clangd reads changed, after configuring.
     onCompileCommands(callback: () => void): () => void;
     onSaveAndClose(callback: () => void): () => void;
-    // The window's backend stopped by itself and a new one started, with no project open yet.
-    onBackendRestarted(callback: () => void): () => void;
+    // The window's backend stopped by itself and a new one started, with no project open yet;
+    // with the error that stopped it, when it said.
+    onBackendRestarted(callback: (error: GlistAppError | null) => void): () => void;
+    // An error nothing caught in the main process, or in the backend without stopping it.
+    onAppError(callback: (error: GlistAppError) => void): () => void;
     onDebugMessage(callback: (message: unknown) => void): () => void;
     onDebugStatus(callback: (status: GlistClangdStatus) => void): () => void;
     onDebuggerInstall(callback: (text: string) => void): () => void;

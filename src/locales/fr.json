@@ -824,6 +824,11 @@
     "reduceMotion": "Réduire les animations",
     "reduceMotionHint": "Fige le curseur et le défilement dans l'éditeur, et les animations de l'interface. Au départ, il suit le réglage du système.",
     "backendRestarted": "Le travail en arrière-plan de Glist Studio s'est arrêté de façon inattendue et a redémarré. Le projet est de nouveau ouvert.",
+    "copyDetails": "Copier les détails",
+    "copyDetailsFailed": "Copie impossible",
+    "unexpectedError": "Glist Studio a rencontré une erreur inattendue",
+    "copyDebugInfo": "Copier les infos de débogage",
+    "debugInfoCopied": "Infos de débogage copiées. Collez-les dans votre rapport.",
     "newWindow": "Nouvelle fenêtre",
     "exitApp": "Quitter",
     "windowMinimize": "Réduire",
@@ -917,7 +922,8 @@
     "outputBuildAndRun": "COMPILER ET EXÉCUTER",
     "agentDownloading": "Téléchargement de {name}",
     "agentInstallingPackage": "Installation de {name}",
-    "moveIntoSelf": "Un dossier ne peut pas être déplacé dans lui-même ou dans l'un de ses sous-dossiers."
+    "moveIntoSelf": "Un dossier ne peut pas être déplacé dans lui-même ou dans l'un de ses sous-dossiers.",
+    "mainProcessError": "Une erreur s'est produite dans le processus principal de Glist Studio"
   },
   "git": {
     "noProject": "Ouvrez d'abord un projet.",

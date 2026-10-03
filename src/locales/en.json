@@ -824,6 +824,11 @@
     "reduceMotion": "Reduce motion",
     "reduceMotionHint": "Stills the caret and scrolling in the editor and the interface's animations. It starts as the system has it.",
     "backendRestarted": "Glist Studio's background work stopped unexpectedly and was started again. The project is open again.",
+    "copyDetails": "Copy Details",
+    "copyDetailsFailed": "Could not copy",
+    "unexpectedError": "Glist Studio ran into an unexpected error",
+    "copyDebugInfo": "Copy Debug Info",
+    "debugInfoCopied": "Debug info copied. Paste it into your report.",
     "newWindow": "New Window",
     "exitApp": "Exit",
     "windowMinimize": "Minimize",
@@ -917,7 +922,8 @@
     "outputBuildAndRun": "BUILD & RUN",
     "agentDownloading": "Downloading {name}",
     "agentInstallingPackage": "Installing {name}",
-    "moveIntoSelf": "A folder cannot be moved into itself or one of its subfolders."
+    "moveIntoSelf": "A folder cannot be moved into itself or one of its subfolders.",
+    "mainProcessError": "An error occurred in Glist Studio's main process"
   },
   "git": {
     "noProject": "Open a project first.",
