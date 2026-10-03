@@ -52,6 +52,8 @@ export const invokeChannels: Record<InvokeMethod, string> = {
   setTheme: 'settings:set-theme',
   setZoomFactor: 'view:set-zoom-factor',
   setAutoConfigure: 'build:auto-configure',
+  terminalShells: 'terminal:shells',
+  setTerminalShell: 'terminal:set-shell',
   setHiddenFolders: 'project:hidden-folders',
   openEngineSite: 'app:open-engine-site',
   openEngineRepository: 'app:open-engine-repository',

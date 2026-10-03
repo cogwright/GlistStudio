@@ -1,6 +1,6 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, promises as fs, readFileSync, watch, type Dirent, type FSWatcher } from 'node:fs';
+import { existsSync, promises as fs, readFileSync, realpathSync, watch, type Dirent, type FSWatcher } from 'node:fs';
 import { availableParallelism, homedir, release, type, userInfo } from 'node:os';
 import path from 'node:path';
 import type { IPty } from 'node-pty';
@@ -1196,21 +1196,59 @@ const startDebugging = async (): Promise<GlistDebugStart> => {
 
 export const stopDebugging = (): void => debugAdapter.stop();
 
-// Terminals: a shell in the project folder, and the Agent tab's agent, both
-// with the environment builds use. node-pty is loaded on first use, so a
-// platform without it only loses these.
-type TerminalSession = 'shell' | 'agent' | 'install';
+// Terminals: shells in the project folder, as many as the Terminal tab opens
+// (shell, shell-2, shell-3 and so on), and the Agent tab's agent, all with the
+// environment builds use. node-pty is loaded on first use, so a platform
+// without it only loses these.
+type TerminalSession = string;
 // What a session needs of its program: a pseudo-terminal, or for the installer
 // usually a plain child process (see installerProgram).
 type TerminalProcess = Pick<IPty, 'write' | 'resize' | 'kill'>;
 const terminalSessions = new Map<TerminalSession, TerminalProcess>();
 const sessionName = (value: unknown): TerminalSession | null =>
-  (value === 'shell' || value === 'agent' || value === 'install' ? value : null);
+  (typeof value === 'string' && /^(shell(-[1-9][0-9]{0,2})?|agent|install)$/.test(value) ? value : null);
+const isShellSession = (name: TerminalSession): boolean => name.startsWith('shell');
 
-const terminalShell = (): { file: string; args: string[] } => {
-  if (process.platform === 'win32') return { file: 'powershell.exe', args: ['-NoLogo'] };
-  return { file: process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'), args: [] };
+// The shells a terminal can run, from Settings > Environment: on Windows the
+// ones it has, by name; elsewhere the ones /etc/shells lists, each once.
+type ShellProgram = GlistTerminalShell & { file: string; args: string[] };
+const availableShells = (): ShellProgram[] => {
+  if (process.platform === 'win32') {
+    const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files';
+    const onPath = (file: string): string | undefined => (process.env.PATH ?? '').split(path.delimiter)
+      .map((folder) => path.join(folder, file)).find((candidate) => existsSync(candidate));
+    const shells: ShellProgram[] = [
+      { id: 'powershell', name: 'Windows PowerShell', file: 'powershell.exe', args: ['-NoLogo'] },
+      { id: 'pwsh', name: 'PowerShell 7', file: onPath('pwsh.exe') ?? path.join(programFiles, 'PowerShell', '7', 'pwsh.exe'), args: ['-NoLogo'] },
+      { id: 'cmd', name: 'Command Prompt', file: 'cmd.exe', args: [] },
+      { id: 'git-bash', name: 'Git Bash', file: path.join(programFiles, 'Git', 'bin', 'bash.exe'), args: ['--login', '-i'] },
+    ];
+    return shells.filter((shell) => !path.isAbsolute(shell.file) || existsSync(shell.file));
+  }
+  let listed: string[] = [];
+  try { listed = readFileSync('/etc/shells', 'utf8').split('\n').map((line) => line.trim()).filter((line) => line.startsWith('/')); } catch { /* None listed. */ }
+  const seen = new Set<string>();
+  return listed.filter((file) => {
+    let real: string;
+    try { real = realpathSync(file); } catch { return false; }
+    if (seen.has(real)) return false;
+    seen.add(real);
+    return true;
+  }).map((file): ShellProgram => ({ id: file, name: path.basename(file), file, args: [] }));
 };
+
+// The system's own: PowerShell on Windows, the user's login shell elsewhere.
+const defaultShell = (): { file: string; args: string[] } => (process.platform === 'win32'
+  ? { file: 'powershell.exe', args: ['-NoLogo'] }
+  : { file: process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash'), args: [] });
+let chosenShell = '';
+const setTerminalShell = (id: unknown): void => { chosenShell = typeof id === 'string' ? id : ''; };
+const terminalShell = (): { file: string; args: string[] } =>
+  availableShells().find((shell) => chosenShell && shell.id === chosenShell) ?? defaultShell();
+const terminalShells = (): { default: string; shells: GlistTerminalShell[] } => ({
+  default: path.basename(defaultShell().file).replace(/\.exe$/i, ''),
+  shells: availableShells().map(({ id, name }) => ({ id, name })),
+});
 
 const terminalSize = (value: unknown, fallback: number): number => {
   const size = Math.floor(Number(value));
@@ -1342,7 +1380,7 @@ const startTerminal = async (
   if (!name) return { success: false, message: msg('terminalFailed') };
   stopTerminal(name);
   let directory = terminalDirectory();
-  if (name === 'shell' && typeof requestedDirectory === 'string') {
+  if (isShellSession(name) && typeof requestedDirectory === 'string') {
     try {
       const safePath = await assertEditablePath(requestedDirectory);
       directory = (await fs.stat(safePath)).isDirectory() ? safePath : path.dirname(safePath);
@@ -1596,6 +1634,8 @@ export const studio: Handlers = {
   sendDebug: (message: unknown) => debugAdapter.send(message),
   stopDebugging,
   startTerminal,
+  terminalShells,
+  setTerminalShell,
   writeTerminal,
   resizeTerminal,
   stopTerminal: (session: unknown) => stopTerminal(session ?? 'shell'),

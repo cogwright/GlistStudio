@@ -299,7 +299,13 @@ interface GlistClangdStatus {
 
 type GlistTemplate = 'GlistApp' | 'GlistConsoleApp' | 'GlistGUIApp';
 
-type GlistTerminalSession = 'shell' | 'agent' | 'install';
+// The Terminal tab's shells are shell, shell-2, shell-3 and so on.
+type GlistTerminalSession = 'shell' | `shell-${number}` | 'agent' | 'install';
+// A shell Settings > Environment offers for new terminals.
+interface GlistTerminalShell {
+  id: string;
+  name: string;
+}
 // Settings > About: which Glist Studio this is, and where the engine and the open
 // project's plugins stand. Branch is null when a commit is checked out.
 interface GlistAboutRepository {
@@ -627,6 +633,9 @@ interface Window {
     setZoomFactor(factor: number): Promise<number>;
     // Whether CMake configures again when its files change.
     setAutoConfigure(on: boolean): Promise<void>;
+    // The shells there are, and the name of the system's own, which an empty choice runs.
+    terminalShells(): Promise<{ default: string; shells: GlistTerminalShell[] }>;
+    setTerminalShell(id: string): Promise<void>;
     // Settings > General's hidden folders, comma-separated, for the explorer and search.
     setHiddenFolders(list: string): Promise<void>;
     openEngineSite(): Promise<void>;

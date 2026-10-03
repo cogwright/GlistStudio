@@ -201,7 +201,7 @@
                 <button id="agent-tab" class="output-tab" type="button" data-panel="agent" data-i18n="agentTab" hidden>AGENT</button>
                 <button id="git-tab" class="output-tab" type="button" data-panel="git" data-i18n="gitTab" hidden>GIT</button>
               </div>
-              <div class="output-tools"><span id="clangd-status" class="process-status" hidden><i></i><span></span></span><span id="process-status" class="process-status"><i></i><span>Ready</span></span><select id="agent-select" class="agent-select" aria-label="Agent" data-i18n-aria-label="agentChoice" hidden></select><button id="new-terminal" class="heading-action" type="button" title="New Terminal" data-i18n-title="newTerminal" hidden><i data-icon="add"></i></button><button id="clear-output" class="heading-action" type="button" title="Clear Output" data-i18n-title="clearOutput"><i data-icon="clear-all"></i></button><button id="close-output" class="panel-close" type="button" title="Close Output" data-i18n-title="closeOutput" aria-label="Close Output" data-i18n-aria-label="closeOutput"><i data-icon="close"></i></button></div>
+              <div class="output-tools"><span id="clangd-status" class="process-status" hidden><i></i><span></span></span><span id="process-status" class="process-status"><i></i><span>Ready</span></span><select id="agent-select" class="agent-select" aria-label="Agent" data-i18n-aria-label="agentChoice" hidden></select><select id="terminal-select" class="agent-select" aria-label="Terminal" data-i18n-aria-label="terminalChoice" hidden></select><button id="new-terminal" class="heading-action" type="button" title="New Terminal" data-i18n-title="newTerminal" hidden><i data-icon="add"></i></button><button id="close-terminal" class="heading-action" type="button" title="Close Terminal" data-i18n-title="closeTerminal" hidden><i data-icon="trash"></i></button><button id="clear-output" class="heading-action" type="button" title="Clear Output" data-i18n-title="clearOutput"><i data-icon="clear-all"></i></button><button id="close-output" class="panel-close" type="button" title="Close Output" data-i18n-title="closeOutput" aria-label="Close Output" data-i18n-aria-label="closeOutput"><i data-icon="close"></i></button></div>
             </div>
             <pre id="output" class="output">Glist Studio is ready. Open a project to get started.</pre>
             <div id="terminal" class="terminal-host" hidden></div>
@@ -438,6 +438,12 @@
                   <div id="env-entries" class="env-entries"></div>
                   <button id="env-add" class="path-add" type="button" data-i18n="addVariable">Add Variable</button>
                   <p id="env-error" class="dialog-error" role="alert"></p>
+                </fieldset>
+                <fieldset class="settings-section terminal-settings">
+                  <legend data-i18n="terminalSettings">Terminal</legend>
+                  <label for="terminal-shell" data-i18n="terminalShell">Shell</label>
+                  <select id="terminal-shell"><option value="" data-i18n="shellDefault">Default</option></select>
+                  <p class="dialog-hint" data-i18n="terminalShellHint">New terminals start with it.</p>
                 </fieldset>
               </section>
               <section class="settings-page" data-page="git" hidden>

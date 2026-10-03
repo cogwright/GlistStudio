@@ -91,7 +91,7 @@ const backendStart: BackendStart = {
 
 // What a window told its backend that a new one would need, if that one
 // stopped: the last of each setting it sent, and the project it opened.
-const settingCalls = new Set(['setLanguage', 'setCustomPath', 'setCustomEnvironment', 'setRunArguments', 'setAutoConfigure', 'setTarget', 'gitProtection', 'setHiddenFolders']);
+const settingCalls = new Set(['setLanguage', 'setCustomPath', 'setCustomEnvironment', 'setRunArguments', 'setAutoConfigure', 'setTarget', 'gitProtection', 'setHiddenFolders', 'setTerminalShell']);
 const projectCalls = new Set(['openProject', 'openProjectPath', 'createProject']);
 interface WindowMemory { settings: Map<string, unknown[]>; projectRoot: string | null }
 const memories = new Map<number, WindowMemory>();
