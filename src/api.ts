@@ -10,6 +10,9 @@ export type Handlers = Partial<Record<InvokeMethod, Handler>>;
 // Every renderer call and the channel that carries it. The preload bridge and
 // the browser transport are both generated from these tables.
 export const invokeChannels: Record<InvokeMethod, string> = {
+  windowProject: 'window:project',
+  newWindow: 'window:new',
+  closeProject: 'window:close-project',
   openProject: 'project:open',
   createProject: 'project:create',
   listDirectory: 'project:list-directory',

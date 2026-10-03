@@ -349,6 +349,11 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .heading-action.danger:hover:not(:disabled) { color: #fff; background: var(--ui-danger-strong); }
 .heading-action:disabled { opacity: .35; }
 .root-label { height: 22px; overflow: hidden; padding: 4px 10px; color: var(--ui-fg); background: var(--ui-inset); font-size: 11px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+/* The project's name, and beside it Close Project. */
+.root-header { display: flex; align-items: center; background: var(--ui-inset); }
+.root-header .root-label { min-width: 0; flex: 1; }
+.root-close { width: 22px; height: 22px; margin-right: 4px; }
+.root-close[hidden] { display: none; }
 .file-tree { height: calc(100% - 57px); overflow: auto; padding: 4px 0 18px; }
 
 .tree-row { display: grid; grid-template-columns: 14px 18px minmax(0,1fr); column-gap: 3px; width: 100%; height: 23px; align-items: center; padding-right: 8px; border: 0; color: var(--ui-fg); background: transparent; cursor: default; text-align: left; }

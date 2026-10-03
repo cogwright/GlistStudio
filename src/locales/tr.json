@@ -715,7 +715,9 @@
     "motion": "Hareket",
     "reduceMotion": "Hareketi azalt",
     "reduceMotionHint": "Düzenleyicide imleci ve kaydırmayı, arayüzde canlandırmaları durgunlaştırır. Başlangıçta sistemdeki ayarı izler.",
-    "backendRestarted": "Glist Studio'nun arka plandaki işleri beklenmedik biçimde durdu ve yeniden başlatıldı. Proje yeniden açıldı."
+    "backendRestarted": "Glist Studio'nun arka plandaki işleri beklenmedik biçimde durdu ve yeniden başlatıldı. Proje yeniden açıldı.",
+    "newWindow": "Yeni Pencere",
+    "closeProject": "Projeyi Kapat"
   },
   "platforms": {
     "darwin": {
