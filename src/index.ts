@@ -1,10 +1,11 @@
 import { cpSync, existsSync, mkdirSync, promises as fs, readFileSync, writeFileSync } from 'node:fs';
+import { homedir, release } from 'node:os';
 import path from 'node:path';
 import {
   app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, screen, shell, utilityProcess, type IpcMainInvokeEvent, type MenuItemConstructorOptions,
 } from 'electron';
 import { eventChannels, invokeChannels, type InvokeMethod } from './api';
-import { backendStartArgument, type BackendStart, type FromBackend, type ToBackend } from './backend-protocol';
+import { appError, backendStartArgument, type BackendStart, type FromBackend, type ToBackend } from './backend-protocol';
 import { isLanguage, languages, type Language, type Words } from './languages';
 import { defaultProjectsDirectory, studioHome } from './studio-places';
 import {
@@ -73,6 +74,19 @@ const windowControls = process.platform === 'darwin' ? 'left' : tilingDesktop ? 
 // The interface language, which the window sets, for the main process's own dialogs.
 let language: Language = 'en';
 const msg = (key: keyof Words['studio']): string => languages[language].studio[key];
+
+// An error nothing caught in this process shows in the focused window, as a
+// notice with Copy Details, instead of in Electron's own message box, which is
+// kept for when no window is open. A promise nothing waited on only warns, so
+// only a window hears of it.
+const showMainError = (error: unknown, stopped: boolean): void => {
+  console.error(error);
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (window && !window.webContents.isDestroyed()) window.webContents.send(eventChannels.onAppError, appError('main', error));
+  else if (stopped) dialog.showErrorBox(msg('mainProcessError'), error instanceof Error && error.stack ? error.stack : String(error));
+};
+process.on('uncaughtException', (error) => showMainError(error, true));
+process.on('unhandledRejection', (reason) => showMainError(reason, false));
 
 // Each window's backend runs in a utility process of its own (backend.ts), so
 // one window's project, builds, terminals and clangd never meet another's.
@@ -203,6 +217,7 @@ const startBackend = (window: BrowserWindow): Backend => {
   const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void }>();
   let calls = 0;
   let stopping = false;
+  let crash: GlistAppError | null = null;
   const exited = new Promise<void>((resolve) => { child.once('exit', () => resolve()); });
   child.on('message', (message: FromBackend) => {
     if (message.kind === 'reply') {
@@ -217,10 +232,11 @@ const startBackend = (window: BrowserWindow): Backend => {
       if (message.op === 'showItemInFolder') { shell.showItemInFolder(message.path); done(); }
       else if (message.op === 'trash') shell.trashItem(message.path).then(() => done(), done);
       else shell.openPath(message.path).then((problem) => done(problem || undefined), done);
-    }
+    } else if (message.kind === 'crash') crash = message.error;
   });
   // A backend that stops by itself is started again for the window, given its
-  // settings and its project again, and then the window is told.
+  // settings and its project again, and then the window is told, with the
+  // error that stopped it.
   child.once('exit', (code) => {
     pending.forEach((waiting) => waiting.reject(new Error(`Glist Studio's backend stopped (${code}).`)));
     pending.clear();
@@ -233,7 +249,7 @@ const startBackend = (window: BrowserWindow): Backend => {
     })();
     // The window's calls wait until then: before it, reading an open file would fail and close its tab.
     backends.set(contents.id, { ...next, call: (method, args) => restored.then(() => next.call(method, args)) });
-    void restored.then(() => { if (!contents.isDestroyed()) contents.send(eventChannels.onBackendRestarted, null); });
+    void restored.then(() => { if (!contents.isDestroyed()) contents.send(eventChannels.onBackendRestarted, crash); });
   });
   return {
     call: (method, args) => new Promise((resolve, reject) => {
@@ -437,6 +453,18 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
     return result.canceled ? null : result.filePaths[0] ?? null;
   },
   startupSettings: () => ({ saved: readStartup(), running: runningStartup }),
+  // Help > Copy Debug Info, answered here so that it works while the backend is down.
+  debugInfo: (): GlistDebugInfo => ({
+    version: app.getVersion(),
+    commit,
+    packaged: app.isPackaged,
+    platform: process.platform,
+    arch: process.arch,
+    release: release(),
+    systemVersion: process.getSystemVersion(),
+    versions: { electron: process.versions.electron, chrome: process.versions.chrome, node: process.versions.node, v8: process.versions.v8 },
+    home: homedir(),
+  }),
   setStartupSettings: async (_event, next: unknown): Promise<GlistStartupSettings> => {
     const settings = { hardwareAcceleration: (next as Partial<GlistStartupSettings> | null)?.hardwareAcceleration !== false };
     await fs.mkdir(studioHome(), { recursive: true });

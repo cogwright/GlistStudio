@@ -19,8 +19,18 @@ export type ToBackend =
   | { kind: 'host-reply'; id: number; error?: string }
   | { kind: 'shutdown' };
 
-// Host requests are what only Electron, in the main process, can do.
+// Host requests are what only Electron, in the main process, can do. A crash
+// is the error about to stop the backend, which the window is told of once a
+// new backend has started.
 export type FromBackend =
   | { kind: 'reply'; reply: BackendReply }
   | { kind: 'event'; channel: string; payload: unknown }
-  | { kind: 'host'; id: number; op: 'trash' | 'showItemInFolder' | 'openPath'; path: string };
+  | { kind: 'host'; id: number; op: 'trash' | 'showItemInFolder' | 'openPath'; path: string }
+  | { kind: 'crash'; error: GlistAppError };
+
+// An error nothing caught, as the window hears of it.
+export const appError = (source: GlistAppError['source'], error: unknown): GlistAppError => ({
+  source,
+  message: error instanceof Error ? error.message : String(error),
+  ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
+});

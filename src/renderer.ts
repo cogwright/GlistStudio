@@ -51,6 +51,7 @@ import { GitEditor } from './git-editor';
 import { describeDebugger, installGdb, setUpDebuggerSettings } from './debugger-settings';
 import { GitPanel, type GitPanelView } from './git-panel';
 import { notify, type Notice } from './notifications';
+import { copyReport, errorMessage, ignorableError, setReportWindow } from './debug-report';
 import { setUpProjectPicker } from './project-picker';
 import { AboutView } from './about-view';
 import { StudioTerminal } from './terminal';
@@ -712,7 +713,34 @@ const noticeFailed = (key: TranslationKey, error: unknown, name?: string): void 
   text: name ? `${t(key)}: ${name}` : t(key),
   detail: remoteError(error),
   kind: 'error',
+  error,
 });
+
+// What a debug report says of the window (debug-report.ts).
+setReportWindow(() => ({
+  project: activeProject?.root ?? null,
+  zoom: zoomPercentage,
+  theme: `${getActiveTheme().name} (${getActiveTheme().id})`,
+  language: getLanguage(),
+}));
+// Help > Copy Debug Info: the same report without an error, for a problem that showed none.
+const copyDebugInfo = (): Promise<void> => copyReport().then(
+  () => notify({ text: t('debugInfoCopied'), kind: 'success' }),
+  (error: unknown) => noticeFailed('copyDetailsFailed', error),
+);
+
+// Errors nothing caught, in the page, the main process or the backend: each
+// different one once, as a notice with Copy Details. Some are no fault.
+const shownErrors = new Set<string>();
+const uncaughtError = (error: unknown, fallback = ''): void => {
+  const message = errorMessage(error, fallback);
+  if (ignorableError(error, message) || shownErrors.has(message)) return;
+  shownErrors.add(message);
+  notify({ text: t('unexpectedError'), detail: message, kind: 'error', error });
+};
+window.addEventListener('error', (event) => uncaughtError(event.error, event.message));
+window.addEventListener('unhandledrejection', (event) => uncaughtError(event.reason));
+window.glistAPI.onAppError((error) => uncaughtError(error));
 
 const setProcessStatus = (label: string, active: boolean, error = false): void => {
   processStatus.classList.toggle('active', active);
@@ -3148,6 +3176,7 @@ const configureMenus = (): void => {
         item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
         ...(canUpdate() ? [item(t('checkForUpdates'), checkForUpdates)] : []),
         { kind: 'separator' },
+        item(t('copyDebugInfo'), () => { void copyDebugInfo(); }),
         item(t('aboutMenu'), () => openSettings('about')),
       ],
     };
@@ -3865,9 +3894,9 @@ window.glistAPI.onBuildStatus((status) => {
 window.glistAPI.onRunOutput((text) => appendOutput(text, 'normal', launchedRun ?? outputHistory.current));
 // The backend stopped by itself, and a new one has the window's settings and
 // project again (index.ts): what ran in the old one starts again here, and the
-// tabs stay as they are.
-window.glistAPI.onBackendRestarted(() => {
-  notify({ text: t('backendRestarted'), kind: 'error' });
+// tabs stay as they are. The notice has the error that stopped it, when it said.
+window.glistAPI.onBackendRestarted((error) => {
+  notify({ text: t('backendRestarted'), kind: 'error', ...(error ? { detail: errorMessage(error), error } : {}) });
   if (!activeProject) return;
   void debug.stop();
   void clangd.start(activeProject.root);

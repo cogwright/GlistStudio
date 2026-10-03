@@ -4,7 +4,8 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { Handlers } from '../api';
+import { eventChannels, type Handlers } from '../api';
+import { appError } from '../backend-protocol';
 import { readRepositoryHead } from '../repository-head';
 import { initializeStudio } from '../studio';
 import { answer, backendHandlers, stopBackend, type BackendCall } from '../studio-rpc';
@@ -68,6 +69,12 @@ export const startWebServer = (options: WebServerOptions): Promise<http.Server> 
   });
 
   const handlers: Handlers = { ...backendHandlers, setTheme: () => undefined };
+  // A promise nothing waited on would stop the server; the page is told of it
+  // instead, as the app's window is of its backend's.
+  process.on('unhandledRejection', (reason) => {
+    console.error(reason);
+    send({ channel: eventChannels.onAppError, payload: appError('backend', reason) });
+  });
 
   const server = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://localhost');

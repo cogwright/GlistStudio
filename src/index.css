@@ -1144,6 +1144,7 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .notice-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .notice-actions button { height: 24px; padding: 0 9px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-hover); font-size: 11px; cursor: pointer; }
 .notice-actions button:first-child { border-color: var(--ui-accent); color: var(--ui-on-accent); background: var(--ui-accent); }
+.notice-actions button.notice-copy { border-color: var(--ui-border-strong); color: var(--ui-fg); background: var(--ui-hover); }
 .notice-close { display: grid; width: 22px; height: 22px; padding: 0; place-items: center; border: 0; border-radius: 4px; color: var(--ui-fg-muted); background: transparent; cursor: pointer; }
 .notice-close:hover { color: var(--ui-fg-strong); background: var(--ui-hover); }
 

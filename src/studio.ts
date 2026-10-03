@@ -1386,6 +1386,20 @@ const aboutInfo = async (): Promise<GlistAbout> => {
   };
 };
 
+// Help > Copy Debug Info in the browser build: what the server runs on. The
+// app's main process answers for itself (index.ts).
+const debugInfo = async (): Promise<GlistDebugInfo> => ({
+  version: host.version,
+  commit: (await host.studioHead().catch((): null => null))?.commit ?? null,
+  packaged: false,
+  platform: process.platform,
+  arch: process.arch,
+  release: release(),
+  systemVersion: null,
+  versions: { node: process.versions.node, v8: process.versions.v8 },
+  home: homedir(),
+});
+
 // Glist Engine's own installer: the current script from GlistEngine/InstallScripts,
 // saved in Glist Studio's folder and run in a terminal, so that a password it
 // asks for can be typed. GLIST_STUDIO_INSTALLER runs a local script instead, for tests.
@@ -1683,6 +1697,7 @@ export const studio: Handlers = {
   listAgents,
   glistStatus,
   aboutInfo,
+  debugInfo,
   engineCheckout,
   updateEngine,
   installAgent: installAgentFromSettings,
