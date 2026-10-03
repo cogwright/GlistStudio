@@ -517,11 +517,15 @@ export class ClangdClient {
     return true;
   }
 
-  // Monaco renders peeks and hover previews only for files it already has a model for.
+  // Monaco renders peeks and hover previews only for files it already has a
+  // model for, and fails with "Model not found" on one it has none for: a
+  // header the studio does not read, such as the system's own printf's. Those
+  // places are left out; with none left, Monaco says no definition was found.
   private async withModels<T extends { uri: monaco.Uri }>(locations: T[]): Promise<T[]> {
     const uris = new Map(locations.map((location) => [location.uri.toString(), location.uri]));
-    await Promise.all([...uris.values()].map((uri) => this.host.loadModel(uri)));
-    return locations;
+    const loaded = new Set<string>();
+    await Promise.all([...uris].map(async ([key, uri]) => { if (await this.host.loadModel(uri)) loaded.add(key); }));
+    return locations.filter((location) => loaded.has(location.uri.toString()));
   }
 
   private registerProviders(capabilities: ServerCapabilities): void {
