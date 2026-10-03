@@ -28,6 +28,7 @@ import { Debugger } from './debugger';
 import { setHostPlatform } from './host';
 import { baseName, isWithin, joinPath, pathUri, uriPath } from './paths';
 import { isLinux, isMac, primaryKey, reformatShortcut, shortcutLabel } from './shortcuts';
+import { dressSelects } from './select-menu';
 import { setUpStarPrompt } from './star-prompt';
 import { setUpGlistInstaller } from './glist-installer';
 import { TargetPicker } from './targets';
@@ -205,7 +206,6 @@ const gitMenuButton = element<HTMLButtonElement>('#git-menu-button');
 const branchChip = element<HTMLButtonElement>('#git-branch-chip');
 const output = element<HTMLPreElement>('#output');
 const projectRootLabel = element<HTMLDivElement>('#project-root-label');
-const closeProjectButton = element<HTMLButtonElement>('#close-project');
 const processStatus = element<HTMLSpanElement>('#process-status');
 const clangdStatus = element<HTMLSpanElement>('#clangd-status');
 const buildNotice = element<HTMLElement>('#build-notice');
@@ -468,6 +468,7 @@ const showZoom = (): void => {
 };
 
 placeIcons();
+dressSelects();
 
 // Windows and Linux: the window's buttons, the page's own (index.html), so they
 // zoom with it. The middle one is Restore Down while the window fills the screen.
@@ -2735,7 +2736,6 @@ const openSelectedProject = async (selected: GlistProjectInfo): Promise<void> =>
   expandedDirectories.clear();
   session?.expanded.forEach((folder) => expandedDirectories.add(folder));
   projectRootLabel.textContent = selected.name.toUpperCase();
-  closeProjectButton.hidden = false;
   document.title = `${selected.name} - Glist Studio`;
   shellTabs.forEach((tab) => tab.terminal.projectChanged());
   agentTerminal.projectChanged();
@@ -3588,7 +3588,6 @@ const closeProject = async (): Promise<void> => {
   if (!activeProject || !(await saveProjectFiles(false))) return;
   await window.glistAPI.closeProject();
 };
-closeProjectButton.addEventListener('click', () => { void closeProject(); });
 fileTree.addEventListener('click', (event) => {
   if (event.target instanceof Element && event.target.closest('.tree-row')) return;
   clearTreeSelection();

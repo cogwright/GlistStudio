@@ -4,8 +4,10 @@ import { shortcutLabel } from './shortcuts';
 // The studio's right-click menu, which the explorer, the Git views and the
 // editor share, so they look and behave alike.
 
+// An item with checked set is one of a choice, as a dropdown's options are
+// (select-menu.ts): the chosen one is ticked.
 export type MenuEntry =
-  | { label: string; run: () => void; shortcut?: string; danger?: boolean; disabled?: boolean }
+  | { label: string; run: () => void; shortcut?: string; danger?: boolean; disabled?: boolean; checked?: boolean }
   | { label: string; children: MenuEntry[] }
   | 'separator';
 
@@ -18,9 +20,13 @@ document.body.append(menu);
 // Where focus was before the menu took it from the keyboard, to give it back.
 let returnFocus: HTMLElement | null = null;
 
+let onClose: (() => void) | undefined;
+
 export const closeMenu = (): void => {
   if (menu.hidden) return;
   menu.hidden = true;
+  onClose?.();
+  onClose = undefined;
   returnFocus?.focus();
   returnFocus = null;
 };
@@ -61,8 +67,9 @@ const itemNode = (entry: Exclude<MenuEntry, 'separator'>): HTMLElement => {
     group.append(item, submenu);
     return group;
   }
-  item.className = `context-item${entry.danger ? ' danger' : ''}`;
+  item.className = `context-item${entry.danger ? ' danger' : ''}${entry.checked === undefined ? '' : ' context-choice'}${entry.checked ? ' checked' : ''}`;
   item.disabled = Boolean(entry.disabled);
+  if (entry.checked) item.append(icon('check'));
   const label = document.createElement('span');
   label.textContent = entry.label;
   item.append(label);
@@ -83,8 +90,13 @@ const entryNode = (entry: MenuEntry): HTMLElement => {
 };
 
 // Opens at the mouse, or at a point given for a menu opened from the keyboard,
-// whose first item then takes focus.
-export const showMenu = (at: MouseEvent | { clientX: number; clientY: number }, entries: MenuEntry[]): void => {
+// whose ticked item, or first, then takes focus. A dropdown's menu is at least
+// as wide as the dropdown. Opened from inside a dialog, such as Settings, it
+// goes into the dialog, which leaves the rest of the page out of reach.
+export const showMenu = (
+  at: MouseEvent | { clientX: number; clientY: number }, entries: MenuEntry[],
+  options: { minWidth?: number; onClose?: () => void; from?: Element } = {},
+): void => {
   const fromKeyboard = !(at instanceof MouseEvent);
   if (at instanceof MouseEvent) {
     at.preventDefault();
@@ -94,8 +106,14 @@ export const showMenu = (at: MouseEvent | { clientX: number; clientY: number }, 
   const shown = entries.reduce<MenuEntry[]>((list, entry) =>
     (entry === 'separator' && (list.length === 0 || list[list.length - 1] === 'separator') ? list : [...list, entry]), []);
   if (shown[shown.length - 1] === 'separator') shown.pop();
+  closeMenu();
+  const from = options.from ?? (at instanceof MouseEvent && at.target instanceof Element ? at.target : null);
+  const host = from?.closest('dialog[open]') ?? document.body;
+  if (menu.parentElement !== host) host.append(menu);
   menu.replaceChildren(...shown.map(entryNode));
   returnFocus = fromKeyboard && document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  menu.style.minWidth = options.minWidth ? `${options.minWidth / pageZoom()}px` : '';
+  onClose = options.onClose;
   menu.hidden = false;
   const zoom = pageZoom();
   const width = menu.offsetWidth * zoom;
@@ -104,5 +122,5 @@ export const showMenu = (at: MouseEvent | { clientX: number; clientY: number }, 
   menu.classList.toggle('submenu-left', left + width + 210 * zoom > window.innerWidth);
   menu.style.left = `${left / zoom}px`;
   menu.style.top = `${Math.max(0, Math.min(at.clientY, window.innerHeight - height - 6)) / zoom}px`;
-  if (fromKeyboard) menu.querySelector<HTMLButtonElement>('.context-item:not(:disabled)')?.focus();
+  if (fromKeyboard) (menu.querySelector<HTMLButtonElement>('.context-item.checked:not(:disabled)') ?? menu.querySelector<HTMLButtonElement>('.context-item:not(:disabled)'))?.focus();
 };

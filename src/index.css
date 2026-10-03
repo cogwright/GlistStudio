@@ -232,7 +232,7 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 .run-control-primary:not(:disabled) { color: var(--ui-on-success); background: var(--ui-success); }
 .run-control-primary:hover:not(:disabled) { color: var(--ui-on-success); background: color-mix(in srgb, var(--ui-success) 85%, var(--ui-contrast)); }
 .build-control:not(:disabled) { color: var(--ui-fg-strong); background: var(--ui-hover); }
-.target-select { height: 26px; max-width: 190px; margin-right: 3px; padding: 0 6px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-bg); font: inherit; font-size: 11px; }
+.target-select { height: 26px; max-width: 190px; margin-right: 3px; padding: 0 6px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg); background: var(--ui-bg); font: inherit; font-size: 11px; -webkit-app-region: no-drag; }
 .target-select[hidden] { display: none; }
 .build-control:hover:not(:disabled) { background: var(--ui-hover-strong); }
 /* Build and its dropdown (Clean Build) as one split button. */
@@ -361,8 +361,6 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
 /* The project's name, and beside it Close Project. */
 .root-header { display: flex; align-items: center; background: var(--ui-inset); }
 .root-header .root-label { min-width: 0; flex: 1; }
-.root-close { width: 22px; height: 22px; margin-right: 4px; }
-.root-close[hidden] { display: none; }
 .file-tree { height: calc(100% - 57px); overflow: auto; padding: 4px 0 18px; }
 
 .tree-row { display: grid; grid-template-columns: 14px 18px minmax(0,1fr); column-gap: 3px; width: 100%; height: 23px; align-items: center; padding-right: 8px; border: 0; color: var(--ui-fg); background: transparent; cursor: default; text-align: left; }
@@ -670,6 +668,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .studio-dialog label { display: block; margin: 12px 0 6px; color: var(--ui-fg); font-size: 12px; }
 .studio-dialog input, .studio-dialog select { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; outline: none; color: var(--ui-fg-strong); background: var(--ui-bg); font: inherit; }
 .studio-dialog input:focus, .studio-dialog select:focus { border-color: var(--ui-accent); }
+.studio-dialog .select-button { width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--ui-border-strong); border-radius: 4px; color: var(--ui-fg-strong); background: var(--ui-bg); font: inherit; }
 /* Every group of settings is a fieldset with a legend, drawn without the browser's frame. */
 fieldset.settings-section { min-width: 0; margin-inline: 0; padding: 0; border: 0; }
 fieldset.settings-section legend { padding: 0 8px 0 0; color: var(--ui-fg); font-size: 12px; }
@@ -1239,3 +1238,18 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 /* New Terminal's list of shells, close beside its button. */
 .heading-action.new-terminal-menu { width: 16px; margin-left: -4px; }
 .heading-action.new-terminal-menu svg { width: 12px; height: 12px; }
+
+/* The studio's dropdowns (select-menu.ts): the select out of sight but still
+   there for its value, a button in its place, its options in the studio's menu. */
+.dressed-select { position: absolute !important; width: 1px !important; height: 1px !important; margin: 0 !important; padding: 0 !important; overflow: hidden; border: 0 !important; opacity: 0; pointer-events: none; }
+.select-button { display: inline-flex; min-width: 0; align-items: center; justify-content: space-between; gap: 6px; text-align: left; cursor: default; }
+.select-button[hidden] { display: none; }
+.select-button:focus-visible { outline: none; border-color: var(--ui-accent); }
+.select-button:disabled { opacity: 0.55; }
+.select-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-button > svg { flex: none; width: 12px; height: 12px; color: var(--ui-fg-muted); }
+/* A choice in a menu: room on the left for the tick of the one chosen. */
+.context-item.context-choice { position: relative; padding-left: 28px; }
+.context-item.context-choice > svg { position: absolute; left: 8px; width: 14px; height: 14px; }
+/* "=>" as two characters: the interface font joins it into an arrow otherwise. */
+.no-ligatures { font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
