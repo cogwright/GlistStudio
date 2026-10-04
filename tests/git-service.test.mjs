@@ -69,7 +69,8 @@ assert.deepEqual(protectionFrom({ on: false, branches: [' dev ', '', 3] }), { on
 
 // The Git service against a project made for the test and a remote beside it.
 // Run with jiti, which resolves the service's own imports.
-const root = mkdtempSync(path.join(tmpdir(), 'glist-git-service-'));
+// The long name of the temp folder: Windows's tmpdir may be an 8.3 short one (RUNNER~1), and git answers with the long.
+const root = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'glist-git-service-')));
 // Global settings, such as the identity Settings writes, stay in the test's
 // folder, and git makes up no name or email of its own.
 Object.assign(process.env, { HOME: root, XDG_CONFIG_HOME: root, GIT_CONFIG_NOSYSTEM: '1' });
@@ -559,7 +560,7 @@ try {
 // Where a checkout stands, read from its .git folder for Settings > About,
 // against git's own answers.
 {
-  const headRoot = mkdtempSync(path.join(tmpdir(), 'glist-head-'));
+  const headRoot = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'glist-head-')));
   const headEnv = { ...process.env, GIT_CONFIG_GLOBAL: path.join(headRoot, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
   writeFileSync(headEnv.GIT_CONFIG_GLOBAL, '[user]\n\tname = Test\n\temail = test@example.com\n[init]\n\tdefaultBranch = main\n');
   const headGit = (folder, ...args) => execFileSync('git', args, { cwd: folder, env: headEnv, encoding: 'utf8' }).trim();
@@ -620,7 +621,7 @@ console.log('Git service tests passed.');
 // its language and version: the credential helpers, push's porcelain lines and
 // the repository's state.
 {
-  const base = mkdtempSync(path.join(tmpdir(), 'glist-git-why-'));
+  const base = realpathSync.native(mkdtempSync(path.join(tmpdir(), 'glist-git-why-')));
   const plainEnv = () => {
     const env = { ...process.env, HOME: base, XDG_CONFIG_HOME: base, GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' };
     ['GIT_ASKPASS', 'SSH_ASKPASS', 'LANGUAGE', 'LC_ALL', 'LC_MESSAGES'].forEach((key) => delete env[key]);
