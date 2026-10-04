@@ -185,7 +185,9 @@ try {
   {
     const blocker = path.join(root, 'blocker');
     writeFileSync(blocker, 'a file, not a folder');
-    for (const folder of [path.join(blocker, 'logs'), '/dev/null/logs']) {
+    // /dev/null/logs can be made nowhere but on Windows, where it is D:\dev\null\logs;
+    // a folder inside a file is impossible everywhere.
+    for (const folder of [path.join(blocker, 'logs'), ...(process.platform === 'win32' ? [] : ['/dev/null/logs'])]) {
       const file = new LogFile({ folder, name: 'glist-studio', flushDelay: 1 });
       file.write('main', 'info', 'nowhere');
       await file.flush();
