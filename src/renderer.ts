@@ -3482,14 +3482,17 @@ const configureMenus = (): void => {
         { kind: 'separator' },
         item(t('openProject'), chooseProject, { shortcut: 'Ctrl+O' }),
         ...(git.enabled ? [item(t('cloneMenu'), () => { void cloneProject(); })] : []),
+        { kind: 'separator' },
         item(t('save'), saveActiveFile, { shortcut: 'Ctrl+S', disabled: !activeFile() }),
         { kind: 'separator' },
         // The browser build is one page, which opens no other windows.
         ...(window.glistFiles ? [item(t('newWindow'), () => { void window.glistAPI.newWindow(); })] : []),
-        // Exit closes every window, as closing Glist Studio from the taskbar does;
-        // a Mac's app menu has Quit for it. The explorer closes a project.
-        ...(window.glistFiles && !isMac ? [item(t('exitApp'), () => { void window.glistAPI.quitApp(); })]
-          : [item(t('closeProject'), () => { void closeProject(); }, { disabled: !activeProject })]),
+        // The explorer closes a project on Windows and Linux. Elsewhere it is in File.
+        ...(window.glistFiles && !isMac ? [] : [item(t('closeProject'), () => { void closeProject(); }, { disabled: !activeProject })]),
+        // macOS has Settings in the application menu; the browser build has no native menu.
+        ...(window.glistFiles && isMac ? [] : [{ kind: 'separator' } as const, item(t('settings'), () => openSettings())]),
+        // Exit closes every window, as closing Glist Studio from the taskbar does.
+        ...(window.glistFiles && !isMac ? [{ kind: 'separator' } as const, item(t('exitApp'), () => { void window.glistAPI.quitApp(); })] : []),
       ],
       edit: [
         item(t('undo'), () => currentEditor().trigger('menu', 'undo', null), { shortcut: 'Ctrl+Z', disabled: !activeFile(), role: 'undo' }),
@@ -3506,12 +3509,12 @@ const configureMenus = (): void => {
         item(t(shell.classList.contains('sidebar-hidden') || sidebarView !== 'explorer' ? 'showExplorer' : 'hideExplorer'),
           toggleExplorer, { shortcut: 'Ctrl+B' }),
         item(t(panelShowing('output') ? 'hideOutput' : 'showOutput'), () => togglePanel('output'), { shortcut: 'Ctrl+J' }),
-        item(t('splitEditor'), () => { if (layout.activeKey) splitTab(layout.activeKey); }, { shortcut: 'Ctrl+\\', disabled: !layout.activeKey }),
         item(t(panelShowing('terminal') ? 'hideTerminal' : 'showTerminal'), () => togglePanel('terminal'), {
           shortcut: isMac ? 'Control+`' : 'Ctrl+`',
         }),
         item(t('newTerminal'), newShell, { shortcut: isMac ? 'Control+Shift+`' : 'Ctrl+Shift+`' }),
         ...(agentTab.hidden ? [] : [item(t(panelShowing('agent') ? 'hideAgent' : 'showAgent'), () => togglePanel('agent'))]),
+        item(t('splitEditor'), () => { if (layout.activeKey) splitTab(layout.activeKey); }, { shortcut: 'Ctrl+\\', disabled: !layout.activeKey }),
         { kind: 'separator' },
         { kind: 'heading', label: t('zoom') },
         item(t('zoomIn'), () => changeZoom(1), {
@@ -3523,24 +3526,19 @@ const configureMenus = (): void => {
         item(t('resetZoom'), () => setZoom(defaultZoom), {
           shortcut: 'Ctrl+0', hint: percent(zoomPercentage), disabled: zoomPercentage === defaultZoom,
         }),
-        { kind: 'separator' },
-        item(t('repairReload'), () => { void reloadWindowSafely(); }, { shortcut: 'Ctrl+R' }),
-        { kind: 'separator' },
-        { kind: 'heading', label: t('preferences') },
-        item(t('settings'), () => openSettings()),
       ],
       run: [
         item(t('build'), () => { void buildProject(); }, {
           shortcut: 'Ctrl+Shift+B', disabled: !activeProject || isBuildRunning || isStarting,
         }),
         item(t('cleanBuild'), () => { void buildProject(true); }, { disabled: !activeProject || isBuildRunning || isStarting }),
+        { kind: 'separator' },
         item(t('run'), runProject, {
           shortcut: 'F5', disabled: !activeProject || isRunRunning || isBuildRunning || isStarting || !targetPicker.runnable,
         }),
         item(t('debug'), debugProject, {
           shortcut: 'F6', disabled: !activeProject || isBuildRunning || isStarting || debug.active || !targetPicker.runnable,
         }),
-        { kind: 'separator' },
         item(t('stop'), stopProject, { shortcut: 'Shift+F5', disabled: !isRunRunning && !isBuildRunning && !debug.active }),
         { kind: 'separator' },
         { kind: 'heading', label: t('debug') },
@@ -3555,13 +3553,15 @@ const configureMenus = (): void => {
       branches: branchMenu(),
       help: [
         ...(glistInstalled ? [] : [item(t('installGlistMenu'), () => { void showGlistInstaller(); })]),
-        item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
         ...(canUpdate() ? [item(t('checkForUpdates'), checkForUpdates)] : []),
-        { kind: 'separator' },
+        ...(!glistInstalled || canUpdate() ? [{ kind: 'separator' } as const] : []),
+        item(t('repairIde'), () => repair.open()),
+        item(t('repairReload'), () => { void reloadWindowSafely(); }, { shortcut: 'Ctrl+R' }),
         item(t('copyDebugInfo'), () => { void copyDebugInfo(); }),
         item(t('openLogsFolder'), () => { void openLogsFolder(); }),
         ...(window.glistFiles ? [item(t('toggleDevTools'), () => { void window.glistAPI.toggleDevTools(); }, { shortcut: isMac ? 'Cmd+Alt+I' : 'Ctrl+Shift+I' })] : []),
-        item(t('repairIde'), () => repair.open()),
+        { kind: 'separator' },
+        item(t('engineAbout'), () => { void window.glistAPI.openEngineSite(); }),
         item(t('aboutMenu'), () => openSettings('about')),
       ],
     };
@@ -3583,6 +3583,7 @@ const configureMenus = (): void => {
     return [
       item(t('commitMenu'), showCommitView, { shortcut: 'Ctrl+K' }),
       item(t('pushMenu'), () => { void pushChanges(); }, { shortcut: 'Ctrl+Shift+K', disabled: !repository.branch }),
+      { kind: 'separator' },
       item(t('updateProject'), () => { void updateProject(); }, { shortcut: 'Ctrl+T', disabled: !repository.upstream }),
       item(t('fetch'), () => { void fetchAll(); }),
       ...(git.dependencies.length > 0 ? [item(t('updateDependencies'), () => { void updateDependencies(); })] : []),
@@ -3590,8 +3591,10 @@ const configureMenus = (): void => {
       item(t('newBranch'), () => { void newBranch(); }),
       item(t('branchesMenu'), () => showGitPanel('branches')),
       item(t('stashChanges'), () => { showGitPanel('stashes'); void gitPanel.stash(); }),
+      { kind: 'separator' },
       item(t('gitLogMenu'), () => showGitPanel('log')),
       item(t('remotesMenu'), () => showGitPanel('remotes')),
+      { kind: 'separator' },
       item(t('applyPatch'), () => { void applyPatchFiles(git); }),
       item(t('applyPatchClipboard'), () => { void applyPatchFromClipboard(git); }),
       { kind: 'separator' },
@@ -3631,9 +3634,9 @@ const configureMenus = (): void => {
       item(t('updateDependencies'), () => { void updateDependencies(); }, { disabled: !git.dependencies.some((dependency) => dependency.upstream) }),
     ];
     return [
-      item(t('updateProject'), () => { void updateProject(); }, { shortcut: 'Ctrl+T', disabled: !repository.upstream }),
       item(t('commitMenu'), showCommitView, { shortcut: 'Ctrl+K' }),
       item(t('pushMenu'), () => { void pushChanges(); }, { shortcut: 'Ctrl+Shift+K', disabled: !repository.branch }),
+      item(t('updateProject'), () => { void updateProject(); }, { shortcut: 'Ctrl+T', disabled: !repository.upstream }),
       { kind: 'separator' },
       item(t('newBranch'), () => { void newBranch(); }),
       ...(local.length > 0 ? [{ kind: 'heading' as const, label: t('localBranches') }, ...local.map(branchItem)] : []),
