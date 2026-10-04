@@ -2028,7 +2028,8 @@ const showCommitView = (): void => {
 // and saving it later does not put the old text back.
 const reloadOpenFiles = async (): Promise<void> => {
   for (const file of fileTabs()) {
-    if (isDirty(file)) continue;
+    // A tab closed while the one before was read has let go of its model.
+    if (file.model.isDisposed() || isDirty(file)) continue;
     let contents: string;
     try {
       contents = await readContents(file.path);
@@ -2037,8 +2038,8 @@ const reloadOpenFiles = async (): Promise<void> => {
       closeFile(file.path);
       continue;
     }
-    // Typed into while it was read: what is typed wins.
-    if (isDirty(file) || file.model.isDisposed()) continue;
+    // Closed while it was read, or typed into: what is typed wins.
+    if (file.model.isDisposed() || isDirty(file)) continue;
     if (file.model.getValue() !== contents) {
       // As an edit, so Undo can bring back what was there.
       reloading.add(file);
