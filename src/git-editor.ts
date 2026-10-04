@@ -1,6 +1,7 @@
 // eslint-disable-next-line import/no-unresolved
 import * as monaco from 'monaco-editor/editor/editor.api';
 import { conflictBlocks, resolvedLines, type ConflictChoice } from './conflicts';
+import { blameHues } from './git';
 import type { GitClient } from './git-client';
 import { icon } from './icons';
 import { lineChanges, type LineChange } from './line-diff';
@@ -34,6 +35,11 @@ interface Committed {
 
 const cssColor = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888888';
 
+// The blame of a line typed since blame was read, until it is read again.
+const typedLine: GlistGitBlameLine = { commit: '', author: '', date: 0, summary: '', uncommitted: true };
+// Monaco puts line numbers in the page as HTML, and an author's name could be any text.
+const escapeHtml = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 // One attached editor's marks, for the file it shows.
 interface EditorMarks {
   editor: monaco.editor.ICodeEditor;
@@ -43,6 +49,12 @@ interface EditorMarks {
   changes: LineChange[];
   timer: number;
   blameTimer: number;
+  // Each line's blame, one to a blameLines decoration, as the lines move while
+  // the file is edited; its label beside the number; and each commit's colour.
+  blameRows: GlistGitBlameLine[];
+  blameLabels: string[];
+  blameHues: Map<string, number>;
+  blameNumber: (lineNumber: number) => string;
 }
 
 export class GitEditor {
@@ -87,13 +99,21 @@ export class GitEditor {
       changes: [],
       timer: 0,
       blameTimer: 0,
+      blameRows: [],
+      blameLabels: [],
+      blameHues: new Map(),
+      blameNumber: (number) => escapeHtml(`${(marks.blameLabels[number - 1] ?? '').padEnd(27)}${String(number).padStart(4)}`),
     };
     this.attached.push(marks);
     editor.onDidChangeModel(() => { this.hidePopup(marks); this.showBlame(marks); void this.update(marks); });
-    editor.onDidChangeModelContent(() => {
+    editor.onDidChangeModelContent((event) => {
       this.hidePopup(marks);
       window.clearTimeout(marks.timer);
       marks.timer = window.setTimeout(() => { void this.update(marks); }, 200);
+      if (marks.blameRows.length > 0
+        && event.changes.some((change) => change.range.endLineNumber > change.range.startLineNumber || change.text.includes('\n'))) {
+        this.followBlame(marks);
+      }
       if (this.blames.has(this.path(marks) ?? '')) {
         window.clearTimeout(marks.blameTimer);
         marks.blameTimer = window.setTimeout(() => { void this.loadBlame(marks); }, 800);
@@ -107,7 +127,7 @@ export class GitEditor {
         this.showPopup(marks, target.position.lineNumber);
       } else if (target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS && target.position) {
         const filePath = this.path(marks);
-        const line = filePath ? this.blames.get(filePath)?.[target.position.lineNumber - 1] : undefined;
+        const line = marks.blameRows[target.position.lineNumber - 1];
         if (filePath && line && !line.uncommitted) this.hooks.showCommit(line.commit, filePath);
       }
     });
@@ -321,30 +341,64 @@ export class GitEditor {
   }
 
   // Who last changed each line and when, beside its number, as JetBrains shows
-  // it; hovering a number tells the rest.
+  // it, on its commit's colour; hovering a number tells the rest.
   private showBlame(marks: EditorMarks): void {
     const lines = this.blames.get(this.path(marks) ?? '');
     if (!lines) {
+      marks.blameRows = [];
+      marks.blameLabels = [];
       marks.blameLines.clear();
       marks.editor.updateOptions({ lineNumbers: 'on', lineNumbersMinChars: 5 });
       return;
     }
+    marks.blameHues = blameHues(lines);
+    this.drawBlame(marks, lines);
+  }
+
+  // Redrawn as lines are typed, so what a line shows is worked out once for
+  // each commit: dates in words cost too much to format for every line.
+  private drawBlame(marks: EditorMarks, rows: GlistGitBlameLine[]): void {
     const recent = Date.now() / 1000 - 14 * 24 * 3600;
-    const author = (line: GlistGitBlameLine): string => (line.uncommitted ? t('notCommittedYet') : line.author);
-    const labels = lines.map((line) => `${line.uncommitted ? '' : shortDate(line.date * 1000)} ${author(line)}`.trim().slice(0, 26));
-    marks.editor.updateOptions({
-      lineNumbers: (number) => `${(labels[number - 1] ?? '').padEnd(27)}${String(number).padStart(4)}`,
-      lineNumbersMinChars: 32,
-    });
-    marks.blameLines.set(lines.map((line, index) => ({
-      range: new monaco.Range(index + 1, 1, index + 1, 1),
-      options: {
-        lineNumberClassName: line.uncommitted ? 'git-blame-new' : line.date > recent ? 'git-blame-recent' : 'git-blame',
-        lineNumberHoverMessage: line.uncommitted ? { value: t('notCommittedYet') } : {
-          value: `**${line.summary.replace(/[\\`*_[\]<>]/g, '\\$&')}**\n\n${line.author.replace(/[\\`*_[\]<>]/g, '\\$&')}, ${fullTime(line.date * 1000)}\n\n\`${line.commit.slice(0, 10)}\` ${t('blameClick')}`,
-        },
-      },
-    })));
+    const shown = new Map<string, { label: string; options: monaco.editor.IModelDecorationOptions }>();
+    const of = (line: GlistGitBlameLine): { label: string; options: monaco.editor.IModelDecorationOptions } => {
+      const key = line.uncommitted ? '' : line.commit;
+      let entry = shown.get(key);
+      if (!entry) {
+        entry = {
+          label: line.uncommitted ? t('notCommittedYet').slice(0, 26) : `${shortDate(line.date * 1000)} ${line.author}`.trim().slice(0, 26),
+          options: {
+            // Stays with its line's text when a line is typed before or after it.
+            stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+            // A class per colour (index.css), not a style per commit.
+            lineNumberClassName: line.uncommitted ? 'git-blame-new'
+              : `${line.date > recent ? 'git-blame-recent' : 'git-blame'} blame-hue-${marks.blameHues.get(line.commit) ?? 0}`,
+            lineNumberHoverMessage: line.uncommitted ? { value: t('notCommittedYet') } : {
+              value: `**${line.summary.replace(/[\\`*_[\]<>]/g, '\\$&')}**\n\n${line.author.replace(/[\\`*_[\]<>]/g, '\\$&')}, ${fullTime(line.date * 1000)}\n\n\`${line.commit.slice(0, 10)}\` ${t('blameClick')}`,
+            },
+          },
+        };
+        shown.set(key, entry);
+      }
+      return entry;
+    };
+    marks.blameRows = rows;
+    marks.blameLabels = rows.map((line) => of(line).label);
+    marks.editor.updateOptions({ lineNumbers: marks.blameNumber, lineNumbersMinChars: 32 });
+    marks.blameLines.set(rows.map((line, index) => ({ range: new monaco.Range(index + 1, 1, index + 1, 1), options: of(line).options })));
+  }
+
+  // Lines added or removed take the others' blame along until it is read
+  // again: each line keeps the last decoration that ended up on it, which is
+  // the line that stayed when others were deleted onto it, and a new line
+  // shows as not committed. Git has no line after the file's last line break.
+  private followBlame(marks: EditorMarks): void {
+    const model = marks.editor.getModel();
+    const ranges = marks.blameLines.getRanges();
+    if (!model || ranges.length !== marks.blameRows.length) return;
+    const count = model.getLineCount() - (model.getLineLength(model.getLineCount()) === 0 ? 1 : 0);
+    const rows = Array.from({ length: count }, () => typedLine);
+    ranges.forEach((range, index) => { if (range.startLineNumber <= count) rows[range.startLineNumber - 1] = marks.blameRows[index]; });
+    this.drawBlame(marks, rows);
   }
 
   // Colors for both sides of each conflict, as the file is edited.

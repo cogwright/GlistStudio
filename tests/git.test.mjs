@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  branchFormat, logFormat, parseBlame, parseBranches, parseLog, parseNameStatus, parseRemotes, parseStashes, parseStatus,
+  blameHueCount, blameHues, branchFormat, logFormat, parseBlame, parseBranches, parseLog, parseNameStatus, parseRemotes, parseStashes, parseStatus,
   parseTags, stashFormat, tagFormat,
 } from '../src/git.ts';
 import { lineChanges, mapLine } from '../src/line-diff.ts';
@@ -266,5 +266,58 @@ assert.deepEqual(resolvedLines(conflicted, blocks[0], 'both'), ['mine', 'theirs'
 assert.deepEqual(resolvedLines(conflicted, blocks[1], 'upper'), ['mine 2']);
 assert.deepEqual(resolvedLines(conflicted, blocks[1], 'lower'), []);
 assert.deepEqual(conflictBlocks(['<<<<<<< HEAD', 'never closed']), []);
+
+// Blame's colours: one per commit, and neighbouring blocks apart. A hash
+// starting with n picks colour n % 8 when nothing is in the way.
+const hash = (start, tag) => `${start.toString(16).padStart(8, '0')}${tag}`;
+const blamed = (commit, date = 1) => ({ commit, date, uncommitted: false });
+const notCommitted = { commit: '0000000000', date: 0, uncommitted: true };
+const apart = (a, b) => Math.min(Math.abs(a - b), blameHueCount - Math.abs(a - b));
+assert.deepEqual([...blameHues([blamed(hash(13, 'a'))])], [[hash(13, 'a'), 5]]);
+assert.equal(blameHues([notCommitted]).size, 0);
+// Two neighbours that pick one colour: the older keeps it, the newer moves past its colour and the next.
+const [older, newer] = [hash(3, 'old'), hash(11, 'new')];
+assert.deepEqual(blameHues([blamed(older, 1), blamed(older, 1), blamed(newer, 2)]), new Map([[older, 3], [newer, 5]]));
+assert.deepEqual(blameHues([blamed(older, 2), blamed(newer, 1)]), new Map([[newer, 3], [older, 5]]));
+// The same blame gives the same colours, and typing between blocks recolours nothing.
+const typedBetween = [blamed(older, 1), notCommitted, blamed(older, 1), notCommitted, blamed(newer, 2), blamed(newer, 2)];
+assert.deepEqual(blameHues(typedBetween), blameHues([blamed(older, 1), blamed(newer, 2)]));
+assert.deepEqual(blameHues(typedBetween), blameHues(typedBetween));
+// Neighbours on colours 0, 2, 4 and 6 leave none apart from them all: then any colour of its own.
+const spread = [0, 2, 4, 6].map((start) => hash(start, 'n'));
+const middle = hash(0, 'middle');
+const hues = blameHues(spread.flatMap((commit) => [blamed(commit, 1), blamed(middle, 2)]));
+assert.deepEqual(spread.map((commit) => hues.get(commit)), [0, 2, 4, 6]);
+assert.equal(hues.get(middle), 1);
+// Fewer colours than neighbours: still a colour from the palette.
+assert.ok([...blameHues(['a', 'b', 'c', 'a'].map((name) => blamed(hash(0, name))), 2).values()].every((hue) => hue === 0 || hue === 1));
+// A file forty commits made, each rewriting a few lines somewhere, with some lines not committed:
+// one colour a commit, every block's neighbours in other colours, and most far apart on the wheel.
+const pick = random(11);
+let file = Array.from({ length: 300 }, () => ({ commit: hash(0, 'first'), date: 0, uncommitted: false }));
+for (let made = 1; made <= 40; made += 1) {
+  const line = { commit: hash(Math.floor(pick() * 2 ** 31), `c${made}`), date: made, uncommitted: false };
+  const at = Math.floor(pick() * 290);
+  file.splice(at, 1 + Math.floor(pick() * 10), ...Array.from({ length: 1 + Math.floor(pick() * 10) }, () => line));
+}
+file = file.map((line) => (pick() < 0.03 ? notCommitted : line));
+const neighbourPairs = (lines) => lines.filter((line) => !line.uncommitted)
+  .flatMap((line, index, committed) => (index > 0 && committed[index - 1].commit !== line.commit ? [[committed[index - 1].commit, line.commit]] : []));
+const fileHues = blameHues(file);
+const pairs = neighbourPairs(file);
+assert.ok(pairs.length > 40);
+pairs.forEach(([a, b]) => assert.notEqual(fileHues.get(a), fileHues.get(b), `${a} and ${b}`));
+assert.ok(pairs.filter(([a, b]) => apart(fileHues.get(a), fileHues.get(b)) > 1).length >= pairs.length * 0.8);
+assert.ok([...fileHues.values()].every((hue) => Number.isInteger(hue) && hue >= 0 && hue < blameHueCount));
+// Eight commits all next to each other: still a colour each that no neighbour has.
+const eight = Array.from({ length: 8 }, (_, index) => hash(Math.floor(pick() * 2 ** 31), `x${index}`));
+const crowd = Array.from({ length: 200 }, () => blamed(eight[Math.floor(pick() * 8)]));
+const crowdHues = blameHues(crowd);
+assert.equal(crowdHues.size, 8);
+neighbourPairs(crowd).forEach(([a, b]) => assert.notEqual(crowdHues.get(a), crowdHues.get(b)));
+// Each colour has its class in index.css.
+const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8');
+for (let hue = 0; hue < blameHueCount; hue += 1) assert.match(css, new RegExp(`\\.blame-hue-${hue} \\{`));
+assert.doesNotMatch(css, new RegExp(`\\.blame-hue-${blameHueCount} \\{`));
 
 console.log('Git tests passed.');
