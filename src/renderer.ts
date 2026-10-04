@@ -709,11 +709,13 @@ const outputHistory = new OutputHistory(output, outputHistorySelect, clearsOutpu
 
 // What is printed waits for the next frame and goes in at once, scrolled once:
 // a game logging every frame sent hundreds of pieces a second, and adding and
-// scrolling to each kept the window from answering. A section's waiting text
-// is what it would keep at most, as frames stop while the window is hidden.
+// scrolling to each kept the window from answering. Frames stop while the
+// window is hidden or covered, by the game's own window too, so a quarter of a
+// second at most; and a section's waiting text is what it would keep at most.
 const outputQueue = new Map<OutputSection, string>();
 const outputWaiting = 1_000_000;
 let outputFrame = 0;
+let outputTimer = 0;
 
 const clearOutput = (text = ''): void => { outputQueue.clear(); outputHistory.reset(text); };
 
@@ -729,7 +731,9 @@ const sectionFor = (section: OutputSection): OutputSection => (section.element.i
 
 const flushOutput = (): void => {
   cancelAnimationFrame(outputFrame);
+  window.clearTimeout(outputTimer);
   outputFrame = 0;
+  outputTimer = 0;
   let shown = false;
   for (const [section, text] of outputQueue) {
     const to = sectionFor(section);
@@ -755,7 +759,10 @@ const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'norm
       waiting = waiting.slice(lineStart >= 0 ? lineStart + 1 : cut);
     }
     outputQueue.set(to, waiting);
-    if (!outputFrame) outputFrame = requestAnimationFrame(flushOutput);
+    if (!outputFrame) {
+      outputFrame = requestAnimationFrame(flushOutput);
+      outputTimer = window.setTimeout(flushOutput, 250);
+    }
     return;
   }
   // After what was printed before it.
