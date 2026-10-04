@@ -1018,6 +1018,7 @@
     "buildSucceeded": "Compilation terminée avec succès.",
     "buildStartFailed": "Impossible de lancer la compilation",
     "buildFolderMoved": "Ce dossier de compilation a été créé pour {folder}; il est donc recréé pour ce projet. La première compilation prend plus de temps.",
+    "outputSkipped": "{count} lignes omises: le programme écrivait plus vite qu'elles ne pouvaient s'afficher. Les plus récentes suivent.",
     "configured": "CMake est configuré.",
     "notRunnable": "{name} n'est pas un programme: il peut être compilé, mais pas exécuté.",
     "appRunning": "L'application est déjà en cours d'exécution.",

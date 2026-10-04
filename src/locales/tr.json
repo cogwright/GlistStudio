@@ -1018,6 +1018,7 @@
     "buildSucceeded": "Derleme başarıyla tamamlandı.",
     "buildStartFailed": "Derleme başlatılamadı",
     "buildFolderMoved": "Bu derleme klasörü aslen {folder} için oluşturulmuştu, bu proje için yeniden oluşturuluyor. İlk derleme normalden daha uzun sürer.",
+    "outputSkipped": "{count} satır atlandı: program, gösterilebileceğinden hızlı yazdı. En yenileri aşağıda.",
     "configured": "CMake yapılandırıldı.",
     "notRunnable": "{name} çalıştırılabilir bir program olmadığı için derlenebilir ancak çalıştırılamaz.",
     "appRunning": "Uygulama zaten çalışıyor.",

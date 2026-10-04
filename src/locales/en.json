@@ -1018,6 +1018,7 @@
     "buildSucceeded": "Build completed successfully.",
     "buildStartFailed": "Could not start build",
     "buildFolderMoved": "This build folder was made for {folder}, so it is made again for this project. The first build takes longer.",
+    "outputSkipped": "{count} lines left out: the program printed faster than they could be shown. The newest follow.",
     "configured": "CMake configured.",
     "notRunnable": "{name} is not a program, so it can be built but not run.",
     "appRunning": "The application is already running.",
