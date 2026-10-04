@@ -7,6 +7,7 @@ import http from 'node:http';
 import { createGitService, credentialListener, windowsAskpassScript } from '../src/git-service.ts';
 import { createHostProtection, githubRepository, matchesBranch, protectionFrom } from '../src/git-protection.ts';
 import { githubCommitPage, readRepositoryHead } from '../src/repository-head.ts';
+import { toolLanguage } from '../src/tool-language.ts';
 
 // Windows's askpass: sh hands PowerShell the question and the form, encoded, with
 // MSYS's path conversion off. A stand-in powershell.exe says what it was given.
@@ -672,8 +673,10 @@ console.log('Git service tests passed.');
 
     // The same failures with git answering in Turkish: the same flags, git's own words left as they are.
     const candidates = ['/opt/homebrew/bin/git', '/usr/local/bin/git', '/usr/bin/git'];
+    // Asked as the service asks (toolLanguage), so a system whose locale cannot
+    // carry Turkish, such as a CI runner's C.UTF-8, skips rather than fails.
     const turkishGit = candidates.find((candidate) => existsSync(candidate) && /deposu/.test(spawnSync(candidate, ['-C', base, 'rev-parse'],
-      { env: { ...plainEnv(), LANGUAGE: 'tr', LANG: 'en_US.UTF-8' }, encoding: 'utf8' }).stderr));
+      { env: { ...plainEnv(), ...toolLanguage('tr', plainEnv()) }, encoding: 'utf8' }).stderr));
     if (!turkishGit) {
       console.log('No git with Turkish here: the Turkish checks are skipped.');
     } else {
