@@ -707,6 +707,7 @@ type GlistGitAction =
   | { kind: 'commit'; message: string; paths: string[]; amend: boolean }
   | { kind: 'rollback'; paths: string[] }
   | { kind: 'ignore'; paths: string[] }
+  | { kind: 'add'; paths: string[] }
   | { kind: 'resolve'; path: string; side: 'mine' | 'theirs' }
   | { kind: 'apply-patch'; patch: string }
   // Puts a resolved conflict back, markers and all.

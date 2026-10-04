@@ -386,6 +386,8 @@
     "confirmRollbackOne": "Put {name} back as it was in the last commit? Your changes to it will be lost.",
     "showDiff": "Show Diff",
     "openFile": "Open File",
+    "addToGit": "Add to Git",
+    "addAllToGit": "Add All to Git",
     "addToGitignore": "Add to .gitignore",
     "showHistory": "Show History",
     "markResolved": "Mark as Resolved",

@@ -393,6 +393,8 @@ export class CommitView {
     const tracked = files.filter((change) => change.state !== 'untracked');
     const unversioned = files.filter((change) => change.state === 'untracked');
     showMenu(event, [
+      ...(unversioned.length > 0
+        ? [{ label: t('addAllToGit'), run: () => { void this.client.run({ kind: 'add', paths: unversioned.map((change) => change.path) }, { root }); } }] : []),
       { label: t('stashChanges'), run: () => { void this.stashChanges(files, root); } },
       'separator',
       ...(tracked.length > 0 ? [{ label: t('rollbackAll'), danger: true, run: () => { void this.rollback(tracked, root); } }] : []),
@@ -519,6 +521,8 @@ export class CommitView {
       'separator',
       ...(untracked
         ? [
+          // Staged now, so it is in the next commit and counts as Git's from here on.
+          { label: t('addToGit'), run: () => { void this.client.run({ kind: 'add', paths: [change.path] }, { root }); } },
           { label: t('addToGitignore'), run: () => { void this.client.run({ kind: 'ignore', paths: [change.path] }, { root }); } },
           // Deleting is for the project's own files; the engine's and plugins' are read-only here.
           ...(root === undefined ? [{ label: t('delete'), danger: true, run: () => { void this.deleteUnversioned(change); } }] : []),

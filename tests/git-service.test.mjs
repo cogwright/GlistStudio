@@ -162,6 +162,20 @@ try {
   assert.match(read('.gitignore'), /^\/src\/Other\.h$/m);
   assert.deepEqual(await changes(), { '.gitignore': 'modified' });
   await run({ kind: 'rollback', paths: [inProject('.gitignore')] });
+  // Add to Git: an untracked file staged, and a folder's untracked files with it.
+  write('src/Added.h', 'int added;\n');
+  mkdirSync(inProject('assets'), { recursive: true });
+  write('assets/a.txt', 'a\n');
+  write('assets/b.txt', 'b\n');
+  await run({ kind: 'add', paths: [inProject('src/Added.h')] });
+  assert.equal((await changes())['src/Added.h'], 'added');
+  await run({ kind: 'add', paths: [inProject('assets')] });
+  assert.equal((await changes())['assets/a.txt'], 'added');
+  assert.equal((await changes())['assets/b.txt'], 'added');
+  await assert.rejects(run({ kind: 'add', paths: [path.join(root, 'outside.txt')] }));
+  await run({ kind: 'rollback', paths: [inProject('src/Added.h'), inProject('assets/a.txt'), inProject('assets/b.txt')] });
+  rmSync(inProject('src/Added.h'), { force: true });
+  rmSync(inProject('assets'), { recursive: true, force: true });
 
   // Versions of files, blame and commit details.
   const [latest, first] = await git.gitLog({});
