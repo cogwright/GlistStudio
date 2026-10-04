@@ -381,7 +381,18 @@ export const e2e = async (options, body) => {
     const context = await browser.newContext({ viewport: options.viewport ?? { width: 1440, height: 900 } });
     if (options.clipboard) await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: `http://127.0.0.1:${server.port}` });
     page = await context.newPage();
-    page.on('pageerror', (error) => errors.push(error.message));
+    // E2E_CPU_SLOWDOWN=4 runs the page four times slower, as CI's machines can
+    // be, to bring out a race seen there.
+    if (process.env.E2E_CPU_SLOWDOWN) {
+      const cdp = await context.newCDPSession(page);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.E2E_CPU_SLOWDOWN) });
+    }
+    // A page error's message makes the check fail; its stack goes to the flow's
+    // log (kept as an artifact when CI fails), to show where it came from.
+    page.on('pageerror', (error) => {
+      errors.push(error.message);
+      console.log(`page error: ${error.stack ?? error.message}`.split('\n').slice(0, 12).join('\n      '));
+    });
     await page.addInitScript(([language, storage]) => {
       if (sessionStorage.getItem('e2e-seeded')) return;
       // The star prompt opens a modal over everything once a project opens.
