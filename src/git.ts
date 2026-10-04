@@ -270,3 +270,40 @@ export const parseBlame = (output: string): GitBlameLine[] => {
   });
   return lines;
 };
+
+// The colours blame has for commits, in order around the colour wheel (blame-hue-0 to -7 in index.css).
+export const blameHueCount = 8;
+
+// A colour for each commit of a file's blame, so that its lines share one and
+// neighbouring blocks from different commits differ at a glance: a colour
+// beside a neighbour's on the wheel is passed over while another is free.
+// Each commit starts from the one its hash picks, so it mostly keeps it from
+// file to file, and older commits choose first, so a new commit mostly fits
+// in around them rather than recolouring them. Lines not committed yet have none,
+// and the blocks either side of them still count as neighbours, so typing
+// recolours nothing.
+export const blameHues = (lines: Pick<GitBlameLine, 'commit' | 'date' | 'uncommitted'>[], count = blameHueCount): Map<string, number> => {
+  const neighbours = new Map<string, Set<string>>();
+  const dates = new Map<string, number>();
+  let previous: string | null = null;
+  lines.filter((line) => !line.uncommitted).forEach(({ commit, date }) => {
+    if (!neighbours.has(commit)) neighbours.set(commit, new Set());
+    dates.set(commit, date);
+    if (previous !== null && previous !== commit) {
+      neighbours.get(previous)?.add(commit);
+      neighbours.get(commit)?.add(previous);
+    }
+    previous = commit;
+  });
+  const apart = (first: number, second: number): number => Math.min(Math.abs(first - second), count - Math.abs(first - second));
+  const oldestFirst = [...neighbours.keys()].sort((a, b) => (dates.get(a) ?? 0) - (dates.get(b) ?? 0) || (a < b ? -1 : a > b ? 1 : 0));
+  const hues = new Map<string, number>();
+  oldestFirst.forEach((commit) => {
+    const taken = [...neighbours.get(commit) ?? []].map((other) => hues.get(other)).filter((hue): hue is number => hue !== undefined);
+    const start = (parseInt(commit.slice(0, 8), 16) || 0) % count;
+    const order = Array.from({ length: count }, (_, step) => (start + step) % count);
+    hues.set(commit, order.find((hue) => taken.every((other) => apart(hue, other) > 1))
+      ?? order.find((hue) => !taken.includes(hue)) ?? start);
+  });
+  return hues;
+};

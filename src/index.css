@@ -1130,6 +1130,23 @@ html[data-kind="light"] .settings-tab.active { background: var(--ui-raised); }
 .monaco-editor .line-numbers.git-blame { color: var(--ui-fg-muted); }
 .monaco-editor .line-numbers.git-blame-recent { color: var(--ui-accent); }
 .monaco-editor .line-numbers.git-blame-new { color: var(--ansi-green); }
+/* Each commit's colour (blameHues in git.ts): a bar and a tint behind its
+   annotation, never over the code. Eight hues around the wheel. The bar is as
+   light as the theme's kind needs; the tint keeps the margin's lightness and
+   takes only a little colour, which stays within what a screen shows, so the
+   text on it keeps its contrast, also in Solarized and Gruvbox Light. Lines
+   not committed yet have neither. */
+.monaco-editor { --blame-bar: 0.7 0.11; --blame-lift: 0; --blame-chroma: 0.03; }
+html[data-kind="light"] .monaco-editor { --blame-bar: 0.62 0.13; --blame-lift: 0.005; --blame-chroma: 0.025; }
+.monaco-editor .line-numbers[class*="blame-hue-"] { background: oklch(from var(--vscode-editorGutter-background) calc(l + var(--blame-lift)) var(--blame-chroma) var(--blame-hue)); box-shadow: inset 3px 0 0 oklch(var(--blame-bar) var(--blame-hue)); }
+.monaco-editor .line-numbers.blame-hue-0 { --blame-hue: 25; }
+.monaco-editor .line-numbers.blame-hue-1 { --blame-hue: 70; }
+.monaco-editor .line-numbers.blame-hue-2 { --blame-hue: 110; }
+.monaco-editor .line-numbers.blame-hue-3 { --blame-hue: 155; }
+.monaco-editor .line-numbers.blame-hue-4 { --blame-hue: 200; }
+.monaco-editor .line-numbers.blame-hue-5 { --blame-hue: 250; }
+.monaco-editor .line-numbers.blame-hue-6 { --blame-hue: 295; }
+.monaco-editor .line-numbers.blame-hue-7 { --blame-hue: 340; }
 .monaco-editor .git-conflict-mine { background: color-mix(in srgb, var(--ansi-green) 13%, transparent); }
 .monaco-editor .git-conflict-theirs { background: color-mix(in srgb, var(--ansi-blue) 13%, transparent); }
 .monaco-editor .git-conflict-marker { background: color-mix(in srgb, var(--ui-fg) 9%, transparent); }
