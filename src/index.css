@@ -272,10 +272,13 @@ html.native-menu .menubar, html.native-menu .app-icon { display: none; }
   text-transform: uppercase;
   user-select: none;
 }
+/* A line as a border, not a 1px box: Chromium snaps a border's width to whole
+   pixels, while a box landing between two (zoomed to 110%, say) was drawn
+   across both, so one separator looked thicker than the next. */
 .menu-separator {
-  height: 1px;
+  height: 0;
   margin: 5px 7px;
-  background: var(--ui-border-strong);
+  border-top: 1px solid var(--ui-border-strong);
 }
 .menu-item {
   display: flex;
@@ -597,7 +600,7 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 .context-item kbd { margin-left: auto; padding: 0 0 0 28px; border: 0; color: var(--ui-fg-muted); background: transparent; }
 .context-item:hover kbd, .context-item:focus-visible kbd { color: inherit; }
 .context-item:disabled kbd { color: var(--ui-fg-faint); }
-.context-separator { height: 1px; margin: 5px 7px; background: var(--ui-border-strong); }
+.context-separator { height: 0; margin: 5px 7px; border-top: 1px solid var(--ui-border-strong); }
 .context-group { position: relative; }
 .context-item.has-submenu { justify-content: space-between; }
 .context-item.has-submenu svg.icon { margin-left: 20px; color: var(--ui-fg-muted); }
