@@ -195,7 +195,7 @@ try {
   // Taken back, the conflict and its markers return.
   await run({ kind: 'unresolve', path: inProject('src/main.cpp') });
   assert.match(read('src/main.cpp'), /^<<<<<<< ours$/m);
-  assert.equal((await changes())[path.join('src', 'main.cpp')], 'conflict');
+  assert.equal((await changes())['src/main.cpp'], 'conflict');
   await run({ kind: 'resolve', path: inProject('src/main.cpp'), side: 'mine' });
   assert.equal(read('src/main.cpp'), 'int main() {\n  return 3;\n}\n');
   await run({ kind: 'unresolve', path: inProject('src/main.cpp') });

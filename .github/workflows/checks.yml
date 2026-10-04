@@ -46,4 +46,19 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Tests
+        id: tests
         run: npm test
+      # npm test stops at the first file that fails; then each runs by itself,
+      # so one run shows every file that fails, not only the first.
+      - name: Each test by itself, to show all that fail
+        if: failure() && steps.tests.outcome == 'failure'
+        shell: bash
+        run: |
+          export PATH="$PWD/node_modules/.bin:$PATH"
+          status=0
+          while IFS= read -r command; do
+            echo "::group::$command"
+            eval "$command" || { echo "::error::$command failed"; status=1; }
+            echo "::endgroup::"
+          done < <(node -e "for (const command of require('./package.json').scripts.test.split('&&')) console.log(command.trim())")
+          exit $status
