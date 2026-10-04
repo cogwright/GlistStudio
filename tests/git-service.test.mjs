@@ -189,7 +189,7 @@ try {
   assert.equal(status.repository.operation, 'merge');
   assert.match(status.repository.operationSubject, /feature/);
   assert.deepEqual(status.repository.changes.filter((change) => change.conflict).map((change) => [relative(project, change.path), change.conflict]),
-    [[path.join('src', 'main.cpp'), 'UU']]);
+    [['src/main.cpp', 'UU']]);
   await run({ kind: 'resolve', path: inProject('src/main.cpp'), side: 'theirs' });
   assert.equal(read('src/main.cpp'), 'int main() {\n  return 2;\n}\n');
   // Taken back, the conflict and its markers return.
@@ -242,7 +242,7 @@ try {
   assert.equal(stash.message, 'On main: Try something');
   // The changed file, and the new files stashed with it.
   assert.deepEqual((await git.gitCommitDetails(stash.name)).files.map((file) => [relative(project, file.path), file.state]),
-    [['src/main.cpp', 'modified'], ['notes.txt', 'untracked'], [path.join('src', 'Other.h'), 'untracked']]);
+    [['src/main.cpp', 'modified'], ['notes.txt', 'untracked'], ['src/Other.h', 'untracked']]);
   await run({ kind: 'unstash', name: stash.name, pop: true });
   assert.equal(read('src/main.cpp'), 'stashed\n');
   assert.equal(read('notes.txt'), 'mine\n');
