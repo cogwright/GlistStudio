@@ -1,6 +1,7 @@
 import { copyText } from './clipboard';
 import { t } from './localization';
 import { notify } from './notifications';
+import { versionName } from './versions';
 
 // Settings > About: which Glist Studio this is, and the branch and commit of the
 // engine and the open project's plugins, to name when something goes wrong.
@@ -58,8 +59,9 @@ export class AboutView {
       };
     };
 
+    // Shown as people read it (26.2 Preview 17); copied as it is (26.2.0-dev.17), for a report.
     const studio = group('Glist Studio', [
-      [t('aboutVersion'), about.version],
+      [t('aboutVersion'), versionName(about.version, t('versionPreview'))],
       [t('aboutCommit'), commit(about.head)],
     ], [about.version, about.head?.commit ?? t('aboutUnknown')]);
     const engines = about.repositories.filter((repository) => repository.kind === 'engine').map((repository) => {

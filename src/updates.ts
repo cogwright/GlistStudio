@@ -1,10 +1,14 @@
 import { notify } from './notifications';
 import { t } from './localization';
+import { versionName } from './versions';
 
 // Settings > Updates, Help > Check for Updates, and the messages about a new
 // version. The Electron app checks, downloads and installs (updater.ts); this
 // decides when to check and says what came of it. Settings can also go back to
 // an earlier version, after a warning, and let go of the hold that follows.
+
+// A version as people read it: 26.2.0-dev.17 as 26.2 Preview 17 (versions.ts).
+const shown = (version: string): string => versionName(version, t('versionPreview'));
 
 const storageKey = 'glist-studio-auto-update';
 const previewsKey = 'glist-studio-update-previews';
@@ -30,7 +34,7 @@ const showHold = (update: GlistUpdateState): void => {
   const again = document.querySelector<HTMLButtonElement>('#update-again');
   if (note) {
     note.hidden = !update.held;
-    note.textContent = update.held ? t('updateHeld').replace('{version}', update.held) : '';
+    note.textContent = update.held ? t('updateHeld').replace('{version}', shown(update.held)) : '';
   }
   if (again) again.hidden = !update.held;
 };
@@ -72,10 +76,11 @@ const setUpRollback = (): void => {
         radio.addEventListener('change', label);
         const version = document.createElement('span');
         version.className = 'rollback-version';
-        version.textContent = choice.version;
+        version.textContent = shown(choice.version);
         const facts = document.createElement('span');
         facts.className = 'rollback-facts';
-        facts.textContent = [t(choice.preview ? 'rollbackPreview' : 'rollbackRelease'),
+        // A preview says so in its name (26.2 Preview 17), a release here.
+        facts.textContent = [choice.preview ? '' : t('rollbackRelease'),
           choice.kept ? t('rollbackKept') : !choice.installable ? t('rollbackPageOnly') : ''].filter(Boolean).join(' · ');
         row.append(radio, version, facts);
         return row;
@@ -102,7 +107,7 @@ const setUpRollback = (): void => {
 };
 
 const describe = (update: GlistUpdateState): void => {
-  const version = update.version ?? '';
+  const version = shown(update.version ?? '');
   const once = (key: string): boolean => {
     if (!asked && told.has(key)) return false;
     told.add(key);
@@ -148,7 +153,7 @@ export const setUpUpdates = async (): Promise<void> => {
   const version = document.querySelector<HTMLElement>('#update-version');
   if (section) section.hidden = !supported;
   if (!supported) return;
-  if (version) version.textContent = `Glist Studio ${current.current ?? ''}`;
+  if (version) version.textContent = `Glist Studio ${shown(current.current ?? '')}`;
   showHold(current);
   setUpRollback();
   if (toggle) {

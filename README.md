@@ -75,7 +75,7 @@ npx tsc --noEmit
 
 `GLIST_STUDIO_HOME`, in either build, puts the studio's own folder (its settings, debugger and agents) elsewhere, which keeps trials away from your own.
 
-`npm run make` builds the installers for the machine you are on, unsigned. `.github/workflows/release.yml` builds every installer on GitHub: a tag such as `v0.2.0` drafts a release to check and publish, and every push to `main` publishes a prerelease numbered after the last release, such as `0.0.7-dev.5`, for those who take previews, and removes the one before it, keeping its tag. The macOS app is signed and notarized there when the repository has the signing secrets the workflow names.
+`npm run make` builds the installers for the machine you are on, unsigned. `.github/workflows/release.yml` builds every installer on GitHub: releases are numbered by year: a tag such as `v26.2` (or `v26.2.0`) drafts release 26.2 to check and publish, the year's second; a new year starts again at `.1`. Every push to `main` publishes a prerelease of the release to come, numbered by `main`'s commits since the last one, such as `26.2.0-dev.17`, which the studio shows as **26.2 Preview 17**, for those who take previews, and removes the one before it, keeping its tag (`scripts/next-version.mjs` works the number out). The macOS app is signed and notarized there when the repository has the signing secrets the workflow names.
 
 ## Project layout
 
