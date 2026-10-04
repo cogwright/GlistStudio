@@ -73,7 +73,7 @@ Object.assign(api, {
     window.localStorage.setItem(lastProjectKey, root);
     return project;
   },
-  openEngineSite: async () => { window.open('https://www.glistengine.com/', '_blank', 'noopener'); },
+  openEngineSite: async () => { window.open('https://www.glistengine.com/corporate/about/', '_blank', 'noopener'); },
   openEngineRepository: async () => { window.open('https://github.com/GlistEngine/GlistEngine', '_blank', 'noopener'); },
   // A page keeps its menus in its own title bar.
   setAppMenu: async (): Promise<boolean> => false,

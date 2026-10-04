@@ -532,7 +532,7 @@ const ownHandlers: Partial<Record<InvokeMethod, OwnHandler>> = {
     saveWindows();
     window.webContents.reload();
   },
-  openEngineSite: () => shell.openExternal('https://www.glistengine.com/'),
+  openEngineSite: () => shell.openExternal('https://www.glistengine.com/corporate/about/'),
   openEngineRepository: () => shell.openExternal('https://github.com/GlistEngine/GlistEngine'),
   setAppMenu: (event, menus: GlistAppMenu[], words: GlistAppMenuWords) => setAppMenu(event.sender, menus, words),
   chooseFolder: async (event) => {
