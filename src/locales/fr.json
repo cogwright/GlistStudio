@@ -386,6 +386,8 @@
     "confirmRollbackOne": "Remettre {name} comme dans le dernier commit? Vos modifications de ce fichier seront perdues.",
     "showDiff": "Afficher les différences",
     "openFile": "Ouvrir le fichier",
+    "addToGit": "Ajouter à Git",
+    "addAllToGit": "Tout ajouter à Git",
     "addToGitignore": "Ajouter à .gitignore",
     "showHistory": "Afficher l'historique",
     "markResolved": "Marquer comme résolu",

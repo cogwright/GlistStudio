@@ -883,6 +883,16 @@ exit 1
   };
 
   // Adds lines to the project's .gitignore, relative to the project folder.
+  // Add to Git: files git does not track yet, staged for the next commit; a
+  // folder adds what is in it that is not ignored.
+  const addFiles = async (repo: Repository, paths: unknown[]): Promise<GlistGitResult> => {
+    const chosen = paths.map((entry) => toGit(repo, entry));
+    if (chosen.length === 0) return done();
+    const add = withPaths(['add'], chosen);
+    const result = await run(add.args, { cwd: repo.folder, input: add.input, logged: true });
+    return result.code === 0 ? done() : explain(result, repo);
+  };
+
   const ignore = async (repo: Repository, paths: unknown[]): Promise<GlistGitResult> => {
     const file = path.join(repo.folder, '.gitignore');
     const current = await readFileIfThere(file);
@@ -1025,6 +1035,7 @@ exit 1
       case 'commit': return commit(repo, action);
       case 'rollback': return rollback(repo, Array.isArray(action.paths) ? action.paths : []);
       case 'ignore': return ignore(repo, Array.isArray(action.paths) ? action.paths : []);
+      case 'add': return addFiles(repo, Array.isArray(action.paths) ? action.paths : []);
       case 'resolve': return resolve(repo, action.path, action.side);
       case 'apply-patch': return applyPatch(repo, action.patch);
       case 'unresolve': return steps(repo, [literal(['checkout', '-m', '--', toGit(repo, action.path)])]);

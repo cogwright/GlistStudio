@@ -386,6 +386,8 @@
     "confirmRollbackOne": "{name} son commit'teki haline döndürülsün mü? Dosyadaki değişiklikleriniz kaybolacak.",
     "showDiff": "Farkı Göster (Diff)",
     "openFile": "Dosyayı Aç",
+    "addToGit": "Git'e Ekle",
+    "addAllToGit": "Tümünü Git'e Ekle",
     "addToGitignore": ".gitignore'a Ekle",
     "showHistory": "Geçmişi Göster",
     "markResolved": "Çözüldü Olarak İşaretle",

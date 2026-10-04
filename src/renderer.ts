@@ -2567,6 +2567,12 @@ const showContextMenu = (event: MouseEvent, entry?: GlistFileEntry, row?: HTMLBu
       gitItems.push(item('addToGitignore', () => { void git.run({ kind: 'ignore', paths: [entry.path] }); }));
     }
   }
+  // Add to Git: the files picked, or those in the folders picked, that Git does not track yet.
+  if (git.repository) {
+    const untracked = git.repository.changes.filter((change) => change.state === 'untracked');
+    const addable = selection.filter((each) => isProjectPath(each.path) && untracked.some((change) => isWithin(change.path, each.path)));
+    if (addable.length > 0) gitItems.unshift(item('addToGit', () => { void git.run({ kind: 'add', paths: addable.map((each) => each.path) }); }));
+  }
   showMenu(event, [
     { label: t('newMenu'), children: [item('newFile', createFile), item('newFolder', createFolder), item('newCppClass', createClass)] },
     'separator',
