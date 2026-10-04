@@ -66,6 +66,7 @@
     "runFailed": "Échec",
     "runStopped": "Arrêté",
     "runExitCode": "Code de sortie {code}",
+    "outputTrimmed": "La sortie précédente n'est plus affichée ici, pour garder la fenêtre rapide. La plus récente est conservée.",
     "dependencies": "DÉPENDANCES",
     "engineMissing": "GlistEngine est introuvable deux dossiers au-dessus du projet, là où la compilation le cherche.",
     "pluginMissing": "Ce plugin est cité dans CMakeLists.txt mais n'est pas dans glistplugins: la compilation va donc s'arrêter. Les plugins peuvent être téléchargés sur github.com/GlistPlugins.",

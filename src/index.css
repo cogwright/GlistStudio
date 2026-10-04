@@ -548,6 +548,8 @@ kbd { margin-left: 5px; padding: 2px 5px; border: 1px solid var(--ui-border-stro
 /* Each build and run is a section (output-history.ts); one showing, or all of them with a line between. */
 .output > [hidden] { display: none; }
 .output > :not([hidden]):not(:empty) ~ :not([hidden]) { margin-top: 1.55em; }
+/* A section past what it keeps says so at its top (output-history.ts). */
+.output-trimmed { margin-bottom: 0.4em; color: var(--ui-fg-muted); font-style: italic; }
 
 /* ANSI colors in the output, in the theme's own colors. */
 /* xterm.js maps the mouse wrongly under the browser build's CSS zoom, so the
