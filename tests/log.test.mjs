@@ -200,7 +200,10 @@ try {
     syncOnly.write('main', 'info', 'at exit');
     syncOnly.flushSync();
     assert.equal(syncOnly.stopped, true);
-    if (process.getuid?.() !== 0) {
+    // A folder without write permission, as Linux and macOS have them; Windows
+    // keeps no such permission on a folder (chmod leaves it writable), and root
+    // may write anywhere.
+    if (process.platform !== 'win32' && process.getuid?.() !== 0) {
       const locked = path.join(root, 'locked');
       mkdirSync(locked);
       chmodSync(locked, 0o500);
