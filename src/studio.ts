@@ -18,6 +18,7 @@ import { createGitService } from './git-service';
 import { createCheckouts, githubForks, gitRunner } from './checkout-update';
 import { isLanguage, languages, type Language, type Words } from './languages';
 import { errorOutput, outputBanner } from './output-format';
+import { outputStream } from './output-stream';
 import { createPluginService } from './plugins';
 import { hiddenFolderList, isHiddenFolder, setHiddenFolders } from './hidden-folders';
 import { imageType } from './images';
@@ -613,11 +614,12 @@ const runBuildCommand = (
     detached: ownProcessGroup,
   });
   buildProcess = child;
-  child.stdout.on('data', (chunk: Buffer) => sendToRenderer('build:output', chunk.toString()));
-  child.stderr.on('data', (chunk: Buffer) => sendToRenderer('build:output', chunk.toString()));
+  const shown = outputStream((text) => sendToRenderer('build:output', text));
+  child.stdout.on('data', shown.reader());
+  child.stderr.on('data', shown.reader());
   // A stopped build may end after the next one started; leave that one alone.
-  child.once('error', (error) => { if (buildProcess === child) buildProcess = null; reject(error); });
-  child.once('close', (exitCode) => { if (buildProcess === child) buildProcess = null; resolve(exitCode ?? 1); });
+  child.once('error', (error) => { shown.flush(); if (buildProcess === child) buildProcess = null; reject(error); });
+  child.once('close', (exitCode) => { shown.flush(); if (buildProcess === child) buildProcess = null; resolve(exitCode ?? 1); });
 });
 
 // Stop bumps the generation, so a stopped build notices at its next step and
@@ -947,6 +949,9 @@ const findRunnable = async (projectRoot: string, buildType: BuildType = 'Release
   }
 };
 
+// About 2.5 MB a second at the batches' pace: far more than can be read, and what the window keeps up with.
+const runOutputLimit = 128 * 1024;
+
 const runProject = async (): Promise<ProcessResult> => {
   if (runProcess) return { success: false, message: msg('appRunning') };
   const projectRoot = requireProjectRoot();
@@ -971,10 +976,17 @@ const runProject = async (): Promise<ProcessResult> => {
     });
     runProcess = child;
     sendToRenderer('run:status', { running: true });
-    child.stdout.on('data', (chunk: Buffer) => sendToRenderer('run:output', chunk.toString()));
-    child.stderr.on('data', (chunk: Buffer) => sendToRenderer('run:output', errorOutput(chunk.toString())));
-    child.once('error', (error) => sendToRenderer('run:output', `${msg('launchFailed')}: ${error.message}\n`));
+    // A game logging every frame can print more than a window could show, so
+    // at most a batch's worth goes, the newest, with a yellow note for the rest.
+    const shown = outputStream((text) => sendToRenderer('run:output', text), {
+      limit: runOutputLimit,
+      skipped: (count) => `\x1b[33m${msg('outputSkipped').replace('{count}', count.toLocaleString(language))}\x1b[39m`,
+    });
+    child.stdout.on('data', shown.reader());
+    child.stderr.on('data', shown.reader(errorOutput));
+    child.once('error', (error) => { shown.flush(); sendToRenderer('run:output', `${msg('launchFailed')}: ${error.message}\n`); });
     child.once('close', (exitCode) => {
+      shown.flush();
       if (runProcess !== child) return;
       runProcess = null;
       // A stopped app has no exit code, only the signal that ended it.

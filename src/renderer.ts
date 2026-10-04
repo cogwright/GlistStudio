@@ -21,7 +21,7 @@ import { defaultHiddenFolders, hiddenFolderList, setHiddenFolders } from './hidd
 import { codeFontStack, editorFonts, loadFonts, onFontsChange, panelFontSize, setUpFontSettings } from './fonts';
 import { changedLines, codeLines, editsWithin, type LineRange } from './format-lines';
 import { formatOutput, newOutputStyle, outputBanner } from './output-format';
-import { OutputHistory, type OutputRun, type OutputSection } from './output-history';
+import { appendTextToSection, appendToSection, OutputHistory, type OutputRun, type OutputSection } from './output-history';
 import { fileIconElement } from './file-icons';
 import { icon, placeIcons, type IconName } from './icons';
 import { Debugger } from './debugger';
@@ -707,7 +707,17 @@ const outputHistory = new OutputHistory(output, outputHistorySelect, clearsOutpu
   outputHistorySelect.hidden = panelView !== 'output' || size === 0;
 });
 
-const clearOutput = (text = ''): void => outputHistory.reset(text);
+// What is printed waits for the next frame and goes in at once, scrolled once:
+// a game logging every frame sent hundreds of pieces a second, and adding and
+// scrolling to each kept the window from answering. Frames stop while the
+// window is hidden or covered, by the game's own window too, so a quarter of a
+// second at most; and a section's waiting text is what it would keep at most.
+const outputQueue = new Map<OutputSection, string>();
+const outputWaiting = 1_000_000;
+let outputFrame = 0;
+let outputTimer = 0;
+
+const clearOutput = (text = ''): void => { outputQueue.clear(); outputHistory.reset(text); };
 
 // Opens a file named in the output, relative to the project when not absolute,
 // in a transient tab, as an error looked at.
@@ -717,21 +727,52 @@ const openOutputLocation = (filePath: string, line: number): void => {
   void revealLocation(pathUri(absolute), { lineNumber: line, column: 1 }, true);
 };
 
+const sectionFor = (section: OutputSection): OutputSection => (section.element.isConnected ? section : outputHistory.current);
+
+const flushOutput = (): void => {
+  cancelAnimationFrame(outputFrame);
+  window.clearTimeout(outputTimer);
+  outputFrame = 0;
+  outputTimer = 0;
+  let shown = false;
+  for (const [section, text] of outputQueue) {
+    const to = sectionFor(section);
+    // A section's first line at its top, without the blank line it came with.
+    const fresh = !to.element.hasChildNodes();
+    appendTextToSection(to, fresh ? text.replace(/^\n/, '') : text, (part) => formatOutput(part, to.style, openOutputLocation));
+    shown ||= outputHistory.isShown(to);
+  }
+  outputQueue.clear();
+  if (shown) output.scrollTop = output.scrollHeight;
+};
+
 // Appends nodes; rewriting textContent made long builds quadratic. To the
 // newest build or run unless said otherwise, or to the output itself when
 // Clear Output took the one it was for.
 const appendOutput = (text: string, kind: 'normal' | 'success' | 'error' = 'normal', section: OutputSection = outputHistory.current): void => {
-  const to = section.element.isConnected ? section : outputHistory.current;
-  // A section's first line at its top, without the blank line it came with.
-  const fresh = !to.element.hasChildNodes();
-  if (kind === 'normal') to.element.append(...formatOutput(fresh ? text.replace(/^\n/, '') : text, to.style, openOutputLocation));
-  else {
-    const message = document.createElement('span');
-    message.className = kind === 'success' ? 'ansi-green' : 'ansi-red';
-    // The mark on the text's own line, however many line breaks it came with.
-    message.append(...formatOutput(`${kind === 'success' ? '✓' : '✕'} ${text.replace(/^\s*\n|\n\s*$/g, '')}`, newOutputStyle(), openOutputLocation));
-    to.element.append(...(fresh ? [] : ['\n']), message, '\n');
+  const to = sectionFor(section);
+  if (kind === 'normal') {
+    let waiting = (outputQueue.get(to) ?? '') + text;
+    if (waiting.length > outputWaiting) {
+      const cut = waiting.length - outputWaiting;
+      const lineStart = waiting.indexOf('\n', cut);
+      waiting = waiting.slice(lineStart >= 0 ? lineStart + 1 : cut);
+    }
+    outputQueue.set(to, waiting);
+    if (!outputFrame) {
+      outputFrame = requestAnimationFrame(flushOutput);
+      outputTimer = window.setTimeout(flushOutput, 250);
+    }
+    return;
   }
+  // After what was printed before it.
+  flushOutput();
+  const fresh = !to.element.hasChildNodes();
+  const message = document.createElement('span');
+  message.className = kind === 'success' ? 'ansi-green' : 'ansi-red';
+  // The mark on the text's own line, however many line breaks it came with.
+  message.append(...formatOutput(`${kind === 'success' ? '✓' : '✕'} ${text.replace(/^\s*\n|\n\s*$/g, '')}`, newOutputStyle(), openOutputLocation));
+  appendToSection(to, [...(fresh ? [] : ['\n']), message, '\n']);
   if (outputHistory.isShown(to)) output.scrollTop = output.scrollHeight;
 };
 

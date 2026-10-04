@@ -12,7 +12,63 @@ export type OutputRunState = 'running' | 'succeeded' | 'failed' | 'stopped';
 export interface OutputSection {
   readonly element: HTMLElement;
   style: OutputStyle;
+  // The newest block of lines, and whether its last line ended; characters shown.
+  tail: HTMLElement | null;
+  ended: boolean;
+  size: number;
 }
+
+// What a section shows at most; past it, its oldest lines go, to four fifths of it.
+const keptCharacters = 1_000_000;
+
+// Removes a section's oldest blocks, with a line at its top that says so.
+const trim = (section: OutputSection): void => {
+  let marker = section.element.firstElementChild;
+  if (!marker?.classList.contains('output-trimmed')) {
+    marker = document.createElement('div');
+    marker.className = 'output-trimmed';
+    (marker as HTMLElement).dataset.i18n = 'outputTrimmed';
+    marker.textContent = t('outputTrimmed');
+    section.element.prepend(marker);
+  }
+  while (section.size > keptCharacters * 0.8 && marker.nextSibling) {
+    const oldest = marker.nextSibling;
+    section.size -= oldest.textContent?.length ?? 0;
+    if (oldest === section.tail) section.tail = null;
+    oldest.remove();
+  }
+};
+
+// Adds to what a section shows. Lines go into blocks, a new one once the last
+// ended its line, so the page lays out only the new lines rather than every
+// line before them again: as one run of text, a game's log took 105 ms a frame
+// to add to at 10 MB, and 3 ms in blocks.
+export const appendToSection = (section: OutputSection, nodes: (Node | string)[]): void => {
+  const text = nodes.map((node) => (typeof node === 'string' ? node : node.textContent ?? '')).join('');
+  if (!text) return;
+  let block = section.tail;
+  if (!block || section.ended || block.parentNode !== section.element) {
+    block = document.createElement('div');
+    section.element.append(block);
+    section.tail = block;
+  }
+  block.append(...nodes);
+  section.ended = text.endsWith('\n');
+  section.size += text.length;
+  if (section.size > keptCharacters) trim(section);
+};
+
+// Adds printed text, made into nodes by format. Text that finishes the last
+// line goes into that line's block, and the rest into one of its own: a batch
+// often ends partway through a line, and without that, a program printing
+// without a pause would make one block of everything.
+export const appendTextToSection = (section: OutputSection, text: string, format: (text: string) => Node[]): void => {
+  const lineEnd = section.tail && !section.ended ? text.indexOf('\n') : -1;
+  if (lineEnd >= 0 && lineEnd < text.length - 1) {
+    appendToSection(section, format(text.slice(0, lineEnd + 1)));
+    appendToSection(section, format(text.slice(lineEnd + 1)));
+  } else appendToSection(section, format(text));
+};
 
 export interface OutputRun extends OutputSection {
   readonly id: number;
@@ -60,7 +116,7 @@ export class OutputHistory {
     this.runs = [];
     this.base = this.section('output-base');
     this.output.replaceChildren(this.base.element);
-    if (text) this.base.element.textContent = text;
+    if (text) appendToSection(this.base, [text]);
     this.current = this.base;
     this.shown = 'all';
     this.render();
@@ -133,6 +189,6 @@ export class OutputHistory {
   private section(className: string): OutputSection {
     const element = document.createElement('div');
     element.className = className;
-    return { element, style: newOutputStyle() };
+    return { element, style: newOutputStyle(), tail: null, ended: false, size: 0 };
   }
 }
