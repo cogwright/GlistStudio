@@ -110,7 +110,9 @@ const run = async (action, repositoryRoot) => {
   assert.equal(result.success, true, `${action.kind}: ${result.message}`);
   return result;
 };
-const changes = async () => Object.fromEntries((await git.gitStatus()).repository.changes.map((change) => [path.relative(project, change.path), change.state]));
+// Relative paths with / on every system, as the expectations below write them.
+const relative = (from, to) => path.relative(from, to).split(path.sep).join('/');
+const changes = async () => Object.fromEntries((await git.gitStatus()).repository.changes.map((change) => [relative(project, change.path), change.state]));
 
 try {
   // Not a repository yet; making one ignores the build folder from the start.
@@ -186,7 +188,7 @@ try {
   status = await git.gitStatus();
   assert.equal(status.repository.operation, 'merge');
   assert.match(status.repository.operationSubject, /feature/);
-  assert.deepEqual(status.repository.changes.filter((change) => change.conflict).map((change) => [path.relative(project, change.path), change.conflict]),
+  assert.deepEqual(status.repository.changes.filter((change) => change.conflict).map((change) => [relative(project, change.path), change.conflict]),
     [[path.join('src', 'main.cpp'), 'UU']]);
   await run({ kind: 'resolve', path: inProject('src/main.cpp'), side: 'theirs' });
   assert.equal(read('src/main.cpp'), 'int main() {\n  return 2;\n}\n');
@@ -239,7 +241,7 @@ try {
   const [stash] = await git.gitStashes();
   assert.equal(stash.message, 'On main: Try something');
   // The changed file, and the new files stashed with it.
-  assert.deepEqual((await git.gitCommitDetails(stash.name)).files.map((file) => [path.relative(project, file.path), file.state]),
+  assert.deepEqual((await git.gitCommitDetails(stash.name)).files.map((file) => [relative(project, file.path), file.state]),
     [['src/main.cpp', 'modified'], ['notes.txt', 'untracked'], [path.join('src', 'Other.h'), 'untracked']]);
   await run({ kind: 'unstash', name: stash.name, pop: true });
   assert.equal(read('src/main.cpp'), 'stashed\n');
