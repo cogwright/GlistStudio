@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { existsSync, promises as fs, statSync, watch, type FSWatcher } from 'node:fs';
+import { existsSync, promises as fs, statSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -11,6 +11,7 @@ import { isDatabaseSideFile } from './databases';
 import { createHostProtection, defaultProtection, matchesBranch, protectionFrom } from './git-protection';
 import { languages, type Language, type Words } from './languages';
 import { toolLanguage } from './tool-language';
+import { watchTree, type TreeWatch } from './tree-watch';
 
 // Git for the Commit view and the Git panel, by running the git program in the
 // open project's repository. Anything that changes the repository runs one at
@@ -159,6 +160,14 @@ if ($form.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) { exit 1 }
 GLIST_STUDIO_PROMPT="$1" MSYS2_ARG_CONV_EXCL='*' MSYS_NO_PATHCONV=1 exec powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ${Buffer.from(form, 'utf16le').toString('base64')}
 `;
 };
+
+// What the watch leaves out, by path in the project: the build, clangd's index
+// (in _build or .cache), node_modules, and Git's objects and logs, which change
+// by the thousand without telling the Commit view or the explorer anything. In
+// a repository's own folder kept apart from the project, its objects and logs.
+export const ignoredInProject = (relative: string): boolean =>
+  /^(_build|node_modules|\.cache)([\\/]|$)|(^|[\\/])\.git[\\/](objects|logs)([\\/]|$)/.test(relative);
+export const ignoredInGitDir = (relative: string): boolean => /^(objects|logs)([\\/]|$)/.test(relative);
 
 export const createGitService = (context: GitContext) => {
   const say = (key: MessageKey): string => languages[context.language()].git[key];
@@ -1125,11 +1134,10 @@ exit 1
 
   // Tells the studio when files or the repository change on disk, so the
   // Commit view and the explorer follow edits and git used elsewhere.
-  let watchers: FSWatcher[] = [];
+  let watchers: TreeWatch[] = [];
   let watching = false;
   let timer: NodeJS.Timeout | null = null;
-  const changed = (file?: string | null): void => {
-    if (file && /^(_build|node_modules|\.cache)([\\/]|$)|(^|[\\/])\.git[\\/](objects|logs)[\\/]/.test(file)) return;
+  const changed = (): void => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => { timer = null; context.send('git:changed', null); }, 300);
   };
@@ -1146,11 +1154,9 @@ exit 1
       const repo = await openRepository();
       if (repo && !repo.gitDir.startsWith(repo.realFolder + path.sep)) folders.push(repo.gitDir);
     } catch { /* Not a repository: the project folder is still watched, for git init. */ }
-    folders.forEach((folder) => {
+    folders.forEach((folder, index) => {
       try {
-        const watcher = watch(folder, { recursive: true }, (_event, file) => changed(file?.toString()));
-        watcher.on('error', () => undefined);
-        watchers.push(watcher);
+        watchers.push(watchTree(folder, index === 0 ? ignoredInProject : ignoredInGitDir, changed));
       } catch { /* The focus and save refreshes still work. */ }
     });
   };
